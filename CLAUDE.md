@@ -59,9 +59,20 @@ RLS attiva ovunque. **Leggono tutti** (anche senza login: la persona "X" apre so
 dalla funzione `security definer` `public.is_writer()`.
 `allowed_writers` non ha nessuna policy: dal frontend è invisibile.
 
-Login: **codice a 6 cifre via email** (Supabase Auth OTP). Il template Magic Link del progetto
-è stato modificato per includere `{{ .Token }}`, perché sull'iPhone i link aprono Safari
-invece della web app.
+Login: **solo codice a 6 cifre via email** (Supabase Auth OTP). I magic link sono stati
+eliminati del tutto perché sull'iPhone aprono Safari e non tornano nella web app aggiunta
+alla home.
+
+- I template email **Magic Link** e **Confirm signup** contengono solo `{{ .Token }}`:
+  `{{ .ConfirmationURL }}` è stato rimosso da entrambi.
+- Il client è creato con `detectSessionInUrl: false`, `persistSession: true`,
+  `autoRefreshToken: true`, `storageKey: 'piano-auth'`.
+- `signInWithOtp` viene chiamato **senza** `emailRedirectTo` (aggiungerlo farebbe
+  ricomparire il link nell'email).
+- In *Authentication → Sessions* sia *Time-box user sessions* sia *Inactivity timeout*
+  sono vuoti: la sessione dura finché non si preme Esci.
+
+⚠️ Non reintrodurre `emailRedirectTo` né `detectSessionInUrl: true`.
 
 ### Formato di `plan_days.payload`
 

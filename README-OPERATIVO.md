@@ -32,21 +32,43 @@
 > `setup.sql` contiene il tuo indirizzo email e **resta sul computer**: è già escluso
 > dal repository pubblico. `seed-dati-iniziali.sql` invece non contiene nulla di personale.
 
-### 2. Far arrivare il codice via email
+### 2. Far arrivare SOLO il codice via email
 
-L'app ti fa entrare con un **codice a 6 cifre** invece che con la password.
-Perché arrivi il codice e non solo un link (i link, sull'iPhone, aprono Safari e non l'app):
+L'app ti fa entrare con un **codice a 6 cifre**. Niente link: sull'iPhone i link aprono
+Safari e non tornano nell'app, quindi li togliamo del tutto dall'email.
 
-1. Supabase → **Authentication** → **Emails** (o *Email Templates*) → scheda **Magic Link**.
-2. Nel testo del messaggio aggiungi questa riga:
+Supabase → **Authentication** → **Emails** (o *Email Templates*).
+Ci sono due schede da sistemare, **allo stesso modo**:
 
-   ```
-   <p>Il tuo codice è: <b>{{ .Token }}</b></p>
-   ```
+| Scheda | Quando viene usata |
+|---|---|
+| **Magic Link** | tutte le volte che fai il login |
+| **Confirm signup** | solo la primissima volta, quando l'account non esiste ancora |
 
-3. Salva. Da adesso ogni email conterrà sia il link sia il codice.
+Per ognuna delle due: **cancella tutto** quello che c'è nel riquadro del messaggio e
+incolla al suo posto questo, poi **Save**.
 
-### 3. Mettere l'icona sull'iPhone
+```html
+<h2>Piano &amp; Dispensa</h2>
+<p>Il tuo codice di accesso è:</p>
+<p style="font-size:30px;font-weight:bold;letter-spacing:6px">{{ .Token }}</p>
+<p>Scrivilo nell'app. Vale per un'ora sola.</p>
+<p style="color:#888;font-size:13px">Se non hai chiesto tu di entrare, ignora questa email.</p>
+```
+
+> È importante che sparisca la scritta `{{ .ConfirmationURL }}`: è quella che genera il link.
+
+### 3. Restare collegata a lungo
+
+Supabase → **Authentication** → **Sessions**. Controlla che siano **spente / vuote** entrambe:
+
+- **Time-box user sessions** → vuoto (altrimenti ti butta fuori dopo tot ore)
+- **Inactivity timeout** → vuoto (altrimenti ti butta fuori se non apri l'app per un po')
+
+Lasciandole vuote il login vale finché non premi **Esci**: l'app rinnova il permesso da sola
+ogni volta che la apri.
+
+### 4. Mettere l'icona sull'iPhone
 
 1. Apri l'indirizzo dell'app in **Safari** (non in Chrome).
 2. Premi il tasto **Condividi** (il quadrato con la freccia).
@@ -89,8 +111,10 @@ tabella `allowed_writers` → **Insert row** → scrivi la sua email.
 |---|---|
 | «Non riesco a raggiungere il database» | Sei senza rete, o Supabase è in pausa. Apri supabase.com e controlla che il progetto sia attivo. |
 | «Questa email non è autorizzata a modificare» | Hai fatto il login con un'email diversa da quella nell'allowlist. Esci e rientra con quella giusta. |
-| «Codice sbagliato o scaduto» | I codici durano poco: chiedine uno nuovo con **Indietro** → **Inviami il codice**. |
+| «Codice sbagliato o scaduto» | I codici valgono un'ora: usa **Rimanda il codice** e riprova con quello nuovo. |
 | Non arriva l'email | Guarda nello spam. Se non c'è, hai chiesto troppi codici di fila: aspetta un minuto. |
+| Nell'email c'è ancora un link | Hai sistemato solo una delle due schede: rifai il punto 2 anche sull'altra. |
+| Ti chiede il login troppo spesso | Ricontrolla il punto 3: i due campi delle sessioni devono essere vuoti. |
 | La pagina resta vuota | Chiudi del tutto l'app dall'iPhone e riaprila. |
 
 ---

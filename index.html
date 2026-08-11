@@ -277,12 +277,18 @@ section[hidden]{display:none}
     </div>
 
     <div id="step2" hidden>
-      <input class="field" id="loginCode" type="text" inputmode="numeric"
-             autocomplete="one-time-code" placeholder="Codice a 6 cifre ricevuto via email">
+      <p id="sentTo" style="margin:0 0 10px"></p>
+      <input class="field" id="loginCode" type="text" inputmode="numeric" maxlength="6"
+             autocomplete="one-time-code"
+             style="font-size:26px;letter-spacing:8px;text-align:center;font-weight:700"
+             placeholder="000000">
       <div class="form-row">
         <button class="btn" id="verifyCode" style="flex:1">Entra</button>
         <button class="btn ghost" id="backStep">Indietro</button>
       </div>
+      <p class="hint" style="text-align:center">
+        Non è arrivata? <a href="#" id="resendCode" style="color:var(--green);font-weight:600">Rimanda il codice</a>
+      </p>
     </div>
 
     <div class="login-msg" id="loginMsg"></div>
@@ -300,7 +306,14 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const SUPABASE_URL = 'https://bixdbnhructlsxuvkmic.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_7Awm1XgdbMqUfNRPfqtTug_9qHVBc4E';
 
-const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    persistSession:     true,   // la sessione resta salvata sul telefono
+    autoRefreshToken:   true,   // si rinnova da sola: niente login a ogni apertura
+    detectSessionInUrl: false,  // non usiamo i link nelle email: solo il codice
+    storageKey: 'piano-auth',
+  }
+});
 
 /* ---------- stato dell'app ---------- */
 const S = { plan:[], inv:[], rec:[], settings:{}, session:null, canWrite:false, tab:'piano' };
@@ -731,34 +744,61 @@ $('#loginClose').onclick = () => { $('#loginWrap').hidden = true; };
 $('#backStep').onclick   = () => { $('#step1').hidden = false; $('#step2').hidden = true; loginMsg(''); };
 
 let emailInCorso = '';
+
+async function chiediCodice(email){
+  loginMsg('Invio in corso…');
+  // Niente emailRedirectTo: non vogliamo nessun link, solo il codice.
+  const { error } = await sb.auth.signInWithOtp({ email, options:{ shouldCreateUser:true } });
+  if (error) throw error;
+  emailInCorso = email;
+  $('#sentTo').innerHTML = `Ho mandato un codice a <b>${esc(email)}</b>. Scrivilo qui sotto.`;
+  $('#step1').hidden = true; $('#step2').hidden = false;
+  $('#loginCode').value = '';
+  $('#loginCode').focus();
+}
+
 $('#sendCode').onclick = async () => {
   const email = $('#loginEmail').value.trim();
   if (!email.includes('@')) { loginMsg('Scrivi un indirizzo email valido.', 'err'); return; }
-  loginMsg('Invio in corso…');
-  try{
-    const { error } = await sb.auth.signInWithOtp({
-      email,
-      options: { shouldCreateUser: true, emailRedirectTo: location.href.split('#')[0] }
-    });
-    if (error) throw error;
-    emailInCorso = email;
-    $('#step1').hidden = true; $('#step2').hidden = false;
-    loginMsg('Ti ho mandato una email. Copia il codice a 6 cifre e incollalo qui.', 'ok');
-    $('#loginCode').focus();
-  }catch(e){ loginMsg(spiegaErrore(e), 'err'); }
+  try{ await chiediCodice(email); loginMsg(''); }
+  catch(e){ loginMsg(spiegaErrore(e), 'err'); }
 };
 
-$('#verifyCode').onclick = async () => {
+$('#resendCode').onclick = async (ev) => {
+  ev.preventDefault();
+  try{ await chiediCodice(emailInCorso); loginMsg('Nuovo codice inviato.', 'ok'); }
+  catch(e){ loginMsg(spiegaErrore(e), 'err'); }
+};
+
+let verificaInCorso = false;
+async function entra(){
+  if (verificaInCorso) return;                 // evita il doppio invio
   const token = $('#loginCode').value.replace(/\D/g, '');
   if (token.length < 6) { loginMsg('Il codice è di 6 cifre.', 'err'); return; }
+  verificaInCorso = true;
   loginMsg('Controllo…');
   try{
     const { error } = await sb.auth.verifyOtp({ email:emailInCorso, token, type:'email' });
     if (error) throw error;
     $('#loginWrap').hidden = true;
     $('#loginCode').value = '';
-  }catch(e){ loginMsg(spiegaErrore(e), 'err'); }
-};
+    loginMsg('');
+    toast('Sei entrata. Resterai collegata anche chiudendo l\'app.');
+  }catch(e){
+    loginMsg(spiegaErrore(e), 'err');
+    $('#loginCode').value = '';              // svuota, così puoi riscrivere subito
+    $('#loginCode').focus();
+  }finally{ verificaInCorso = false; }
+}
+
+$('#verifyCode').onclick = entra;
+
+// Appena scrivi (o incolli) la sesta cifra parte da solo: un tocco in meno.
+$('#loginCode').addEventListener('input', () => {
+  if ($('#loginCode').value.replace(/\D/g,'').length === 6) entra();
+});
+$('#loginCode').addEventListener('keydown', e => { if (e.key === 'Enter') entra(); });
+$('#loginEmail').addEventListener('keydown', e => { if (e.key === 'Enter') $('#sendCode').click(); });
 
 async function aggiornaSessione(session){
   S.session = session || null;
