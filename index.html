@@ -1,0 +1,812 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<title>Piano &amp; Dispensa</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FAF6EF">
+<meta name="color-scheme" content="light">
+
+<!-- Apple / home screen iPhone -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Piano">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="apple-touch-icon.png">
+
+<style>
+:root{
+  --cream:#FAF6EF;
+  --green:#1E5B3C;
+  --sage:#DEEADF;
+  --amber:#B9722A;
+  --amber-bg:#F6E7CD;
+  --blue:#2456A6;
+  --ink:#27241C;
+  --ink-soft:#6B6355;
+  --line:#E4DCCC;
+  --card:#FFFFFF;
+  --radius:14px;
+  --safe-b:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--cream);
+  color:var(--ink);
+  font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  padding-bottom:calc(24px + var(--safe-b));
+  -webkit-text-size-adjust:100%;
+}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+
+/* ---------- testata ---------- */
+header{
+  position:sticky;top:0;z-index:30;
+  background:var(--green);color:#fff;
+  padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;
+}
+.h-top{display:flex;align-items:center;gap:10px}
+.h-title{font-size:19px;font-weight:700;letter-spacing:.2px;flex:1;margin:0}
+.h-targets{font-size:12.5px;opacity:.9;margin-top:2px}
+.h-btn{
+  background:rgba(255,255,255,.16);color:#fff;border-radius:999px;
+  padding:7px 12px;font-size:13px;font-weight:600;white-space:nowrap;
+}
+.h-btn:active{background:rgba(255,255,255,.3)}
+
+/* ---------- tab ---------- */
+nav.tabs{
+  position:sticky;top:0;z-index:20;
+  display:flex;background:var(--sage);border-bottom:1px solid var(--line);
+}
+nav.tabs button{
+  flex:1;padding:12px 4px;font-size:14px;font-weight:600;color:var(--green);
+  border-bottom:3px solid transparent;opacity:.65;
+}
+nav.tabs button[aria-selected="true"]{opacity:1;border-bottom-color:var(--green);background:rgba(255,255,255,.45)}
+
+main{padding:14px 12px 0;max-width:720px;margin:0 auto}
+section[hidden]{display:none}
+
+/* ---------- messaggi ---------- */
+#banner{
+  margin:0 12px 12px;padding:11px 13px;border-radius:var(--radius);
+  background:var(--amber-bg);border:1px solid var(--amber);color:#6d3f10;
+  font-size:14px;max-width:720px;
+}
+#banner[hidden]{display:none}
+.loading{text-align:center;color:var(--ink-soft);padding:30px 10px;font-size:15px}
+.empty{
+  background:var(--card);border:1px dashed var(--line);border-radius:var(--radius);
+  padding:20px 16px;color:var(--ink-soft);font-size:14.5px;text-align:center
+}
+.empty b{color:var(--ink)}
+
+/* ---------- PIANO ---------- */
+.day{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;margin-bottom:12px;
+}
+.day.today{border-color:var(--green);box-shadow:0 0 0 2px rgba(30,91,60,.18)}
+.day-band{
+  background:var(--sage);padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  border-bottom:1px solid var(--line);
+}
+.day-label{font-weight:700;color:var(--green);font-size:15px;flex:1}
+.badge-oggi{
+  background:var(--green);color:#fff;font-size:11px;font-weight:700;
+  letter-spacing:.6px;padding:3px 8px;border-radius:999px;
+}
+.day-tag{font-size:12px;color:var(--amber);font-weight:600}
+.day-rows{padding:4px 0}
+.row{display:flex;gap:8px;padding:7px 12px;align-items:baseline;font-size:14.5px}
+.row + .row{border-top:1px dashed #F0EADC}
+.row-title{font-weight:700;min-width:64px;font-size:13px;letter-spacing:.3px}
+.row-text{flex:1}
+.row-num{color:var(--ink-soft);font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.row.meal .row-text{font-weight:600}
+.row.freezer{color:var(--blue)}
+.row.freezer .row-text{font-weight:500}
+.row.note{color:var(--ink-soft);font-style:italic}
+.day-tot{
+  background:#FBF8F2;border-top:1px solid var(--line);
+  padding:8px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--green);
+  font-variant-numeric:tabular-nums;
+}
+
+/* ---------- form e liste ---------- */
+.panel{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  padding:12px;margin-bottom:12px;
+}
+.field{
+  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
+  background:#fff;font-size:16px;/* 16px evita lo zoom automatico su iPhone */
+}
+.field:focus{outline:2px solid var(--sage);border-color:var(--green)}
+.form-row{display:flex;gap:8px;margin-top:8px}
+.form-row .field{flex:1;min-width:0}
+.btn{
+  background:var(--green);color:#fff;border-radius:10px;padding:10px 14px;
+  font-size:15px;font-weight:600;white-space:nowrap;
+}
+.btn:active{opacity:.85}
+.btn.ghost{background:#fff;color:var(--green);border:1px solid var(--green)}
+.btn.small{padding:7px 11px;font-size:13.5px}
+
+.cat-head{
+  font-size:12px;font-weight:700;letter-spacing:1px;color:var(--green);
+  margin:16px 0 6px 4px;text-transform:uppercase;
+}
+.cat-head span{color:var(--ink-soft);font-weight:600;letter-spacing:0}
+.list{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.item{display:flex;align-items:center;gap:10px;padding:10px 12px;font-size:15px}
+.item + .item{border-top:1px solid #F2ECE0}
+.item-name{flex:1;min-width:0;word-break:break-word}
+.item-qty{
+  font-size:13.5px;color:var(--ink-soft);text-align:right;white-space:nowrap;
+  max-width:48%;overflow:hidden;text-overflow:ellipsis;
+}
+.item-qty.editable{border-bottom:1px dashed var(--line);cursor:text}
+.item.verifica{background:var(--amber-bg)}
+.item.verifica .item-qty{color:#6d3f10}
+.tag-verifica{
+  border:1px solid var(--amber);color:var(--amber);background:#fff;
+  font-size:10.5px;font-weight:700;letter-spacing:.6px;padding:2px 6px;border-radius:6px;
+}
+.icon-btn{
+  color:var(--ink-soft);font-size:19px;line-height:1;padding:6px 8px;border-radius:8px;
+}
+.icon-btn:active{background:#F2ECE0}
+
+/* ---------- ricette ---------- */
+.pref{display:flex;gap:6px}
+.pref button{
+  border:1px solid var(--line);background:#fff;border-radius:8px;
+  padding:5px 9px;font-size:13px;font-weight:700;color:var(--ink-soft);min-width:38px;
+}
+.pref button[aria-pressed="true"][data-p="fav"]{background:#FBE3E3;border-color:#C2453F;color:#C2453F}
+.pref button[aria-pressed="true"][data-p="ok"]{background:var(--sage);border-color:var(--green);color:var(--green)}
+.pref button[aria-pressed="true"][data-p="no"]{background:#EFEBE3;border-color:var(--ink-soft);color:var(--ink-soft);text-decoration:line-through}
+
+/* ---------- toast / undo ---------- */
+#toast{
+  position:fixed;left:12px;right:12px;bottom:calc(14px + var(--safe-b));z-index:60;
+  background:var(--ink);color:#fff;border-radius:12px;padding:12px 14px;
+  display:flex;align-items:center;gap:12px;font-size:14px;
+  max-width:696px;margin:0 auto;box-shadow:0 8px 24px rgba(0,0,0,.25);
+}
+#toast[hidden]{display:none}
+#toast span{flex:1}
+#toast button{color:#F6E7CD;font-weight:700;font-size:14px;padding:4px}
+
+/* ---------- login ---------- */
+#loginWrap{
+  position:fixed;inset:0;z-index:70;background:rgba(39,36,28,.55);
+  display:flex;align-items:flex-end;justify-content:center;padding:0;
+}
+#loginWrap[hidden]{display:none}
+#loginCard{
+  background:var(--cream);width:100%;max-width:480px;
+  border-radius:18px 18px 0 0;padding:18px 16px calc(20px + var(--safe-b));
+}
+#loginCard h2{margin:0 0 4px;font-size:18px;color:var(--green)}
+#loginCard p{margin:0 0 12px;font-size:14px;color:var(--ink-soft)}
+.login-msg{font-size:13.5px;margin-top:10px}
+.login-msg.err{color:#A33}
+.login-msg.ok{color:var(--green)}
+.hint{font-size:13px;color:var(--ink-soft);margin:8px 4px 0}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="h-top">
+    <h1 class="h-title">Piano &amp; Dispensa</h1>
+    <button class="h-btn" id="copyBtn">Copia per Claude</button>
+    <button class="h-btn" id="authBtn">Accedi</button>
+  </div>
+  <div class="h-targets" id="targets">&nbsp;</div>
+</header>
+
+<nav class="tabs" role="tablist">
+  <button role="tab" data-tab="piano"    aria-selected="true">Piano</button>
+  <button role="tab" data-tab="dispensa" aria-selected="false">Dispensa</button>
+  <button role="tab" data-tab="ricette"  aria-selected="false">Ricette</button>
+</nav>
+
+<div id="banner" hidden></div>
+
+<main>
+  <!-- ============ PIANO ============ -->
+  <section id="tab-piano">
+    <div id="planBody"><div class="loading">Carico il piano…</div></div>
+  </section>
+
+  <!-- ============ DISPENSA ============ -->
+  <section id="tab-dispensa" hidden>
+    <div class="panel" id="invForm" hidden>
+      <input class="field" id="invName" placeholder="Nome (es. Yogurt greco)" autocomplete="off">
+      <div class="form-row">
+        <input class="field" id="invQty" placeholder="Quantità (es. 250 g)" autocomplete="off">
+        <select class="field" id="invCat" style="flex:0 0 118px">
+          <option value="frigo">Frigo</option>
+          <option value="freezer">Freezer</option>
+          <option value="dispensa">Dispensa</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <button class="btn" id="invAdd" style="flex:1">+ Aggiungi</button>
+      </div>
+      <p class="hint">Se nella quantità scrivi un <b>?</b>, la voce viene segnata come DA VERIFICARE.</p>
+    </div>
+    <input class="field" id="invSearch" placeholder="🔍 Cerca nell'inventario" autocomplete="off">
+    <div id="invBody"><div class="loading">Carico l'inventario…</div></div>
+  </section>
+
+  <!-- ============ RICETTE ============ -->
+  <section id="tab-ricette" hidden>
+    <div class="panel" id="recForm" hidden>
+      <div class="form-row" style="margin-top:0">
+        <input class="field" id="recName" placeholder="Nome della ricetta" autocomplete="off">
+        <button class="btn" id="recAdd">+</button>
+      </div>
+    </div>
+    <div id="recBody"><div class="loading">Carico le ricette…</div></div>
+  </section>
+</main>
+
+<div id="toast" hidden><span id="toastText"></span><button id="toastAction">Annulla</button></div>
+
+<!-- ============ LOGIN ============ -->
+<div id="loginWrap" hidden>
+  <div id="loginCard">
+    <h2>Accedi per modificare</h2>
+    <p>Per <b>leggere</b> non serve il login. Serve solo per aggiungere o modificare.</p>
+
+    <div id="step1">
+      <input class="field" id="loginEmail" type="email" inputmode="email"
+             autocomplete="email" placeholder="La tua email">
+      <div class="form-row">
+        <button class="btn" id="sendCode" style="flex:1">Inviami il codice</button>
+        <button class="btn ghost" id="loginClose">Chiudi</button>
+      </div>
+    </div>
+
+    <div id="step2" hidden>
+      <input class="field" id="loginCode" type="text" inputmode="numeric"
+             autocomplete="one-time-code" placeholder="Codice a 6 cifre ricevuto via email">
+      <div class="form-row">
+        <button class="btn" id="verifyCode" style="flex:1">Entra</button>
+        <button class="btn ghost" id="backStep">Indietro</button>
+      </div>
+    </div>
+
+    <div class="login-msg" id="loginMsg"></div>
+  </div>
+</div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+/* ============================================================
+   CONFIGURAZIONE
+   Qui vanno SOLO l'indirizzo del progetto e la chiave pubblica.
+   La chiave segreta non deve mai comparire in questo file.
+   ============================================================ */
+const SUPABASE_URL = 'https://bixdbnhructlsxuvkmic.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_7Awm1XgdbMqUfNRPfqtTug_9qHVBc4E';
+
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ---------- stato dell'app ---------- */
+const S = { plan:[], inv:[], rec:[], settings:{}, session:null, canWrite:false, tab:'piano' };
+
+/* ---------- scorciatoie ---------- */
+const $  = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+const esc = (t) => String(t ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const CAT_LABEL = { frigo:'FRIGO', freezer:'CONGELATORE', dispensa:'DISPENSA' };
+const CAT_ORDER = ['frigo','freezer','dispensa'];
+const daVerificare = (qty) => String(qty ?? '').includes('?');
+
+/* ============================================================
+   MESSAGGI
+   ============================================================ */
+function banner(msg){
+  const b = $('#banner');
+  if(!msg){ b.hidden = true; return; }
+  b.textContent = msg;
+  b.hidden = false;
+}
+
+let toastTimer = null, undoFn = null;
+function toast(text, onUndo){
+  clearTimeout(toastTimer);
+  $('#toastText').textContent = text;
+  undoFn = onUndo || null;
+  $('#toastAction').hidden = !onUndo;
+  $('#toast').hidden = false;
+  toastTimer = setTimeout(() => { $('#toast').hidden = true; undoFn = null; }, 8000);
+}
+$('#toastAction').onclick = async () => {
+  const f = undoFn; undoFn = null; $('#toast').hidden = true;
+  if (f) await f();
+};
+
+/* Traduce gli errori tecnici in italiano comprensibile. */
+function spiegaErrore(e){
+  const m = String(e?.message || e || '');
+  if (!navigator.onLine)                return 'Sei senza connessione. I dati mostrati potrebbero non essere aggiornati.';
+  if (/Failed to fetch|NetworkError/i.test(m))
+    return 'Non riesco a raggiungere il database. Controlla la connessione e riprova.';
+  if (/row-level security|violates row-level/i.test(m))
+    return 'Questa email non è autorizzata a modificare i dati. Puoi solo consultarli.';
+  if (/JWT|token|expired/i.test(m))     return 'La sessione è scaduta: rifai il login.';
+  if (/Invalid login|invalid.*otp|Token has expired/i.test(m))
+    return 'Codice sbagliato o scaduto. Chiedine uno nuovo.';
+  if (/rate limit|too many/i.test(m))   return 'Troppi tentativi ravvicinati. Aspetta un minuto e riprova.';
+  return 'Qualcosa è andato storto: ' + m;
+}
+
+/* ============================================================
+   CARICAMENTO DATI
+   ============================================================ */
+async function loadAll(){
+  if (!navigator.onLine){
+    banner('Sei senza connessione a internet: non posso caricare i dati.');
+    $('#planBody').innerHTML = '<div class="empty">Nessun dato: manca la connessione.</div>';
+    $('#invBody').innerHTML  = '<div class="empty">Nessun dato: manca la connessione.</div>';
+    $('#recBody').innerHTML  = '<div class="empty">Nessun dato: manca la connessione.</div>';
+    return;
+  }
+  try{
+    const [p, i, r, s] = await Promise.all([
+      sb.from('plan_days').select('day,payload').order('day', { ascending:true }),
+      sb.from('inventory_items').select('id,name,qty,cat'),
+      sb.from('recipes').select('id,name,pref'),
+      sb.from('settings').select('key,value'),
+    ]);
+    for (const res of [p,i,r,s]) if (res.error) throw res.error;
+
+    S.plan = p.data || [];
+    S.inv  = (i.data || []).sort((a,b) => a.name.localeCompare(b.name,'it'));
+    S.rec  = (r.data || []).sort((a,b) => a.name.localeCompare(b.name,'it'));
+    S.settings = Object.fromEntries((s.data || []).map(x => [x.key, x.value]));
+
+    banner(null);
+    renderAll();
+  }catch(e){
+    banner(spiegaErrore(e));
+  }
+}
+
+function renderAll(){ renderTargets(); renderPlan(); renderInv(); renderRec(); }
+
+function renderTargets(){
+  const k = S.settings.kcal_target, pr = S.settings.protein_target;
+  $('#targets').textContent = (k || pr)
+    ? `${k ? k + ' kcal' : ''}${k && pr ? '  ·  ' : ''}${pr ? pr + ' g proteine' : ''}`
+    : ' ';
+}
+
+/* ============================================================
+   TAB 1 — PIANO
+   ============================================================ */
+const oggiISO = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+};
+
+function labelData(iso){
+  const [y,m,d] = iso.split('-').map(Number);
+  const dt = new Date(y, m-1, d);
+  const g = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'][dt.getDay()];
+  return `${g} ${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`;
+}
+
+function renderPlan(){
+  const box = $('#planBody');
+  if (!S.plan.length){
+    box.innerHTML = `<div class="empty">
+      <b>Nessun piano caricato.</b><br><br>
+      Il piano settimanale si aggiunge incollandolo a Claude Code,
+      che lo scrive nel database. Vedi <b>README-OPERATIVO.md</b>.</div>`;
+    return;
+  }
+  const today = oggiISO();
+  box.innerHTML = S.plan.map(d => cardGiorno(d, today)).join('');
+
+  const el = box.querySelector(`.day[data-day="${today}"]`);
+  if (el) setTimeout(() => el.scrollIntoView({ block:'start', behavior:'auto' }), 60);
+}
+
+function cardGiorno(rec, today){
+  const p = rec.payload || {};
+  const isToday = rec.day === today;
+  const rows = Array.isArray(p.rows) ? p.rows : [];
+
+  const rowsHtml = rows.map(r => {
+    const tipo = r.type === 'freezer' ? 'freezer' : (r.type === 'note' ? 'note' : 'meal');
+    const num  = [
+      r.kcal != null ? `${r.kcal} kcal` : '',
+      r.prot != null ? `${r.prot} g P`  : '',
+    ].filter(Boolean).join(' · ');
+    const titolo = r.title ? `<div class="row-title">${esc(r.title)}</div>` : '';
+    const testo  = tipo === 'freezer' && !/^❄/.test(r.text || '')
+      ? '❄ ' + (r.text || '') : (r.text || '');
+    return `<div class="row ${tipo}">
+      ${titolo}
+      <div class="row-text">${esc(testo)}</div>
+      ${num ? `<div class="row-num">${esc(num)}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  let tot = '';
+  if (typeof p.tot === 'string') tot = p.tot;
+  else if (p.tot && typeof p.tot === 'object'){
+    tot = [
+      p.tot.kcal != null ? `${p.tot.kcal} kcal` : '',
+      p.tot.prot != null ? `${p.tot.prot} g proteine` : '',
+    ].filter(Boolean).join('  ·  ');
+  }
+
+  return `<article class="day ${isToday ? 'today' : ''}" data-day="${esc(rec.day)}">
+    <div class="day-band">
+      <span class="day-label">${esc(p.label || labelData(rec.day))}</span>
+      ${isToday ? '<span class="badge-oggi">OGGI</span>' : ''}
+      ${p.tag ? `<span class="day-tag">${esc(p.tag)}</span>` : ''}
+    </div>
+    <div class="day-rows">${rowsHtml || '<div class="row note"><div class="row-text">— nessun pasto indicato —</div></div>'}</div>
+    ${tot ? `<div class="day-tot">TOT ${esc(tot)}</div>` : ''}
+  </article>`;
+}
+
+/* ============================================================
+   TAB 2 — DISPENSA
+   ============================================================ */
+function renderInv(){
+  const box = $('#invBody');
+  const q = $('#invSearch').value.trim().toLowerCase();
+  const items = q ? S.inv.filter(i => i.name.toLowerCase().includes(q)) : S.inv;
+
+  if (!S.inv.length){
+    box.innerHTML = `<div class="empty" style="margin-top:12px"><b>Inventario vuoto.</b><br>
+      ${S.canWrite ? 'Usa il modulo qui sopra per aggiungere la prima voce.' : 'Accedi per aggiungere le voci.'}</div>`;
+    return;
+  }
+  if (!items.length){
+    box.innerHTML = `<div class="empty" style="margin-top:12px">Nessuna voce trovata per «${esc(q)}».</div>`;
+    return;
+  }
+
+  box.innerHTML = CAT_ORDER.map(cat => {
+    const sub = items.filter(i => i.cat === cat);
+    if (!sub.length) return '';
+    return `<div class="cat-head">${CAT_LABEL[cat]} <span>· ${sub.length}</span></div>
+      <div class="list">${sub.map(rigaInv).join('')}</div>`;
+  }).join('');
+}
+
+function rigaInv(i){
+  const v = daVerificare(i.qty);
+  return `<div class="item ${v ? 'verifica' : ''}" data-id="${i.id}">
+    <div class="item-name">${esc(i.name)}</div>
+    ${v ? '<span class="tag-verifica">VERIFICA</span>' : ''}
+    <div class="item-qty ${S.canWrite ? 'editable' : ''}" data-act="qty">${esc(i.qty)}</div>
+    ${S.canWrite ? '<button class="icon-btn" data-act="del" aria-label="Elimina">×</button>' : ''}
+  </div>`;
+}
+
+$('#invSearch').addEventListener('input', renderInv);
+
+$('#invAdd').onclick = async () => {
+  const name = $('#invName').value.trim();
+  const qty  = $('#invQty').value.trim() || '—';
+  const cat  = $('#invCat').value;
+  if (!name) { toast('Scrivi almeno il nome.'); return; }
+  try{
+    const { data, error } = await sb.from('inventory_items')
+      .insert({ name, qty, cat }).select().single();
+    if (error) throw error;
+    S.inv.push(data);
+    S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
+    $('#invName').value = ''; $('#invQty').value = '';
+    renderInv(); toast(`Aggiunto: ${name}`);
+  }catch(e){ banner(spiegaErrore(e)); }
+};
+
+$('#invBody').addEventListener('click', async (ev) => {
+  const btn  = ev.target.closest('[data-act]');
+  if (!btn || !S.canWrite) return;
+  const id   = btn.closest('.item').dataset.id;
+  const item = S.inv.find(x => x.id === id);
+  if (!item) return;
+
+  if (btn.dataset.act === 'del'){
+    try{
+      const { error } = await sb.from('inventory_items').delete().eq('id', id);
+      if (error) throw error;
+      S.inv = S.inv.filter(x => x.id !== id);
+      renderInv();
+      toast(`Eliminato: ${item.name}`, async () => {
+        const { data, error } = await sb.from('inventory_items')
+          .insert({ id:item.id, name:item.name, qty:item.qty, cat:item.cat }).select().single();
+        if (error) { banner(spiegaErrore(error)); return; }
+        S.inv.push(data);
+        S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
+        renderInv(); toast('Ripristinato.');
+      });
+    }catch(e){ banner(spiegaErrore(e)); }
+  }
+
+  if (btn.dataset.act === 'qty') apriEditorQty(btn, item);
+});
+
+function apriEditorQty(cell, item){
+  if (cell.querySelector('input')) return;
+  const inp = document.createElement('input');
+  inp.className = 'field';
+  inp.value = item.qty;
+  inp.style.cssText = 'padding:5px 8px;font-size:15px;width:150px';
+  cell.textContent = '';
+  cell.appendChild(inp);
+  inp.focus(); inp.select();
+
+  let chiuso = false;
+  const salva = async () => {
+    if (chiuso) return; chiuso = true;
+    const nuovo = inp.value.trim() || '—';
+    if (nuovo === item.qty) { renderInv(); return; }
+    try{
+      const { error } = await sb.from('inventory_items').update({ qty:nuovo }).eq('id', item.id);
+      if (error) throw error;
+      item.qty = nuovo; renderInv(); toast('Quantità aggiornata.');
+    }catch(e){ banner(spiegaErrore(e)); renderInv(); }
+  };
+  inp.addEventListener('blur', salva);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
+    if (e.key === 'Escape'){ chiuso = true; renderInv(); }
+  });
+}
+
+/* ============================================================
+   TAB 3 — RICETTE
+   ============================================================ */
+const PREF_LABEL = { fav:'♥', ok:'OK', no:'NO' };
+
+function renderRec(){
+  const box = $('#recBody');
+  if (!S.rec.length){
+    box.innerHTML = `<div class="empty"><b>Nessuna ricetta.</b><br>
+      ${S.canWrite ? 'Aggiungine una col modulo qui sopra.' : 'Accedi per aggiungerne.'}</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="list">${S.rec.map(r => `
+    <div class="item" data-id="${r.id}">
+      <div class="item-name">${esc(r.name)}</div>
+      ${S.canWrite ? `<div class="pref">
+        ${['fav','ok','no'].map(p =>
+          `<button data-p="${p}" aria-pressed="${r.pref === p}">${PREF_LABEL[p]}</button>`).join('')}
+      </div>
+      <button class="icon-btn" data-act="del" aria-label="Elimina">×</button>`
+      : `<div class="pref"><button aria-pressed="${!!r.pref}" data-p="${r.pref || ''}" disabled>${r.pref ? PREF_LABEL[r.pref] : '—'}</button></div>`}
+    </div>`).join('')}</div>`;
+}
+
+$('#recAdd').onclick = async () => {
+  const name = $('#recName').value.trim();
+  if (!name) { toast('Scrivi il nome della ricetta.'); return; }
+  try{
+    const { data, error } = await sb.from('recipes').insert({ name }).select().single();
+    if (error) throw error;
+    S.rec.push(data);
+    S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
+    $('#recName').value = '';
+    renderRec(); toast(`Aggiunta: ${name}`);
+  }catch(e){ banner(spiegaErrore(e)); }
+};
+
+$('#recBody').addEventListener('click', async (ev) => {
+  if (!S.canWrite) return;
+  const row = ev.target.closest('.item');
+  if (!row) return;
+  const rec = S.rec.find(x => x.id === row.dataset.id);
+  if (!rec) return;
+
+  const del = ev.target.closest('[data-act="del"]');
+  if (del){
+    try{
+      const { error } = await sb.from('recipes').delete().eq('id', rec.id);
+      if (error) throw error;
+      S.rec = S.rec.filter(x => x.id !== rec.id);
+      renderRec();
+      toast(`Eliminata: ${rec.name}`, async () => {
+        const { data, error } = await sb.from('recipes')
+          .insert({ id:rec.id, name:rec.name, pref:rec.pref }).select().single();
+        if (error) { banner(spiegaErrore(error)); return; }
+        S.rec.push(data);
+        S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
+        renderRec(); toast('Ripristinata.');
+      });
+    }catch(e){ banner(spiegaErrore(e)); }
+    return;
+  }
+
+  const pb = ev.target.closest('[data-p]');
+  if (pb && !pb.disabled){
+    const nuovo = (rec.pref === pb.dataset.p) ? null : pb.dataset.p;  // ritocca = toglie il voto
+    try{
+      const { error } = await sb.from('recipes').update({ pref:nuovo }).eq('id', rec.id);
+      if (error) throw error;
+      rec.pref = nuovo; renderRec();
+    }catch(e){ banner(spiegaErrore(e)); }
+  }
+});
+
+/* ============================================================
+   COPIA PER CLAUDE
+   ============================================================ */
+function testoExport(){
+  const d = new Date();
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mi = String(d.getMinutes()).padStart(2,'0');
+
+  const out = [`INVENTARIO — aggiornato ${dd}/${mm} ore ${hh}:${mi}`, ''];
+
+  for (const cat of CAT_ORDER){
+    out.push(CAT_LABEL[cat]);
+    const sub = S.inv.filter(i => i.cat === cat);
+    if (!sub.length) out.push('- (vuoto)');
+    else sub.forEach(i => out.push(`- ${i.name} — ${i.qty}`));
+    out.push('');
+  }
+
+  out.push('DA VERIFICARE');
+  const dv = S.inv.filter(i => daVerificare(i.qty));
+  if (!dv.length) out.push('- (niente)');
+  else dv.forEach(i => out.push(`- ${i.name}`));
+  out.push('');
+
+  out.push('RICETTE');
+  const gruppi = [
+    ['Preferite',          S.rec.filter(r => r.pref === 'fav')],
+    ['Vanno bene',         S.rec.filter(r => r.pref === 'ok')],
+    ['Da non riproporre',  S.rec.filter(r => r.pref === 'no')],
+    ['Senza voto',         S.rec.filter(r => !r.pref)],
+  ];
+  for (const [titolo, lista] of gruppi){
+    // separatore « · » al posto della virgola: alcuni nomi contengono virgole
+    if (lista.length) out.push(`${titolo}: ${lista.map(r => r.name).join(' · ')}`);
+  }
+  return out.join('\n');
+}
+
+$('#copyBtn').onclick = async () => {
+  const testo = testoExport();
+  try{
+    await navigator.clipboard.writeText(testo);
+    toast('Copiato! Incollalo pure in chat.');
+  }catch{
+    // ripiego per i browser che bloccano la clipboard
+    const ta = document.createElement('textarea');
+    ta.value = testo;
+    ta.style.cssText = 'position:fixed;top:50%;left:5%;width:90%;height:40%;z-index:99;font-size:12px';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch {}
+    ta.remove();
+    toast(ok ? 'Copiato! Incollalo pure in chat.' : 'Non riesco a copiare da solo: riprova.');
+  }
+};
+
+/* ============================================================
+   LOGIN (codice via email)
+   ============================================================ */
+const loginMsg = (t, tipo='') => {
+  const el = $('#loginMsg'); el.textContent = t; el.className = 'login-msg ' + tipo;
+};
+
+$('#authBtn').onclick = async () => {
+  if (S.session){
+    if (!confirm('Vuoi uscire? Potrai ancora leggere tutto, ma non modificare.')) return;
+    await sb.auth.signOut();
+    return;                                  // ci pensa onAuthStateChange ad aggiornare
+  }
+  $('#loginWrap').hidden = false;
+  $('#step1').hidden = false; $('#step2').hidden = true;
+  loginMsg('');
+  $('#loginEmail').focus();
+};
+$('#loginClose').onclick = () => { $('#loginWrap').hidden = true; };
+$('#backStep').onclick   = () => { $('#step1').hidden = false; $('#step2').hidden = true; loginMsg(''); };
+
+let emailInCorso = '';
+$('#sendCode').onclick = async () => {
+  const email = $('#loginEmail').value.trim();
+  if (!email.includes('@')) { loginMsg('Scrivi un indirizzo email valido.', 'err'); return; }
+  loginMsg('Invio in corso…');
+  try{
+    const { error } = await sb.auth.signInWithOtp({
+      email,
+      options: { shouldCreateUser: true, emailRedirectTo: location.href.split('#')[0] }
+    });
+    if (error) throw error;
+    emailInCorso = email;
+    $('#step1').hidden = true; $('#step2').hidden = false;
+    loginMsg('Ti ho mandato una email. Copia il codice a 6 cifre e incollalo qui.', 'ok');
+    $('#loginCode').focus();
+  }catch(e){ loginMsg(spiegaErrore(e), 'err'); }
+};
+
+$('#verifyCode').onclick = async () => {
+  const token = $('#loginCode').value.replace(/\D/g, '');
+  if (token.length < 6) { loginMsg('Il codice è di 6 cifre.', 'err'); return; }
+  loginMsg('Controllo…');
+  try{
+    const { error } = await sb.auth.verifyOtp({ email:emailInCorso, token, type:'email' });
+    if (error) throw error;
+    $('#loginWrap').hidden = true;
+    $('#loginCode').value = '';
+  }catch(e){ loginMsg(spiegaErrore(e), 'err'); }
+};
+
+async function aggiornaSessione(session){
+  S.session = session || null;
+
+  if (!S.session){
+    S.canWrite = false;
+    $('#authBtn').textContent = 'Accedi';
+  } else {
+    $('#authBtn').textContent = 'Esci';
+    try{
+      const { data, error } = await sb.rpc('is_writer');
+      S.canWrite = !error && data === true;
+    }catch{ S.canWrite = false; }
+
+    if (!S.canWrite)
+      banner('Sei entrata, ma questa email non è nell\'elenco di chi può modificare. Puoi consultare tutto.');
+    else
+      banner(null);
+  }
+
+  $('#invForm').hidden = !S.canWrite;
+  $('#recForm').hidden = !S.canWrite;
+  renderInv(); renderRec();
+}
+
+sb.auth.onAuthStateChange((_evt, session) => { aggiornaSessione(session); });
+
+/* ============================================================
+   TAB e AVVIO
+   ============================================================ */
+$$('nav.tabs button').forEach(b => {
+  b.onclick = () => {
+    S.tab = b.dataset.tab;
+    $$('nav.tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+    ['piano','dispensa','ricette'].forEach(t => { $('#tab-' + t).hidden = (t !== S.tab); });
+    window.scrollTo(0, 0);
+    if (S.tab === 'piano') renderPlan();
+  };
+});
+
+window.addEventListener('online',  () => { banner(null); loadAll(); });
+window.addEventListener('offline', () => banner('Sei senza connessione: le modifiche non verranno salvate.'));
+
+(async function avvio(){
+  const { data } = await sb.auth.getSession();
+  await aggiornaSessione(data?.session || null);
+  await loadAll();
+})();
+</script>
+</body>
+</html>

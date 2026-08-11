@@ -1,0 +1,11 @@
+# setup.sql contiene l'indirizzo email dell'allowlist: resta solo sul computer,
+# non deve finire nel repository pubblico.
+setup.sql
+
+# impostazioni locali di Claude Code (valgono solo su questo computer)
+.claude/settings.local.json
+
+# roba di sistema
+.DS_Store
+Thumbs.db
+desktop.ini
