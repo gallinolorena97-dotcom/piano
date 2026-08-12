@@ -29,6 +29,10 @@
   --card:#FFFFFF;
   --radius:14px;
   --safe-b:env(safe-area-inset-bottom,0px);
+  /* altezze di testata e tab: le misura il JS, cambiano col notch
+     e quando la riga degli obiettivi va a capo */
+  --h-alt:73px;
+  --nav-alt:46px;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
@@ -59,7 +63,8 @@ header{
 
 /* ---------- tab ---------- */
 nav.tabs{
-  position:sticky;top:0;z-index:20;
+  position:-webkit-sticky;position:sticky;
+  top:var(--h-alt);z-index:20;   /* sotto la testata, non dietro */
   display:flex;background:var(--sage);border-bottom:1px solid var(--line);
 }
 nav.tabs button{
@@ -137,11 +142,25 @@ section[hidden]{display:none}
 .btn.ghost{background:#fff;color:var(--green);border:1px solid var(--green)}
 .btn.small{padding:7px 11px;font-size:13.5px}
 
+/* Intestazioni di categoria: restano appiccicate sotto le tab mentre
+   scorri, e ognuna resta finché non arriva quella della sezione dopo.
+   Perché funzioni, ogni categoria sta dentro il proprio <section class="cat">:
+   così l'intestazione è vincolata al suo blocco e non si accavalla. */
+.cat{display:block}
+.cat + .cat{margin-top:14px}
 .cat-head{
+  position:-webkit-sticky;position:sticky;
+  top:calc(var(--h-alt) + var(--nav-alt));
+  z-index:15;
   font-size:12px;font-weight:700;letter-spacing:1px;color:var(--green);
-  margin:16px 0 6px 4px;text-transform:uppercase;
+  text-transform:uppercase;
+  margin:0 0 6px;padding:9px 4px 7px;
+  background:var(--cream);
+  box-shadow:0 1px 0 var(--line);
 }
 .cat-head span{color:var(--ink-soft);font-weight:600;letter-spacing:0}
+/* fuori dalla Dispensa (es. la Spesa) serve un filo d'aria sopra */
+#spBody .cat-head{margin-top:0}
 .list{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
 .item{display:flex;align-items:center;gap:10px;padding:10px 12px;font-size:15px}
 .item + .item{border-top:1px solid #F2ECE0}
@@ -648,8 +667,12 @@ function renderInv(){
   box.innerHTML = CAT_ORDER.map(cat => {
     const sub = items.filter(i => i.cat === cat);
     if (!sub.length) return '';
-    return `<div class="cat-head">${CAT_LABEL[cat]} <span>· ${sub.length}</span></div>
-      <div class="list">${sub.map(rigaInv).join('')}</div>`;
+    // ogni categoria è una sezione a sé: è ciò che rende l'intestazione
+    // appiccicosa "sua" e la fa cambiare entrando nella sezione dopo
+    return `<section class="cat">
+      <div class="cat-head">${CAT_LABEL[cat]} <span>· ${sub.length}</span></div>
+      <div class="list">${sub.map(rigaInv).join('')}</div>
+    </section>`;
   }).join('');
 }
 
@@ -1614,6 +1637,29 @@ $$('nav.tabs button').forEach(b => {
     if (S.tab === 'piano') renderPlan();
   };
 });
+
+/* ============================================================
+   ALTEZZE DI TESTATA E TAB
+   Servono alle intestazioni appiccicose della Dispensa: devono
+   fermarsi esattamente sotto le tab. Su iPhone l'altezza cambia
+   con il notch e quando la riga degli obiettivi va a capo, quindi
+   la misuriamo invece di indovinarla.
+   ============================================================ */
+function misuraTestata(){
+  const h = document.querySelector('header');
+  const n = document.querySelector('nav.tabs');
+  if (!h || !n) return;
+  document.documentElement.style.setProperty('--h-alt',   h.offsetHeight + 'px');
+  document.documentElement.style.setProperty('--nav-alt', n.offsetHeight + 'px');
+}
+misuraTestata();
+window.addEventListener('resize', misuraTestata);
+window.addEventListener('orientationchange', () => setTimeout(misuraTestata, 250));
+if (window.ResizeObserver){
+  const osserva = new ResizeObserver(misuraTestata);
+  osserva.observe(document.querySelector('header'));
+  osserva.observe(document.querySelector('nav.tabs'));
+}
 
 window.addEventListener('online',  () => { banner(null); loadAll(); });
 window.addEventListener('offline', () => banner('Sei senza connessione: le modifiche non verranno salvate.'));
