@@ -220,9 +220,31 @@ section[hidden]{display:none}
   flex:1;padding:9px 4px;border-radius:10px;font-size:13.5px;font-weight:600;
   border:1px solid var(--green);background:#fff;color:var(--green);
 }
-.prop-actions button[data-act="scelgo"]{background:var(--green);color:#fff}
+.prop-actions button[data-act="cucinato"]{background:var(--green);color:#fff}
 .prop-actions button:disabled{opacity:.45}
 .pers-box{padding:10px 12px;border-top:1px solid var(--line);background:#FBF8F2}
+
+/* pannello "ho cucinato questo" */
+.cuc-box{padding:12px;border-top:2px solid var(--green);background:#FBF8F2}
+.cuc-riga{padding:9px 0;border-bottom:1px dashed #E8E0D0}
+.cuc-riga:last-of-type{border-bottom:0}
+.cuc-testa{display:flex;align-items:center;gap:10px}
+.cuc-nome{flex:1;min-width:0;font-size:15px;font-weight:600;word-break:break-word}
+.cuc-ora{display:block;margin-top:3px;font-size:12.5px;color:var(--ink-soft)}
+.cuc-ora.assente{font-style:italic}
+.cuc-esito{margin-top:5px;font-size:13.5px;border-radius:8px;padding:5px 8px}
+.cuc-esito.ok{background:var(--sage);color:var(--green)}
+.cuc-esito.zero{background:var(--amber-bg);color:#6d3f10}
+.cuc-esito.testo{background:#EAF0FB;color:var(--blue)}
+.cuc-esito.neutro{background:none;padding:2px 0;color:var(--ink-soft);font-style:italic}
+.cuc-scelte{display:flex;gap:6px;margin-top:6px;align-items:center}
+.cuc-scelte button{
+  border:1px solid currentColor;background:#fff;border-radius:8px;
+  padding:5px 10px;font-size:13px;font-weight:600;
+}
+.cuc-scelte button[aria-pressed="true"]{background:currentColor}
+.cuc-scelte button[aria-pressed="true"]::after{content:'';}
+.cuc-esito.zero .cuc-scelte button[aria-pressed="true"]{background:#6d3f10;color:#fff;border-color:#6d3f10}
 
 /* ---------- toast / undo ---------- */
 #toast{
@@ -790,7 +812,7 @@ function cardProposta(p, i){
     <div class="prop-actions">
       <button data-act="altra">↻ Un'altra</button>
       <button data-act="pers">✎ Personalizza</button>
-      <button data-act="scelgo">✓ Scelgo questa</button>
+      <button data-act="cucinato">✓ Ho cucinato questo</button>
     </div>
   </article>`;
 }
@@ -833,7 +855,7 @@ $('#cuBody').addEventListener('click', async (ev) => {
 
   if (btn.dataset.act === 'pers') apriPersonalizza(card, i);
 
-  if (btn.dataset.act === 'scelgo') await scegliRicetta(p, btn);
+  if (btn.dataset.act === 'cucinato') apriCucinato(p, card);
 });
 
 /** Campo libero per dire cosa cambiare, in italiano. */
@@ -862,42 +884,23 @@ function apriPersonalizza(card, i){
   inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); conferma(); } });
 }
 
-/** Salva fra le Ricette col voto ♥, poi propone di scalare la dispensa. */
-async function scegliRicetta(p, btn){
-  btn.disabled = true;
-  try{
-    const esistente = S.rec.find(r => r.name.toLowerCase() === p.nome.toLowerCase());
-    if (esistente){
-      if (esistente.pref !== 'fav'){
-        const { error } = await sb.from('recipes').update({ pref:'fav' }).eq('id', esistente.id);
-        if (error) throw error;
-        esistente.pref = 'fav';
-      }
-      toast(`«${p.nome}» era già fra le ricette: l'ho messa fra le preferite.`);
-    }else{
-      const { data, error } = await sb.from('recipes')
-        .insert({ name: p.nome, pref: 'fav' }).select().single();
-      if (error) throw error;
-      S.rec.push(data);
-      S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
-      toast(`Salvata fra le ricette: ${p.nome}`);
-    }
-    renderRec();
-    proponiScalo(p);
-  }catch(e){
-    banner(spiegaErrore(e));
-  }finally{
-    btn.disabled = false;
-  }
-}
+/* ============================================================
+   BLOCCO 1 — "HO CUCINATO QUESTO"
+   Riepilogo modificabile, scalo prudente della dispensa,
+   registrazione nel diario e possibilità di annullare tutto.
+   ============================================================ */
 
-/* ---------- scalare gli ingredienti dalla dispensa ---------- */
-
-/** "250 g" -> {n:250, u:'g'} · "1,5 kg" -> {n:1.5, u:'kg'} · "2" -> {n:2, u:''} */
+/** "250 g" -> {n:250,u:'g'} · "1,5 kg" -> {n:1.5,u:'kg'} · "2" -> {n:2,u:''} */
 function leggiQta(testo){
   const m = String(testo ?? '').trim().match(/^([\d]+(?:[.,]\d+)?)\s*([^\d\s]*)/);
   if (!m) return null;
   return { n: parseFloat(m[1].replace(',', '.')), u: (m[2] || '').toLowerCase() };
+}
+
+/** Riscrive un numero all'italiana, con l'unità attaccata. */
+function scriviQta(n, u){
+  const s = String(Math.round(n * 100) / 100).replace('.', ',');
+  return u ? `${s} ${u}` : s;
 }
 
 const senzaAccenti = (s) => String(s ?? '').toLowerCase()
@@ -912,83 +915,271 @@ function cercaInDispensa(nomeIngrediente){
     const nome = senzaAccenti(voce.name);
     if (!nome) continue;
     if (ing.includes(nome) || nome.includes(ing)){
-      // a parità, vince il nome più lungo: è il più specifico
+      // a parità vince il nome più lungo: è il più specifico
       if (!migliore || nome.length > senzaAccenti(migliore.name).length) migliore = voce;
     }
   }
   return migliore;
 }
 
-/** Pannello: "vuoi scalare questi ingredienti dalla dispensa?" */
-function proponiScalo(p){
+/** Prepara le righe del riepilogo: un ingrediente per riga, senza doppioni. */
+function righeDaProposta(p){
   const usati = [...(p.ingredienti_io || []), ...(p.ingredienti_x || [])];
   const righe = [];
-
   for (const ing of usati){
     const voce = cercaInDispensa(ing.nome);
-    if (!voce) continue;
-    if (righe.some(r => r.voce.id === voce.id)) continue;   // già elencata
-
-    const ora  = leggiQta(voce.qty);
-    const usa  = leggiQta(ing.quantita);
-    let proposta = voce.qty;
-    if (ora && usa && ora.u === usa.u && !String(voce.qty).includes('?')){
-      const resto = Math.max(0, Math.round((ora.n - usa.n) * 100) / 100);
-      proposta = resto === 0 ? '0 ' + ora.u : `${String(resto).replace('.', ',')} ${ora.u}`.trim();
+    const gia  = voce ? righe.find(r => r.voce && r.voce.id === voce.id) : null;
+    if (gia){
+      // stesso ingrediente per me e per X: sommo, se sono numeri compatibili
+      const a = leggiQta(gia.usato), b = leggiQta(ing.quantita);
+      gia.usato = (a && b && a.u === b.u) ? scriviQta(a.n + b.n, a.u)
+                                          : `${gia.usato} + ${ing.quantita}`;
+      continue;
     }
-    righe.push({ voce, usato: ing.quantita, proposta });
+    righe.push({ ing: ing.nome, usato: ing.quantita, voce: voce || null, azione: 'punto' });
   }
+  return righe;
+}
 
-  if (!righe.length){
-    toast('Nessun ingrediente da scalare: non li ho ritrovati in dispensa.');
-    return;
-  }
+/** Che cosa succede a questa riga? Deciso solo dai numeri, mai a caso. */
+function calcolaRiga(r){
+  if (!r.voce) return { stato:'assente' };
+  const qty = String(r.voce.qty);
+  if (qty.includes('?'))
+    return { stato:'testuale', motivo:'in dispensa è segnata da verificare' };
+  const ora = leggiQta(qty), usa = leggiQta(r.usato);
+  if (!ora || !usa)
+    return { stato:'testuale', motivo:'non è una quantità che posso calcolare' };
+  if (ora.u !== usa.u)
+    return { stato:'testuale', motivo:`unità diverse (${ora.u || 'senza unità'} e ${usa.u || 'senza unità'})` };
+  const resta = Math.round((ora.n - usa.n) * 100) / 100;
+  if (resta <= 0) return { stato:'esaurito' };
+  return { stato:'ok', testo: scriviQta(resta, ora.u) };
+}
+
+/** Il pannello: riepilogo modificabile di cosa hai usato davvero. */
+function apriCucinato(p, card){
+  if (card.querySelector('.cuc-box')) return;
+  const righe = righeDaProposta(p);
 
   const box = document.createElement('div');
-  box.className = 'panel';
-  box.style.cssText = 'border-color:var(--green);margin-top:4px';
+  box.className = 'cuc-box';
   box.innerHTML = `
-    <div class="q-label" style="margin-top:0">Scalo questi dalla dispensa?</div>
-    <p class="hint" style="margin:0 0 8px">Ho già calcolato quello che resta dove ho potuto.
-      Correggi pure a mano prima di confermare.</p>
-    ${righe.map((r, k) => `
-      <div class="ing" style="align-items:center;gap:10px;padding:5px 0">
-        <div style="flex:1">${esc(r.voce.name)}
-          <span style="color:var(--ink-soft);font-size:12.5px">
-            (ora ${esc(r.voce.qty)}, ne usi ${esc(r.usato)})</span></div>
-        <input class="field" data-k="${k}" value="${esc(r.proposta)}"
-               style="width:96px;padding:6px 8px;font-size:15px">
-      </div>`).join('')}
+    <div class="q-label" style="margin-top:0">Ho cucinato: ${esc(p.nome)}</div>
+    <p class="hint" style="margin:0 0 10px">Correggi le quantità che hai usato davvero,
+      poi conferma. Ti mostro cosa resta prima di toccare la dispensa.</p>
+    <div class="cuc-righe">${righe.map((r, k) => rigaCucinato(r, k)).join('')}</div>
     <div class="form-row">
-      <button class="btn" data-ok style="flex:1">Sì, aggiorna la dispensa</button>
-      <button class="btn ghost" data-no>No, lascia stare</button>
+      <button class="btn" data-conferma style="flex:1">Conferma e aggiorna</button>
+      <button class="btn ghost" data-annulla>Annulla</button>
     </div>`;
+  card.appendChild(box);
 
-  $('#cuBody').prepend(box);
-  box.scrollIntoView({ block:'nearest', behavior:'smooth' });
-
-  box.querySelector('[data-no]').onclick = () => box.remove();
-  box.querySelector('[data-ok]').onclick = async () => {
-    box.querySelectorAll('button').forEach(b => b.disabled = true);
-    let fatti = 0;
-    try{
-      for (const [k, r] of righe.entries()){
-        const nuovo = box.querySelector(`input[data-k="${k}"]`).value.trim() || '—';
-        if (nuovo === r.voce.qty) continue;
-        const { error } = await sb.from('inventory_items')
-          .update({ qty: nuovo }).eq('id', r.voce.id);
-        if (error) throw error;
-        r.voce.qty = nuovo;
-        fatti++;
-      }
-      renderInv();
-      box.remove();
-      toast(fatti ? `Dispensa aggiornata: ${fatti} voci.` : 'Nessuna quantità cambiata.');
-    }catch(e){
-      banner(spiegaErrore(e));
-      box.querySelectorAll('button').forEach(b => b.disabled = false);
-    }
+  const ridisegna = (k) => {
+    const riga = box.querySelector(`.cuc-riga[data-k="${k}"]`);
+    if (riga) riga.outerHTML = rigaCucinato(righe[k], k);
   };
+
+  box.addEventListener('input', ev => {
+    const inp = ev.target.closest('input[data-usato]');
+    if (!inp) return;
+    const k = Number(inp.closest('.cuc-riga').dataset.k);
+    righe[k].usato = inp.value;
+    // aggiorno solo la scritta del risultato, per non perdere il cursore
+    const esito = box.querySelector(`.cuc-riga[data-k="${k}"] .cuc-esito`);
+    if (esito) esito.outerHTML = esitoCucinato(righe[k], k);
+  });
+
+  box.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-azione]');
+    if (!b) return;
+    const k = Number(b.closest('.cuc-riga').dataset.k);
+    righe[k].azione = b.dataset.azione;
+    ridisegna(k);
+  });
+
+  box.querySelector('[data-annulla]').onclick = () => box.remove();
+  box.querySelector('[data-conferma]').onclick = () => confermaCucinato(p, righe, box);
+}
+
+function rigaCucinato(r, k){
+  const inDispensa = r.voce
+    ? `<span class="cuc-ora">in dispensa: ${esc(r.voce.qty)}</span>`
+    : `<span class="cuc-ora assente">non è in dispensa</span>`;
+  return `<div class="cuc-riga" data-k="${k}">
+    <div class="cuc-testa">
+      <div class="cuc-nome">${esc(r.ing)}</div>
+      <input class="field" data-usato value="${esc(r.usato)}"
+             style="width:104px;padding:6px 8px;font-size:15px">
+    </div>
+    ${inDispensa}
+    ${esitoCucinato(r, k)}
+  </div>`;
+}
+
+function esitoCucinato(r, k){
+  const c = calcolaRiga(r);
+  if (c.stato === 'assente')
+    return `<div class="cuc-esito neutro">Non la tocco.</div>`;
+
+  if (c.stato === 'ok')
+    return `<div class="cuc-esito ok">Resta <b>${esc(c.testo)}</b></div>`;
+
+  if (c.stato === 'esaurito')
+    return `<div class="cuc-esito zero">
+      Finisce. Cosa faccio con la voce in dispensa?
+      <div class="cuc-scelte">
+        <button data-azione="punto"   aria-pressed="${r.azione !== 'elimina'}">Segna «?»</button>
+        <button data-azione="elimina" aria-pressed="${r.azione === 'elimina'}">Elimina</button>
+      </div></div>`;
+
+  // testuale: non faccio conti, chiedo il valore nuovo
+  return `<div class="cuc-esito testo">
+    Non faccio i conti: ${esc(c.motivo)}.
+    <div class="cuc-scelte">
+      <input class="field" data-nuovo value="${esc(r.voce.qty)}"
+             style="flex:1;padding:6px 8px;font-size:15px">
+      <button data-azione="punto2">Metti «?»</button>
+    </div></div>`;
+}
+
+/** Applica tutto: dispensa, ricetta, diario. E lascia un annulla. */
+async function confermaCucinato(p, righe, box){
+  box.querySelectorAll('button, input').forEach(x => x.disabled = true);
+
+  // 1. cosa cambio in dispensa
+  const modifiche = [];
+  box.querySelectorAll('.cuc-riga').forEach(el => {
+    const k = Number(el.dataset.k);
+    const r = righe[k];
+    if (!r.voce) return;
+    const c = calcolaRiga(r);
+
+    if (c.stato === 'ok'){
+      modifiche.push({ voce:r.voce, prima:r.voce.qty, dopo:c.testo, elimina:false });
+    } else if (c.stato === 'esaurito'){
+      if (r.azione === 'elimina') modifiche.push({ voce:r.voce, prima:r.voce.qty, dopo:null, elimina:true });
+      else                        modifiche.push({ voce:r.voce, prima:r.voce.qty, dopo:'?', elimina:false });
+    } else if (c.stato === 'testuale'){
+      const campo = el.querySelector('input[data-nuovo]');
+      const nuovo = r.azione === 'punto2' ? '?' : (campo ? campo.value.trim() : '');
+      if (nuovo && nuovo !== r.voce.qty)
+        modifiche.push({ voce:r.voce, prima:r.voce.qty, dopo:nuovo, elimina:false });
+    }
+  });
+
+  const fatte = [];
+  let ricetta = null, pasto = null;
+  try{
+    // 2. dispensa
+    for (const m of modifiche){
+      if (m.elimina){
+        const { error } = await sb.from('inventory_items').delete().eq('id', m.voce.id);
+        if (error) throw error;
+        S.inv = S.inv.filter(x => x.id !== m.voce.id);
+      }else{
+        const { error } = await sb.from('inventory_items').update({ qty:m.dopo }).eq('id', m.voce.id);
+        if (error) throw error;
+        m.voce.qty = m.dopo;
+      }
+      fatte.push(m);
+    }
+
+    // 3. ricetta col cuore
+    ricetta = await salvaRicetta(p);
+
+    // 4. diario dei pasti (se la tabella non c'è ancora, non è un dramma)
+    pasto = await registraPasto(p);
+
+    renderInv(); renderRec();
+    box.remove();
+
+    const quante = fatte.length;
+    toast(
+      `Fatto: ${quante ? `${quante} voci aggiornate` : 'nessuna voce da scalare'}${pasto ? ', pasto registrato' : ''}.`,
+      () => annullaCucinato(fatte, ricetta, pasto),
+    );
+  }catch(e){
+    // se qualcosa va storto a metà, rimetto a posto quello che ho già toccato
+    await annullaCucinato(fatte, ricetta, pasto, true);
+    banner(spiegaErrore(e));
+    box.querySelectorAll('button, input').forEach(x => x.disabled = false);
+  }
+}
+
+/** Riporta tutto com'era: dispensa, ricetta, diario. */
+async function annullaCucinato(modifiche, ricetta, pasto, silenzioso){
+  try{
+    for (const m of modifiche){
+      if (m.elimina){
+        const { data, error } = await sb.from('inventory_items')
+          .insert({ id:m.voce.id, name:m.voce.name, qty:m.prima, cat:m.voce.cat })
+          .select().single();
+        if (error) throw error;
+        S.inv.push(data);
+      }else{
+        const { error } = await sb.from('inventory_items').update({ qty:m.prima }).eq('id', m.voce.id);
+        if (error) throw error;
+        m.voce.qty = m.prima;
+      }
+    }
+    S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
+
+    if (ricetta && ricetta.creata){
+      await sb.from('recipes').delete().eq('id', ricetta.id);
+      S.rec = S.rec.filter(x => x.id !== ricetta.id);
+    }else if (ricetta){
+      await sb.from('recipes').update({ pref: ricetta.prefPrima }).eq('id', ricetta.id);
+      const r = S.rec.find(x => x.id === ricetta.id);
+      if (r) r.pref = ricetta.prefPrima;
+    }
+
+    if (pasto) await sb.from('meals_log').delete().eq('id', pasto);
+
+    renderInv(); renderRec();
+    if (!silenzioso) toast('Annullato: ho rimesso tutto com’era.');
+  }catch(e){
+    banner(spiegaErrore(e));
+  }
+}
+
+/** Salva (o promuove a ♥) la ricetta. Restituisce di che cosa tener conto per l'annulla. */
+async function salvaRicetta(p){
+  const esistente = S.rec.find(r => r.name.toLowerCase() === p.nome.toLowerCase());
+  if (esistente){
+    const prefPrima = esistente.pref;
+    if (esistente.pref !== 'fav'){
+      const { error } = await sb.from('recipes').update({ pref:'fav' }).eq('id', esistente.id);
+      if (error) throw error;
+      esistente.pref = 'fav';
+    }
+    return { creata:false, id:esistente.id, prefPrima };
+  }
+  const { data, error } = await sb.from('recipes')
+    .insert({ name:p.nome, pref:'fav' }).select().single();
+  if (error) throw error;
+  S.rec.push(data);
+  S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
+  return { creata:true, id:data.id, prefPrima:null };
+}
+
+/** Scrive il pasto nel diario. Se la tabella non esiste ancora, tira dritto. */
+async function registraPasto(p){
+  try{
+    const { data, error } = await sb.from('meals_log').insert({
+      day: oggiISO(),
+      pasto: CU.pasto,
+      piatto: p.nome,
+      prot: Number.isFinite(p.proteine_g) ? p.proteine_g : null,
+      kcal: Number.isFinite(p.kcal) ? p.kcal : null,
+      chi: CU.chi,
+      proteina: p.proteina_principale || null,
+    }).select('id').single();
+    if (error) throw error;
+    return data.id;
+  }catch{
+    return null;   // tabella non ancora creata: il resto funziona lo stesso
+  }
 }
 
 /* ============================================================
