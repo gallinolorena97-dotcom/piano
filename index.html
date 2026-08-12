@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Piano &amp; Dispensa</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#FAF6EF">
+<meta name="theme-color" content="#FFFFFF">
 <meta name="color-scheme" content="light">
 
 <!-- Apple / home screen iPhone -->
@@ -15,340 +15,585 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="apple-touch-icon.png">
 
+<!-- Due sole famiglie: Fraunces per i titoli, Outfit per tutto il resto -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Outfit:wght@400;500;600;700&display=swap">
+
 <style>
+/* ============================================================
+   1 · TOKEN — la palette e le misure di tutta l'app.
+   Ogni schermata futura (v5, calendario, verifica giornaliera)
+   deve pescare DA QUI, senza inventare colori nuovi.
+
+   Regola non negoziabile: il pastello vive su sfondi e superfici,
+   MAI sul testo. Il testo resta scuro: l'app si usa in cucina e i
+   numeri devono leggersi in mezzo secondo.
+   ============================================================ */
 :root{
-  --cream:#FAF6EF;
-  --green:#1E5B3C;
-  --sage:#DEEADF;
-  --amber:#B9722A;
-  --amber-bg:#F6E7CD;
-  --blue:#2456A6;
-  --ink:#27241C;
-  --ink-soft:#6B6355;
-  --line:#E4DCCC;
-  --card:#FFFFFF;
-  --radius:14px;
+  /* fondali e superfici */
+  --bg:#FAF9FC;              /* bianco caldo appena lavanda */
+  --surface:#FFFFFF;
+  --surface-2:#F5F3FB;       /* superficie incassata (barre, totali) */
+  --linea:#E9E5F2;
+  --linea-forte:#DAD3EC;
+
+  /* testo */
+  --ink:#2B2440;             /* violaceo scurissimo */
+  --muted:#645C7D;           /* secondario, contrasto AA su --bg */
+
+  /* identità */
+  --lavanda:#C7B9F2;
+  --lavanda-soft:#EFEBFC;
+  --menta:#B8E8D4;
+  --menta-soft:#E4F6EE;
+  --viola:#6B5BD2;           /* azioni primarie e numeri chiave */
+  --viola-scuro:#5546B4;
+
+  /* segnali */
+  --pesca:#F5C89A;
+  --pesca-soft:#FDF0E2;
+  --pesca-ink:#7C4A16;
+  --corallo:#F0A79E;
+  --corallo-soft:#FCEAE7;
+  --corallo-ink:#9C382C;
+  --ghiaccio:#C9D2F7;
+  --ghiaccio-soft:#EBEFFD;
+  --ghiaccio-ink:#39459E;
+
+  /* forma */
+  --r-s:10px;
+  --r-m:14px;
+  --r-l:20px;
+  --ombra-1:0 1px 2px rgba(43,36,64,.05), 0 2px 8px rgba(43,36,64,.05);
+  --ombra-2:0 4px 12px rgba(43,36,64,.08), 0 12px 28px rgba(43,36,64,.07);
+
+  /* movimento: breve, mai appariscente */
+  --t:180ms cubic-bezier(.4,0,.2,1);
+
   --safe-b:env(safe-area-inset-bottom,0px);
-  /* altezze di testata e tab: le misura il JS, cambiano col notch
-     e quando la riga degli obiettivi va a capo */
-  --h-alt:73px;
-  --nav-alt:46px;
+  --safe-t:env(safe-area-inset-top,0px);
+
+  /* misurate dal JS: servono alle intestazioni appiccicose */
+  --h-alt:96px;
+  --nav-alt:0px;
 }
+
+@media (prefers-reduced-motion: reduce){
+  *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+
+/* ============================================================
+   2 · BASE
+   ============================================================ */
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
 body{
-  background:var(--cream);
+  background:var(--bg);
   color:var(--ink);
-  font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-  padding-bottom:calc(24px + var(--safe-b));
+  font:400 16px/1.5 'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
   -webkit-text-size-adjust:100%;
+  padding-bottom:calc(96px + var(--safe-b));   /* spazio per la barra in basso */
 }
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer;border:0;background:none}
+:focus-visible{outline:3px solid var(--viola);outline-offset:2px;border-radius:6px}
 
-/* ---------- testata ---------- */
+h1,h2,h3{font-family:'Fraunces','Iowan Old Style',Georgia,serif;font-weight:600;margin:0}
+
+/* ============================================================
+   3 · TESTATA — titolo, sottotitolo, menu. Niente altro.
+   ============================================================ */
 header{
-  position:sticky;top:0;z-index:30;
-  background:var(--green);color:#fff;
-  padding:calc(10px + env(safe-area-inset-top,0px)) 14px 10px;
+  position:-webkit-sticky;position:sticky;top:0;z-index:40;
+  background:var(--surface);
+  border-bottom:1px solid var(--linea);
+  padding:calc(12px + var(--safe-t)) 16px 12px;
 }
-.h-top{display:flex;align-items:center;gap:10px}
-.h-title{font-size:19px;font-weight:700;letter-spacing:.2px;flex:1;margin:0}
+.h-top{display:flex;align-items:center;gap:12px;max-width:860px;margin:0 auto}
+.h-title{font-size:21px;letter-spacing:-.2px;flex:1;line-height:1.15}
+.h-title em{font-style:normal;color:var(--viola)}
 .h-targets{
-  font-size:12.5px;opacity:.9;margin-top:2px;color:#fff;
-  display:block;text-align:left;padding:3px 0;
+  display:block;text-align:left;padding:5px 0 0;margin:0 auto;max-width:860px;
+  font-size:13.5px;font-weight:500;color:var(--muted);
+  transition:color var(--t);
 }
-.h-targets::after{content:'  ›';font-weight:700;opacity:.85}
-.h-targets:active{opacity:.65}
+.h-targets::after{content:' ›';font-weight:700;color:var(--viola)}
+.h-targets:hover{color:var(--ink)}
 .h-btn{
-  background:rgba(255,255,255,.16);color:#fff;border-radius:999px;
-  padding:7px 12px;font-size:13px;font-weight:600;white-space:nowrap;
+  width:44px;height:44px;flex:0 0 44px;border-radius:var(--r-m);
+  background:var(--lavanda-soft);color:var(--viola);
+  display:flex;align-items:center;justify-content:center;
+  transition:background var(--t),transform var(--t);
 }
-.h-btn:active{background:rgba(255,255,255,.3)}
+.h-btn:hover{background:var(--lavanda)}
+.h-btn:active{transform:scale(.94)}
 
-/* ---------- tab ---------- */
+/* ============================================================
+   4 · MENU — si apre dalla testata
+   ============================================================ */
+#menuVelo{
+  position:fixed;inset:0;z-index:50;background:rgba(43,36,64,.32);
+  animation:sfuma var(--t);
+}
+#menuVelo[hidden]{display:none}
+@keyframes sfuma{from{opacity:0}to{opacity:1}}
+#menuPanel{
+  position:fixed;z-index:51;right:12px;left:12px;top:calc(12px + var(--safe-t));
+  max-width:420px;margin:0 auto;
+  background:var(--surface);border-radius:var(--r-l);box-shadow:var(--ombra-2);
+  padding:16px;animation:scendi 220ms cubic-bezier(.2,.8,.3,1);
+}
+#menuPanel[hidden]{display:none}
+@keyframes scendi{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+.menu-testa{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.menu-testa h2{flex:1;font-size:18px}
+.menu-sez{
+  font-size:11.5px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;
+  color:var(--muted);margin:16px 0 8px;
+}
+
+/* ============================================================
+   5 · NAVIGAZIONE
+   Mobile: barra in basso, comoda col pollice, safe area rispettata.
+   Desktop: schede in alto, contenuto centrato.
+   ============================================================ */
 nav.tabs{
-  position:-webkit-sticky;position:sticky;
-  top:var(--h-alt);z-index:20;   /* sotto la testata, non dietro */
-  display:flex;background:var(--sage);border-bottom:1px solid var(--line);
+  position:fixed;z-index:35;left:0;right:0;bottom:0;
+  display:flex;background:var(--surface);
+  border-top:1px solid var(--linea);
+  padding:6px 4px calc(6px + var(--safe-b));
+  box-shadow:0 -2px 14px rgba(43,36,64,.06);
 }
 nav.tabs button{
-  flex:1;padding:12px 2px;font-size:13px;font-weight:600;color:var(--green);
-  border-bottom:3px solid transparent;opacity:.65;white-space:nowrap;
+  flex:1;min-height:52px;padding:6px 2px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  font-size:11px;font-weight:600;color:var(--muted);
+  border-radius:var(--r-s);transition:color var(--t),background var(--t);
 }
-nav.tabs button[aria-selected="true"]{opacity:1;border-bottom-color:var(--green);background:rgba(255,255,255,.45)}
+nav.tabs button svg{width:23px;height:23px;stroke-width:1.8}
+nav.tabs button[aria-selected="true"]{color:var(--viola);background:var(--lavanda-soft)}
+nav.tabs button:active{background:var(--surface-2)}
 
-main{padding:14px 12px 0;max-width:720px;margin:0 auto}
+main{padding:16px 14px 0;max-width:860px;margin:0 auto}
 section[hidden]{display:none}
 
-/* ---------- messaggi ---------- */
+@media (min-width:760px){
+  body{padding-bottom:40px}
+  nav.tabs{
+    position:-webkit-sticky;position:sticky;bottom:auto;top:var(--h-alt);
+    border-top:0;border-bottom:1px solid var(--linea);
+    box-shadow:none;padding:0;
+    max-width:none;justify-content:center;gap:4px;
+  }
+  nav.tabs button{
+    flex:0 0 auto;min-width:120px;flex-direction:row;gap:8px;font-size:14px;
+    border-radius:0;border-bottom:3px solid transparent;min-height:56px;
+  }
+  nav.tabs button[aria-selected="true"]{background:none;border-bottom-color:var(--viola)}
+  nav.tabs button svg{width:20px;height:20px}
+}
+
+/* ============================================================
+   6 · MESSAGGI E STATI
+   ============================================================ */
 #banner{
-  margin:0 12px 12px;padding:11px 13px;border-radius:var(--radius);
-  background:var(--amber-bg);border:1px solid var(--amber);color:#6d3f10;
-  font-size:14px;max-width:720px;
+  margin:0 auto 14px;padding:12px 14px;border-radius:var(--r-m);max-width:860px;
+  background:var(--pesca-soft);border:1px solid var(--pesca);color:var(--pesca-ink);
+  font-size:14.5px;
 }
 #banner[hidden]{display:none}
-.loading{text-align:center;color:var(--ink-soft);padding:30px 10px;font-size:15px}
+.loading{text-align:center;color:var(--muted);padding:26px 10px;font-size:15px}
 .empty{
-  background:var(--card);border:1px dashed var(--line);border-radius:var(--radius);
-  padding:20px 16px;color:var(--ink-soft);font-size:14.5px;text-align:center
+  background:var(--surface);border:1px solid var(--linea);border-radius:var(--r-l);
+  padding:26px 20px;color:var(--muted);font-size:15px;text-align:center;
+  box-shadow:var(--ombra-1);
 }
-.empty b{color:var(--ink)}
+.empty b{color:var(--ink);font-family:'Fraunces',Georgia,serif;font-weight:600}
+.hint{font-size:13px;color:var(--muted);margin:8px 2px 0;line-height:1.45}
 
-/* ---------- PIANO ---------- */
+/* scheletro luccicante: l'attesa deve sembrare progettata, non rotta */
+.sk{
+  background:var(--surface);border:1px solid var(--linea);border-radius:var(--r-l);
+  padding:16px;margin-bottom:12px;box-shadow:var(--ombra-1);
+}
+.sk-riga{
+  height:12px;border-radius:99px;margin:9px 0;
+  background:linear-gradient(90deg,var(--surface-2) 25%,var(--lavanda-soft) 50%,var(--surface-2) 75%);
+  background-size:220% 100%;animation:luccica 1.4s ease-in-out infinite;
+}
+.sk-riga.titolo{height:20px;width:62%;margin-bottom:14px}
+.sk-riga.corta{width:38%}
+.sk-riga.media{width:76%}
+@keyframes luccica{from{background-position:120% 0}to{background-position:-120% 0}}
+
+/* ============================================================
+   7 · SUPERFICI, FORM, BOTTONI
+   ============================================================ */
+.panel{
+  background:var(--surface);border:1px solid var(--linea);border-radius:var(--r-l);
+  padding:16px;margin-bottom:14px;box-shadow:var(--ombra-1);
+}
+.field{
+  width:100%;padding:12px 14px;border:1.5px solid var(--linea-forte);border-radius:var(--r-m);
+  background:var(--surface);font-size:16px;color:var(--ink);
+  transition:border-color var(--t),box-shadow var(--t);
+}
+.field::placeholder{color:var(--muted);opacity:.75}
+.field:focus{outline:none;border-color:var(--viola);box-shadow:0 0 0 4px var(--lavanda-soft)}
+textarea.field{resize:vertical;line-height:1.5}
+select.field{appearance:none;-webkit-appearance:none;
+  background-image:linear-gradient(45deg,transparent 50%,var(--viola) 50%),
+                   linear-gradient(135deg,var(--viola) 50%,transparent 50%);
+  background-position:calc(100% - 18px) 52%,calc(100% - 13px) 52%;
+  background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:38px;
+}
+.form-row{display:flex;gap:9px;margin-top:10px}
+.form-row .field{flex:1;min-width:0}
+
+.btn{
+  background:var(--viola);color:#fff;border-radius:var(--r-m);
+  padding:13px 18px;min-height:48px;font-size:15.5px;font-weight:600;white-space:nowrap;
+  box-shadow:0 2px 6px rgba(107,91,210,.28);
+  transition:background var(--t),transform var(--t),box-shadow var(--t);
+}
+.btn:hover{background:var(--viola-scuro)}
+.btn:active{transform:translateY(1px);box-shadow:none}
+.btn.ghost{
+  background:var(--surface);color:var(--viola);border:1.5px solid var(--lavanda);
+  box-shadow:none;
+}
+.btn.ghost:hover{background:var(--lavanda-soft)}
+.btn.small{padding:9px 13px;min-height:40px;font-size:14px}
+.btn:disabled{opacity:.5;pointer-events:none}
+
+.icon-btn{
+  color:var(--muted);font-size:20px;line-height:1;
+  width:40px;height:40px;flex:0 0 40px;border-radius:var(--r-s);
+  display:flex;align-items:center;justify-content:center;
+  transition:background var(--t),color var(--t);
+}
+.icon-btn:hover{background:var(--corallo-soft);color:var(--corallo-ink)}
+
+.q-label{
+  font-size:11.5px;font-weight:700;letter-spacing:1.1px;color:var(--muted);
+  text-transform:uppercase;margin:18px 0 9px;
+}
+.q-label:first-child{margin-top:0}
+.q-label span{color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none}
+
+.chips{display:flex;gap:9px;flex-wrap:wrap}
+.chips button{
+  flex:1 1 auto;min-width:88px;min-height:48px;padding:12px 10px;
+  border:1.5px solid var(--linea-forte);background:var(--surface);border-radius:var(--r-m);
+  font-size:14.5px;font-weight:600;color:var(--muted);line-height:1.25;
+  transition:all var(--t);
+}
+.chips button:hover{border-color:var(--lavanda)}
+.chips button[aria-pressed="true"]{
+  background:var(--lavanda-soft);border-color:var(--viola);color:var(--viola);
+}
+
+/* ============================================================
+   8 · PIANO
+   ============================================================ */
 .day{
-  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-  overflow:hidden;margin-bottom:12px;
+  background:var(--surface);border:1px solid var(--linea);border-radius:var(--r-l);
+  overflow:hidden;margin-bottom:14px;box-shadow:var(--ombra-1);
 }
-.day.today{border-color:var(--green);box-shadow:0 0 0 2px rgba(30,91,60,.18)}
+.day.today{border-color:var(--viola);box-shadow:0 0 0 2px var(--lavanda),var(--ombra-2)}
 .day-band{
-  background:var(--sage);padding:8px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
-  border-bottom:1px solid var(--line);
+  background:var(--lavanda-soft);padding:11px 16px;
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;border-bottom:1px solid var(--linea);
 }
-.day-label{font-weight:700;color:var(--green);font-size:15px;flex:1}
+.day-label{font-family:'Fraunces',Georgia,serif;font-weight:600;color:var(--ink);font-size:16px;flex:1}
 .badge-oggi{
-  background:var(--green);color:#fff;font-size:11px;font-weight:700;
-  letter-spacing:.6px;padding:3px 8px;border-radius:999px;
+  background:var(--viola);color:#fff;font-size:10.5px;font-weight:700;
+  letter-spacing:.8px;padding:4px 9px;border-radius:99px;
 }
-.day-tag{font-size:12px;color:var(--amber);font-weight:600}
-.day-rows{padding:4px 0}
-.row{display:flex;gap:8px;padding:7px 12px;align-items:baseline;font-size:14.5px}
-.row + .row{border-top:1px dashed #F0EADC}
-.row-title{font-weight:700;min-width:64px;font-size:13px;letter-spacing:.3px}
+.day-tag{font-size:12.5px;color:var(--pesca-ink);font-weight:600;
+  background:var(--pesca-soft);padding:3px 9px;border-radius:99px}
+.day-rows{padding:5px 0}
+.row{display:flex;gap:10px;padding:9px 16px;align-items:baseline;font-size:15px}
+.row + .row{border-top:1px solid var(--bg)}
+.row-title{font-weight:700;min-width:70px;font-size:11.5px;letter-spacing:.7px;color:var(--muted)}
 .row-text{flex:1}
-.row-num{color:var(--ink-soft);font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums}
-.row.meal .row-text{font-weight:600}
-.row.freezer{color:var(--blue)}
-.row.freezer .row-text{font-weight:500}
-.row.note{color:var(--ink-soft);font-style:italic}
+.row-num{color:var(--viola);font-size:13px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.row.meal .row-text{font-weight:500}
+.row.freezer{background:var(--ghiaccio-soft);color:var(--ghiaccio-ink)}
+.row.note{color:var(--muted);font-style:italic}
 .day-tot{
-  background:#FBF8F2;border-top:1px solid var(--line);
-  padding:8px 12px;text-align:right;font-size:13px;font-weight:700;color:var(--green);
+  background:var(--menta-soft);border-top:1px solid var(--linea);
+  padding:11px 16px;text-align:right;font-size:13.5px;font-weight:700;color:var(--ink);
   font-variant-numeric:tabular-nums;
 }
 
-/* ---------- form e liste ---------- */
-.panel{
-  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-  padding:12px;margin-bottom:12px;
-}
-.field{
-  width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
-  background:#fff;font-size:16px;/* 16px evita lo zoom automatico su iPhone */
-}
-.field:focus{outline:2px solid var(--sage);border-color:var(--green)}
-.form-row{display:flex;gap:8px;margin-top:8px}
-.form-row .field{flex:1;min-width:0}
-.btn{
-  background:var(--green);color:#fff;border-radius:10px;padding:10px 14px;
-  font-size:15px;font-weight:600;white-space:nowrap;
-}
-.btn:active{opacity:.85}
-.btn.ghost{background:#fff;color:var(--green);border:1px solid var(--green)}
-.btn.small{padding:7px 11px;font-size:13.5px}
-
-/* Intestazioni di categoria: restano appiccicate sotto le tab mentre
-   scorri, e ognuna resta finché non arriva quella della sezione dopo.
-   Perché funzioni, ogni categoria sta dentro il proprio <section class="cat">:
-   così l'intestazione è vincolata al suo blocco e non si accavalla. */
+/* ============================================================
+   9 · CATEGORIE APPICCICOSE (Dispensa)
+   Ogni categoria è una sezione a sé: è ciò che vincola
+   l'intestazione al suo blocco e la fa cambiare entrando in quella dopo.
+   ============================================================ */
 .cat{display:block}
-.cat + .cat{margin-top:14px}
+.cat + .cat{margin-top:18px}
 .cat-head{
   position:-webkit-sticky;position:sticky;
   top:calc(var(--h-alt) + var(--nav-alt));
-  z-index:15;
-  font-size:12px;font-weight:700;letter-spacing:1px;color:var(--green);
-  text-transform:uppercase;
-  margin:0 0 6px;padding:9px 4px 7px;
-  background:var(--cream);
-  box-shadow:0 1px 0 var(--line);
+  z-index:25;
+  display:flex;align-items:center;gap:8px;
+  font-size:11.5px;font-weight:700;letter-spacing:1.1px;color:var(--viola);
+  text-transform:uppercase;margin:0 0 8px;padding:11px 4px 9px;
+  background:var(--bg);
 }
-.cat-head span{color:var(--ink-soft);font-weight:600;letter-spacing:0}
-/* fuori dalla Dispensa (es. la Spesa) serve un filo d'aria sopra */
+.cat-head span{color:var(--muted);font-weight:500;letter-spacing:0}
 #spBody .cat-head{margin-top:0}
-.list{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
-.item{display:flex;align-items:center;gap:10px;padding:10px 12px;font-size:15px}
-.item + .item{border-top:1px solid #F2ECE0}
+
+/* ============================================================
+   10 · LISTE (dispensa, ricette)
+   ============================================================ */
+.list{
+  background:var(--surface);border:1px solid var(--linea);border-radius:var(--r-l);
+  overflow:hidden;box-shadow:var(--ombra-1);
+}
+.item{display:flex;align-items:center;gap:12px;padding:13px 16px;font-size:15.5px;min-height:56px}
+.item + .item{border-top:1px solid var(--bg)}
 .item-name{flex:1;min-width:0;word-break:break-word}
 .item-qty{
-  font-size:13.5px;color:var(--ink-soft);text-align:right;white-space:nowrap;
-  max-width:48%;overflow:hidden;text-overflow:ellipsis;
+  font-size:14px;color:var(--muted);text-align:right;white-space:nowrap;
+  max-width:48%;overflow:hidden;text-overflow:ellipsis;font-variant-numeric:tabular-nums;
 }
-.item-qty.editable{border-bottom:1px dashed var(--line);cursor:text}
-.item.verifica{background:var(--amber-bg)}
-.item.verifica .item-qty{color:#6d3f10}
+.item-qty.editable{border-bottom:1.5px dashed var(--linea-forte);cursor:text;padding-bottom:1px}
+.item-qty.editable:hover{border-bottom-color:var(--viola);color:var(--ink)}
+.item.verifica{background:var(--pesca-soft)}
+.item.verifica .item-qty{color:var(--pesca-ink)}
 .tag-verifica{
-  border:1px solid var(--amber);color:var(--amber);background:#fff;
-  font-size:10.5px;font-weight:700;letter-spacing:.6px;padding:2px 6px;border-radius:6px;
+  border:1px solid var(--pesca);color:var(--pesca-ink);background:var(--surface);
+  font-size:10px;font-weight:700;letter-spacing:.7px;padding:3px 8px;border-radius:99px;
 }
-.icon-btn{
-  color:var(--ink-soft);font-size:19px;line-height:1;padding:6px 8px;border-radius:8px;
-}
-.icon-btn:active{background:#F2ECE0}
 
-/* ---------- ricette ---------- */
-.pref{display:flex;gap:6px}
+/* voti delle ricette */
+.pref{display:flex;gap:7px}
 .pref button{
-  border:1px solid var(--line);background:#fff;border-radius:8px;
-  padding:5px 9px;font-size:13px;font-weight:700;color:var(--ink-soft);min-width:38px;
+  border:1.5px solid var(--linea-forte);background:var(--surface);border-radius:var(--r-s);
+  padding:8px 11px;font-size:13.5px;font-weight:700;color:var(--muted);min-width:44px;min-height:40px;
+  transition:all var(--t);
 }
-.pref button[aria-pressed="true"][data-p="fav"]{background:#FBE3E3;border-color:#C2453F;color:#C2453F}
-.pref button[aria-pressed="true"][data-p="ok"]{background:var(--sage);border-color:var(--green);color:var(--green)}
-.pref button[aria-pressed="true"][data-p="no"]{background:#EFEBE3;border-color:var(--ink-soft);color:var(--ink-soft);text-decoration:line-through}
+.pref button[aria-pressed="true"][data-p="fav"]{background:var(--corallo-soft);border-color:var(--corallo);color:var(--corallo-ink)}
+.pref button[aria-pressed="true"][data-p="ok"]{background:var(--menta-soft);border-color:var(--menta);color:#1F6B4F}
+.pref button[aria-pressed="true"][data-p="no"]{background:var(--surface-2);border-color:var(--linea-forte);color:var(--muted);text-decoration:line-through}
 
-/* ---------- COSA CUCINO ---------- */
-.q-label{
-  font-size:12px;font-weight:700;letter-spacing:1px;color:var(--green);
-  text-transform:uppercase;margin:14px 0 7px 2px;
-}
-.q-label:first-child{margin-top:0}
-.q-label span{color:var(--ink-soft);font-weight:600;letter-spacing:0;text-transform:none}
-.chips{display:flex;gap:8px}
-.chips button{
-  flex:1;padding:13px 6px;border:1px solid var(--line);background:#fff;border-radius:12px;
-  font-size:15px;font-weight:600;color:var(--ink-soft);line-height:1.2;
-}
-.chips button[aria-pressed="true"]{
-  background:var(--sage);border-color:var(--green);color:var(--green);
-  box-shadow:inset 0 0 0 1px var(--green);
-}
-.chips button:active{opacity:.8}
-
+/* ============================================================
+   11 · COSA CUCINO — le schede proposta
+   ============================================================ */
 .prop{
-  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-  overflow:hidden;margin-bottom:12px;
+  background:var(--surface);border:1px solid var(--linea);border-radius:var(--r-l);
+  overflow:hidden;margin-bottom:14px;box-shadow:var(--ombra-1);
+  transition:opacity var(--t);
 }
-.prop.working{opacity:.5}
-.prop-head{background:var(--sage);padding:10px 12px;border-bottom:1px solid var(--line)}
-.prop-name{margin:0;font-size:16.5px;font-weight:700;color:var(--green);line-height:1.3}
+.prop.working{opacity:.45}
+.prop-head{background:var(--lavanda-soft);padding:14px 16px;border-bottom:1px solid var(--linea)}
+.prop-name{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:18.5px;
+  color:var(--ink);line-height:1.25;margin:0}
 .prop-num{
-  margin-top:5px;font-size:13px;color:var(--ink-soft);
+  margin-top:8px;font-size:13.5px;color:var(--muted);font-weight:500;
   font-variant-numeric:tabular-nums;
 }
-.prop-num b{color:var(--green);font-size:15px}
-.prop-body{padding:10px 12px}
+.prop-num b{color:var(--viola);font-size:17px;font-weight:700}
+.prop-body{padding:14px 16px}
 .ing-head{
-  font-size:11.5px;font-weight:700;letter-spacing:.8px;color:var(--ink-soft);
-  text-transform:uppercase;margin:8px 0 4px;
+  font-size:10.5px;font-weight:700;letter-spacing:1px;color:var(--viola);
+  text-transform:uppercase;margin:14px 0 6px;
+  background:var(--lavanda-soft);display:inline-block;padding:4px 10px;border-radius:99px;
 }
 .ing-head:first-child{margin-top:0}
-.ing{display:flex;gap:8px;font-size:14.5px;padding:2px 0}
-.ing-q{color:var(--ink-soft);white-space:nowrap;font-variant-numeric:tabular-nums}
-.nota{margin-top:9px;font-size:14px;border-radius:10px;padding:8px 10px;line-height:1.4}
-.nota.freezer{background:#EAF0FB;color:var(--blue)}
-.nota.avanzo{background:var(--sage);color:var(--green)}
-.nota.manca{background:var(--amber-bg);color:#6d3f10}
-.nota.perche{background:none;padding:8px 2px 0;color:var(--ink-soft);font-style:italic}
-.prop-actions{display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--line);background:#FBF8F2}
-.prop-actions button{
-  flex:1;padding:9px 4px;border-radius:10px;font-size:13.5px;font-weight:600;
-  border:1px solid var(--green);background:#fff;color:var(--green);
+.ing{display:flex;gap:10px;font-size:15px;padding:4px 0}
+.ing-q{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+.nota{margin-top:11px;font-size:14.5px;border-radius:var(--r-m);padding:10px 12px;line-height:1.45}
+.nota.freezer{background:var(--ghiaccio-soft);color:var(--ghiaccio-ink)}
+.nota.avanzo{background:var(--menta-soft);color:#1F6B4F}
+.nota.manca{background:var(--pesca-soft);color:var(--pesca-ink)}
+.nota.perche{background:none;padding:10px 2px 0;color:var(--muted);font-style:italic}
+.nota.manca button{
+  display:block;margin-top:8px;border:1.5px solid var(--pesca);background:var(--surface);
+  color:var(--pesca-ink);border-radius:var(--r-s);padding:8px 12px;
+  font-size:13px;font-weight:700;min-height:40px;
 }
-.prop-actions button[data-act="cucinato"]{background:var(--green);color:#fff}
+.prop-actions{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--linea);background:var(--surface-2)}
+.prop-actions button{
+  flex:1;padding:11px 6px;min-height:46px;border-radius:var(--r-m);font-size:13.5px;font-weight:600;
+  border:1.5px solid var(--lavanda);background:var(--surface);color:var(--viola);
+  transition:all var(--t);
+}
+.prop-actions button:hover{background:var(--lavanda-soft)}
+.prop-actions button[data-act="cucinato"]{background:var(--viola);color:#fff;border-color:var(--viola)}
+.prop-actions button[data-act="cucinato"]:hover{background:var(--viola-scuro)}
 .prop-actions button:disabled{opacity:.45}
-.pers-box{padding:10px 12px;border-top:1px solid var(--line);background:#FBF8F2}
+.pers-box{padding:12px 16px;border-top:1px solid var(--linea);background:var(--surface-2)}
 
 /* pannello "ho cucinato questo" */
-.cuc-box{padding:12px;border-top:2px solid var(--green);background:#FBF8F2}
-.cuc-riga{padding:9px 0;border-bottom:1px dashed #E8E0D0}
+.cuc-box{padding:16px;border-top:2px solid var(--viola);background:var(--surface-2)}
+.cuc-riga{padding:11px 0;border-bottom:1px solid var(--linea)}
 .cuc-riga:last-of-type{border-bottom:0}
-.cuc-testa{display:flex;align-items:center;gap:10px}
-.cuc-nome{flex:1;min-width:0;font-size:15px;font-weight:600;word-break:break-word}
-.cuc-ora{display:block;margin-top:3px;font-size:12.5px;color:var(--ink-soft)}
+.cuc-testa{display:flex;align-items:center;gap:11px}
+.cuc-nome{flex:1;min-width:0;font-size:15.5px;font-weight:600;word-break:break-word}
+.cuc-ora{display:block;margin-top:4px;font-size:13px;color:var(--muted)}
 .cuc-ora.assente{font-style:italic}
-.cuc-esito{margin-top:5px;font-size:13.5px;border-radius:8px;padding:5px 8px}
-.cuc-esito.ok{background:var(--sage);color:var(--green)}
-.cuc-esito.zero{background:var(--amber-bg);color:#6d3f10}
-.cuc-esito.testo{background:#EAF0FB;color:var(--blue)}
-.cuc-esito.neutro{background:none;padding:2px 0;color:var(--ink-soft);font-style:italic}
-.cuc-scelte{display:flex;gap:6px;margin-top:6px;align-items:center}
+.cuc-esito{margin-top:7px;font-size:14px;border-radius:var(--r-s);padding:7px 10px}
+.cuc-esito.ok{background:var(--menta-soft);color:#1F6B4F}
+.cuc-esito.zero{background:var(--pesca-soft);color:var(--pesca-ink)}
+.cuc-esito.testo{background:var(--ghiaccio-soft);color:var(--ghiaccio-ink)}
+.cuc-esito.neutro{background:none;padding:3px 0;color:var(--muted);font-style:italic}
+.cuc-scelte{display:flex;gap:7px;margin-top:8px;align-items:center}
 .cuc-scelte button{
-  border:1px solid currentColor;background:#fff;border-radius:8px;
-  padding:5px 10px;font-size:13px;font-weight:600;
+  border:1.5px solid currentColor;background:var(--surface);border-radius:var(--r-s);
+  padding:8px 12px;font-size:13.5px;font-weight:600;min-height:40px;
 }
-.cuc-scelte button[aria-pressed="true"]{background:currentColor}
-.cuc-scelte button[aria-pressed="true"]::after{content:'';}
-.cuc-esito.zero .cuc-scelte button[aria-pressed="true"]{background:#6d3f10;color:#fff;border-color:#6d3f10}
+.cuc-esito.zero .cuc-scelte button[aria-pressed="true"]{background:var(--pesca-ink);color:#fff;border-color:var(--pesca-ink)}
 
-/* ---------- PROFILO ---------- */
-.pf-lista{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0}
+/* ============================================================
+   12 · PROFILO
+   ============================================================ */
+.pf-lista{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 0}
 .pf-tag{
-  display:inline-flex;align-items:center;gap:6px;
-  border:1px solid var(--line);background:#fff;border-radius:999px;
-  padding:6px 8px 6px 12px;font-size:14px;
+  display:inline-flex;align-items:center;gap:7px;
+  border:1.5px solid var(--linea-forte);background:var(--surface);border-radius:99px;
+  padding:8px 10px 8px 14px;font-size:14.5px;
 }
-.pf-tag.vieta{border-color:#C2453F;color:#8d2f2a;background:#FBE3E3}
-.pf-tag.evita{border-color:var(--amber);color:#6d3f10;background:var(--amber-bg)}
-.pf-tag.ama{border-color:var(--green);color:var(--green);background:var(--sage)}
-.pf-tag button{font-size:17px;line-height:1;padding:0 3px;color:inherit;opacity:.7}
-.pf-vuota{font-size:13.5px;color:var(--ink-soft);font-style:italic;margin-top:6px}
+.pf-tag.vieta{border-color:var(--corallo);color:var(--corallo-ink);background:var(--corallo-soft)}
+.pf-tag.evita{border-color:var(--pesca);color:var(--pesca-ink);background:var(--pesca-soft)}
+.pf-tag.ama{border-color:var(--menta);color:#1F6B4F;background:var(--menta-soft)}
+.pf-tag button{font-size:18px;line-height:1;padding:2px 4px;color:inherit;opacity:.7;min-width:28px}
+.pf-tag button:hover{opacity:1}
+.pf-vuota{font-size:14px;color:var(--muted);font-style:italic;margin-top:8px}
 
-/* ---------- DIARIO ---------- */
+/* ============================================================
+   13 · DIARIO
+   ============================================================ */
 .dg-giorno{
-  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
-  overflow:hidden;margin-bottom:10px;
+  background:var(--surface);border:1px solid var(--linea);border-radius:var(--r-l);
+  overflow:hidden;margin-bottom:12px;box-shadow:var(--ombra-1);
 }
 .dg-band{
-  background:var(--sage);padding:7px 12px;display:flex;align-items:baseline;gap:8px;
-  border-bottom:1px solid var(--line);
+  background:var(--menta-soft);padding:10px 16px;display:flex;align-items:baseline;gap:9px;
+  border-bottom:1px solid var(--linea);
 }
-.dg-data{flex:1;font-weight:700;color:var(--green);font-size:14.5px}
-.dg-tot{font-size:13px;font-weight:700;color:var(--green);font-variant-numeric:tabular-nums}
-.dg-riga{display:flex;gap:8px;padding:7px 12px;align-items:baseline;font-size:14.5px}
-.dg-riga + .dg-riga{border-top:1px dashed #F0EADC}
-.dg-quale{
-  font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--ink-soft);
-  text-transform:uppercase;min-width:64px;
-}
+.dg-data{flex:1;font-family:'Fraunces',Georgia,serif;font-weight:600;color:var(--ink);font-size:15.5px}
+.dg-tot{font-size:13.5px;font-weight:700;color:var(--viola);font-variant-numeric:tabular-nums}
+.dg-riga{display:flex;gap:10px;padding:11px 16px;align-items:baseline;font-size:15px;min-height:48px}
+.dg-riga + .dg-riga{border-top:1px solid var(--bg)}
+.dg-quale{font-size:10.5px;font-weight:700;letter-spacing:.8px;color:var(--muted);
+  text-transform:uppercase;min-width:68px}
 .dg-piatto{flex:1;word-break:break-word}
-.dg-num{color:var(--ink-soft);font-size:12.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+.dg-num{color:var(--muted);font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums}
 
-/* ---------- SPESA ---------- */
-.sp-item{display:flex;align-items:center;gap:11px;padding:12px;font-size:15.5px}
-.sp-item + .sp-item{border-top:1px solid #F2ECE0}
+/* ============================================================
+   14 · SPESA
+   ============================================================ */
+.sp-item{display:flex;align-items:center;gap:13px;padding:14px 16px;font-size:16px;min-height:58px}
+.sp-item + .sp-item{border-top:1px solid var(--bg)}
 .sp-box{
-  width:24px;height:24px;flex:0 0 24px;border:2px solid var(--green);border-radius:7px;
-  display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:700;
+  width:26px;height:26px;flex:0 0 26px;border:2px solid var(--viola);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700;
+  transition:background var(--t);
 }
-.sp-item.fatto .sp-box{background:var(--green)}
-.sp-item.fatto .sp-nome{text-decoration:line-through;color:var(--ink-soft)}
+.sp-item.fatto .sp-box{background:var(--viola)}
+.sp-item.fatto .sp-nome{text-decoration:line-through;color:var(--muted)}
 .sp-nome{flex:1;min-width:0;word-break:break-word}
-.nota.manca button{
-  display:block;margin-top:6px;border:1px solid #6d3f10;background:#fff;color:#6d3f10;
-  border-radius:8px;padding:5px 10px;font-size:12.5px;font-weight:700;
-}
 
-/* ---------- toast / undo ---------- */
+/* ============================================================
+   15 · TOAST — sopra la barra di navigazione
+   ============================================================ */
 #toast{
-  position:fixed;left:12px;right:12px;bottom:calc(14px + var(--safe-b));z-index:60;
-  background:var(--ink);color:#fff;border-radius:12px;padding:12px 14px;
-  display:flex;align-items:center;gap:12px;font-size:14px;
-  max-width:696px;margin:0 auto;box-shadow:0 8px 24px rgba(0,0,0,.25);
+  position:fixed;left:14px;right:14px;bottom:calc(88px + var(--safe-b));z-index:60;
+  background:var(--ink);color:#fff;border-radius:var(--r-m);padding:14px 16px;
+  display:flex;align-items:center;gap:14px;font-size:14.5px;
+  max-width:520px;margin:0 auto;box-shadow:var(--ombra-2);
+  animation:sali 220ms cubic-bezier(.2,.8,.3,1);
 }
+@keyframes sali{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 #toast[hidden]{display:none}
 #toast span{flex:1}
-#toast button{color:#F6E7CD;font-weight:700;font-size:14px;padding:4px}
-
-.hint{font-size:13px;color:var(--ink-soft);margin:8px 4px 0}
+#toast button{color:var(--lavanda);font-weight:700;font-size:14.5px;padding:6px;min-height:40px}
+@media (min-width:760px){ #toast{bottom:24px} }
 </style>
 </head>
 <body>
 
+<!-- Le icone sono SVG scritte qui dentro: nessuna immagine da scaricare.
+     Stesso tratto (1.8) e stessi angoli arrotondati per tutte. -->
+<svg style="display:none" aria-hidden="true">
+  <defs>
+    <g id="i-piano" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>
+    </g>
+    <g id="i-dispensa" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="4" y="3" width="16" height="18" rx="3"/><path d="M4 11h16M9 6.5v2M9 14.5v2"/>
+    </g>
+    <g id="i-ricette" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 4.5A2 2 0 0 1 7 3h12v15H7a2 2 0 0 0-2 2z"/><path d="M9 8h6M9 12h4"/>
+    </g>
+    <g id="i-cucino" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 9h16v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M20 11h1.5a1.5 1.5 0 0 1 0 3H20"/>
+      <path d="M9 6c0-1 1-1.4 1-2.5M13 6c0-1 1-1.4 1-2.5"/>
+    </g>
+    <g id="i-spesa" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M4 8h16l-1.4 10a2 2 0 0 1-2 1.8H7.4a2 2 0 0 1-2-1.8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>
+    </g>
+    <g id="i-menu" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2">
+      <path d="M4 7h16M4 12h16M4 17h16"/>
+    </g>
+  </defs>
+</svg>
+
 <header>
   <div class="h-top">
-    <h1 class="h-title">Piano &amp; Dispensa</h1>
-    <button class="h-btn" id="copyBtn">Copia per Claude</button>
+    <h1 class="h-title">Piano &amp; <em>Dispensa</em></h1>
+    <button class="h-btn" id="menuBtn" type="button" aria-label="Apri il menu" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><use href="#i-menu"/></svg>
+    </button>
   </div>
   <button class="h-targets" id="targets" type="button">&nbsp;</button>
 </header>
 
 <nav class="tabs" role="tablist">
-  <button role="tab" data-tab="piano"    aria-selected="true">Piano</button>
-  <button role="tab" data-tab="dispensa" aria-selected="false">Dispensa</button>
-  <button role="tab" data-tab="ricette"  aria-selected="false">Ricette</button>
-  <button role="tab" data-tab="cucino"   aria-selected="false">Cucino</button>
-  <button role="tab" data-tab="spesa"    aria-selected="false">Spesa</button>
+  <button role="tab" data-tab="piano"    aria-selected="true">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-piano"/></svg>Piano</button>
+  <button role="tab" data-tab="dispensa" aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-dispensa"/></svg>Dispensa</button>
+  <button role="tab" data-tab="ricette"  aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-ricette"/></svg>Ricette</button>
+  <button role="tab" data-tab="cucino"   aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-cucino"/></svg>Cucino</button>
+  <button role="tab" data-tab="spesa"    aria-selected="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#i-spesa"/></svg>Spesa</button>
 </nav>
+
+<!-- ============ MENU ============ -->
+<div id="menuVelo" hidden></div>
+<div id="menuPanel" hidden role="dialog" aria-modal="true" aria-label="Menu">
+  <div class="menu-testa">
+    <h2>Menu</h2>
+    <button class="icon-btn" id="menuChiudi" aria-label="Chiudi">×</button>
+  </div>
+
+  <div class="menu-sez">Su questo telefono sono</div>
+  <div class="chips" id="menuIo"></div>
+
+  <div class="menu-sez">I miei obiettivi del giorno</div>
+  <div class="form-row" style="margin-top:0">
+    <input class="field" id="menuProt" type="number" inputmode="numeric" placeholder="proteine g">
+    <input class="field" id="menuKcal" type="number" inputmode="numeric" placeholder="kcal">
+  </div>
+  <p class="hint">Lascia vuoto se non hai obiettivi.</p>
+
+  <div class="menu-sez">Altro</div>
+  <div class="form-row" style="margin-top:0">
+    <button class="btn ghost" id="menuProfilo" style="flex:1">Profilo completo ›</button>
+  </div>
+  <div class="form-row">
+    <button class="btn" id="copyBtn" style="flex:1">Copia per Claude</button>
+  </div>
+</div>
 
 <div id="banner" hidden></div>
 
@@ -1037,13 +1282,24 @@ $('#cuGen').onclick = async () => {
   }
 };
 
+/** Una scheda finta che luccica: l'attesa deve sembrare progettata, non rotta. */
+const scheletro = () => `<div class="sk" aria-hidden="true">
+  <div class="sk-riga titolo"></div>
+  <div class="sk-riga corta"></div>
+  <div class="sk-riga"></div>
+  <div class="sk-riga media"></div>
+</div>`;
+
 /** Disegna le proposte già arrivate, e sotto lo stato di avanzamento. */
 function renderProposte(stato){
   const schede = CU.proposte.map(cardProposta).join('');
-  const attesa = stato
-    ? `<div class="loading" style="padding:18px 10px">${esc(stato)}<br>
-       <span style="font-size:13px">Non ricaricare la pagina.</span></div>`
-    : '';
+  let attesa = '';
+  if (stato){
+    // quante schede mancano ancora all'appello
+    const restano = Math.max(1, 3 - CU.proposte.length);
+    attesa = `<p class="loading" style="padding:6px 10px 14px" role="status">${esc(stato)}</p>`
+           + scheletro().repeat(Math.min(restano, 3));
+  }
   $('#cuBody').innerHTML = schede + attesa;
 }
 
@@ -1494,6 +1750,79 @@ function chiudiProfilo(){
 $('#targets').onclick   = apriProfilo;
 $('#profChiudi').onclick = chiudiProfilo;
 
+/* ============================================================
+   V7 · IL MENU DELLA TESTATA
+   Ci sono finite le cose che prima stavano sparse: "Copia per
+   Claude", il selettore del profilo e i target modificabili.
+   ============================================================ */
+function apriMenu(){
+  renderMenu();
+  $('#menuVelo').hidden = false;
+  $('#menuPanel').hidden = false;
+  $('#menuBtn').setAttribute('aria-expanded', 'true');
+  $('#menuChiudi').focus();
+}
+function chiudiMenu(){
+  $('#menuVelo').hidden = true;
+  $('#menuPanel').hidden = true;
+  $('#menuBtn').setAttribute('aria-expanded', 'false');
+}
+
+function renderMenu(){
+  const mio = ioProfilo();
+  $('#menuIo').innerHTML = S.profili.length
+    ? S.profili.map(p => `<button data-io="${esc(p.slug)}"
+        aria-pressed="${p.slug === S.io}">${esc(p.nome)}</button>`).join('')
+    : '<span class="pf-vuota">I profili non sono ancora stati creati.</span>';
+  $('#menuProt').value = mio?.prot_target ?? '';
+  $('#menuKcal').value = mio?.kcal_target ?? '';
+  $('#menuProt').disabled = $('#menuKcal').disabled = !mio;
+}
+
+$('#menuBtn').onclick    = apriMenu;
+$('#menuChiudi').onclick = chiudiMenu;
+$('#menuVelo').onclick   = chiudiMenu;
+$('#menuProfilo').onclick = () => { chiudiMenu(); apriProfilo(); };
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !$('#menuPanel').hidden) chiudiMenu();
+});
+
+$('#menuIo').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-io]');
+  if (!b) return;
+  cambiaIo(b.dataset.io);
+  renderMenu();
+});
+
+/** Cambia chi sta usando l'app su questo telefono. */
+function cambiaIo(slug){
+  S.io = slug;
+  try { localStorage.setItem(CHIAVE_IO, S.io); } catch { /* modalità privata */ }
+  profModificato = S.io;
+  renderTargets(); aggiornaChiMangia();
+  if (!$('#tab-profilo').hidden) renderProfilo();
+  toast(`Su questo telefono sei ${profilo(S.io)?.nome || S.io}.`);
+}
+
+/* i target modificabili dal menu: scrivono sul profilo di chi sei */
+['#menuProt', '#menuKcal'].forEach(sel => {
+  $(sel).addEventListener('change', async ev => {
+    const mio = ioProfilo();
+    if (!mio) return;
+    const campo = sel === '#menuProt' ? 'prot_target' : 'kcal_target';
+    const v = ev.target.value === '' ? null : Number(ev.target.value);
+    try{
+      const { data, error } = await sb.from('profiles')
+        .update({ [campo]: v }).eq('id', mio.id).select().single();
+      if (error) throw error;
+      Object.assign(mio, data);
+      renderTargets();
+      if (!$('#tab-profilo').hidden) renderProfilo();
+      toast('Obiettivo aggiornato.');
+    }catch(e){ banner(spiegaErrore(e)); }
+  });
+});
+
 function renderProfilo(){
   const scelte = (attivo, attr) => S.profili.map(p =>
     `<button data-${attr}="${esc(p.slug)}" aria-pressed="${p.slug === attivo}">${esc(p.nome)}</button>`
@@ -1577,12 +1906,7 @@ async function salvaProfilo(patch, messaggio){
 /* --- i due selettori in cima --- */
 $('#chipIo').addEventListener('click', ev => {
   const b = ev.target.closest('[data-io]');
-  if (!b) return;
-  S.io = b.dataset.io;
-  try { localStorage.setItem(CHIAVE_IO, S.io); } catch { /* privato: pazienza */ }
-  profModificato = S.io;
-  renderProfilo(); renderTargets(); aggiornaChiMangia();
-  toast(`Su questo telefono sei ${profilo(S.io)?.nome || S.io}.`);
+  if (b) cambiaIo(b.dataset.io);      // la logica sta in un punto solo
 });
 
 $('#chipEdit').addEventListener('click', ev => {
@@ -1951,6 +2275,7 @@ $$('nav.tabs button').forEach(b => {
   b.onclick = () => {
     S.tab = b.dataset.tab;
     $$('nav.tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+    chiudiMenu();
     $('#tab-profilo').hidden = true;   // se ero nel Profilo, esco
     ['piano','dispensa','ricette','cucino','spesa'].forEach(t => { $('#tab-' + t).hidden = (t !== S.tab); });
     window.scrollTo(0, 0);
@@ -1969,8 +2294,11 @@ function misuraTestata(){
   const h = document.querySelector('header');
   const n = document.querySelector('nav.tabs');
   if (!h || !n) return;
-  document.documentElement.style.setProperty('--h-alt',   h.offsetHeight + 'px');
-  document.documentElement.style.setProperty('--nav-alt', n.offsetHeight + 'px');
+  document.documentElement.style.setProperty('--h-alt', h.offsetHeight + 'px');
+  // Su telefono la navigazione sta IN BASSO: non occupa spazio in cima,
+  // quindi le intestazioni appiccicose si fermano subito sotto la testata.
+  const navInAlto = getComputedStyle(n).position === 'sticky';
+  document.documentElement.style.setProperty('--nav-alt', navInAlto ? n.offsetHeight + 'px' : '0px');
 }
 
 // Il riferimento va tenuto qui fuori: un ResizeObserver senza riferimenti
