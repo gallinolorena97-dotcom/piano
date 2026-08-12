@@ -172,6 +172,58 @@ section[hidden]{display:none}
 .pref button[aria-pressed="true"][data-p="ok"]{background:var(--sage);border-color:var(--green);color:var(--green)}
 .pref button[aria-pressed="true"][data-p="no"]{background:#EFEBE3;border-color:var(--ink-soft);color:var(--ink-soft);text-decoration:line-through}
 
+/* ---------- COSA CUCINO ---------- */
+.q-label{
+  font-size:12px;font-weight:700;letter-spacing:1px;color:var(--green);
+  text-transform:uppercase;margin:14px 0 7px 2px;
+}
+.q-label:first-child{margin-top:0}
+.q-label span{color:var(--ink-soft);font-weight:600;letter-spacing:0;text-transform:none}
+.chips{display:flex;gap:8px}
+.chips button{
+  flex:1;padding:13px 6px;border:1px solid var(--line);background:#fff;border-radius:12px;
+  font-size:15px;font-weight:600;color:var(--ink-soft);line-height:1.2;
+}
+.chips button[aria-pressed="true"]{
+  background:var(--sage);border-color:var(--green);color:var(--green);
+  box-shadow:inset 0 0 0 1px var(--green);
+}
+.chips button:active{opacity:.8}
+
+.prop{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;margin-bottom:12px;
+}
+.prop.working{opacity:.5}
+.prop-head{background:var(--sage);padding:10px 12px;border-bottom:1px solid var(--line)}
+.prop-name{margin:0;font-size:16.5px;font-weight:700;color:var(--green);line-height:1.3}
+.prop-num{
+  margin-top:5px;font-size:13px;color:var(--ink-soft);
+  font-variant-numeric:tabular-nums;
+}
+.prop-num b{color:var(--green);font-size:15px}
+.prop-body{padding:10px 12px}
+.ing-head{
+  font-size:11.5px;font-weight:700;letter-spacing:.8px;color:var(--ink-soft);
+  text-transform:uppercase;margin:8px 0 4px;
+}
+.ing-head:first-child{margin-top:0}
+.ing{display:flex;gap:8px;font-size:14.5px;padding:2px 0}
+.ing-q{color:var(--ink-soft);white-space:nowrap;font-variant-numeric:tabular-nums}
+.nota{margin-top:9px;font-size:14px;border-radius:10px;padding:8px 10px;line-height:1.4}
+.nota.freezer{background:#EAF0FB;color:var(--blue)}
+.nota.avanzo{background:var(--sage);color:var(--green)}
+.nota.manca{background:var(--amber-bg);color:#6d3f10}
+.nota.perche{background:none;padding:8px 2px 0;color:var(--ink-soft);font-style:italic}
+.prop-actions{display:flex;gap:6px;padding:10px 12px;border-top:1px solid var(--line);background:#FBF8F2}
+.prop-actions button{
+  flex:1;padding:9px 4px;border-radius:10px;font-size:13.5px;font-weight:600;
+  border:1px solid var(--green);background:#fff;color:var(--green);
+}
+.prop-actions button[data-act="scelgo"]{background:var(--green);color:#fff}
+.prop-actions button:disabled{opacity:.45}
+.pers-box{padding:10px 12px;border-top:1px solid var(--line);background:#FBF8F2}
+
 /* ---------- toast / undo ---------- */
 #toast{
   position:fixed;left:12px;right:12px;bottom:calc(14px + var(--safe-b));z-index:60;
@@ -200,6 +252,7 @@ section[hidden]{display:none}
   <button role="tab" data-tab="piano"    aria-selected="true">Piano</button>
   <button role="tab" data-tab="dispensa" aria-selected="false">Dispensa</button>
   <button role="tab" data-tab="ricette"  aria-selected="false">Ricette</button>
+  <button role="tab" data-tab="cucino"   aria-selected="false">Cosa cucino</button>
 </nav>
 
 <div id="banner" hidden></div>
@@ -240,6 +293,40 @@ section[hidden]{display:none}
       </div>
     </div>
     <div id="recBody"><div class="loading">Carico le ricette…</div></div>
+  </section>
+
+  <!-- ============ COSA CUCINO ============ -->
+  <section id="tab-cucino" hidden>
+    <div class="panel">
+      <div class="q-label">Quale pasto</div>
+      <div class="chips" data-group="pasto">
+        <button data-v="pranzo" aria-pressed="true">Pranzo</button>
+        <button data-v="cena"   aria-pressed="false">Cena</button>
+      </div>
+
+      <div class="q-label">Chi mangia</div>
+      <div class="chips" data-group="chi">
+        <button data-v="io"     aria-pressed="true">Solo io</button>
+        <button data-v="io_e_x" aria-pressed="false">Io e X</button>
+      </div>
+
+      <div class="q-label">Quanto tempo ho</div>
+      <div class="chips" data-group="minuti">
+        <button data-v="15" aria-pressed="false">15 min</button>
+        <button data-v="30" aria-pressed="true">30 min</button>
+        <button data-v="60" aria-pressed="false">Un'ora o più</button>
+      </div>
+
+      <div class="q-label">Cosa hai già mangiato oggi <span>— facoltativo</span></div>
+      <input class="field" id="cuGia" autocomplete="off"
+             placeholder="es. colazione + yogurt greco a metà mattina">
+      <p class="hint" style="margin-top:6px">Se lo scrivi, calcolo quante proteine ti mancano
+        e dimensiono il pasto di conseguenza.</p>
+
+      <button class="btn" id="cuGen" style="width:100%;margin-top:12px">Genera 3 proposte</button>
+    </div>
+
+    <div id="cuBody"></div>
   </section>
 </main>
 
@@ -608,6 +695,303 @@ $('#recBody').addEventListener('click', async (ev) => {
 });
 
 /* ============================================================
+   TAB 4 — COSA CUCINO
+   Il generatore vero sta su Supabase (Edge Function "cosa-cucino").
+   Qui c'è solo la parte che si vede: domande, attesa, schede.
+   La chiave API non passa MAI da questo file.
+   ============================================================ */
+const CU = {
+  pasto:'pranzo', chi:'io', minuti:30,
+  proposte: [],      // le 3 schede a schermo
+  visti: [],         // nomi già proposti o scartati in questa sessione
+  inCorso: false,
+};
+
+/* --- i tre gruppi di bottoni grandi --- */
+$$('#tab-cucino .chips').forEach(gruppo => {
+  gruppo.addEventListener('click', ev => {
+    const b = ev.target.closest('button');
+    if (!b) return;
+    [...gruppo.children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    const campo = gruppo.dataset.group;
+    CU[campo] = campo === 'minuti' ? Number(b.dataset.v) : b.dataset.v;
+  });
+});
+
+/* --- la chiamata al generatore --- */
+async function chiamaGeneratore(corpo){
+  const { data, error } = await sb.functions.invoke('cosa-cucino', { body: corpo });
+  if (error){
+    let msg = '';
+    try { msg = (await error.context?.json())?.errore || ''; } catch { /* risposta non leggibile */ }
+    throw new Error(msg || 'Il generatore non risponde. Riprova fra un minuto.');
+  }
+  if (data?.errore) throw new Error(data.errore);
+  if (!data?.proposte?.length) throw new Error('Il generatore non ha trovato nulla da proporre.');
+  return data.proposte;
+}
+
+/** Dati comuni a ogni richiesta: cosa ho scelto e cosa ho già visto. */
+const baseRichiesta = () => ({
+  pasto: CU.pasto,
+  chi: CU.chi,
+  minuti: CU.minuti,
+  gia_mangiato: $('#cuGia').value.trim(),
+  escludi: CU.visti,
+});
+
+$('#cuGen').onclick = async () => {
+  if (CU.inCorso) return;
+  CU.inCorso = true;
+  $('#cuGen').disabled = true;
+  $('#cuBody').innerHTML =
+    `<div class="loading">Sto pensando ai piatti…<br>
+     <span style="font-size:13.5px">Ci vuole una decina di secondi.</span></div>`;
+  try{
+    const p = await chiamaGeneratore({ ...baseRichiesta(), quante: 3 });
+    CU.proposte = p;
+    CU.visti = [...new Set([...CU.visti, ...p.map(x => x.nome)])];
+    renderProposte();
+  }catch(e){
+    CU.proposte = [];
+    $('#cuBody').innerHTML = `<div class="empty"><b>${esc(e.message)}</b></div>`;
+  }finally{
+    CU.inCorso = false;
+    $('#cuGen').disabled = false;
+  }
+};
+
+function renderProposte(){
+  $('#cuBody').innerHTML = CU.proposte.map(cardProposta).join('');
+}
+
+function cardProposta(p, i){
+  const lista = (arr) => (arr || []).map(x =>
+    `<div class="ing"><div style="flex:1">${esc(x.nome)}</div>
+     <div class="ing-q">${esc(x.quantita)}</div></div>`).join('');
+
+  const perX = (p.ingredienti_x || []).length;
+
+  return `<article class="prop" data-i="${i}">
+    <div class="prop-head">
+      <h3 class="prop-name">${esc(p.nome)}</h3>
+      <div class="prop-num"><b>${esc(String(p.proteine_g))} g proteine</b>
+        · ${esc(String(p.kcal))} kcal · ${esc(String(p.minuti))} min</div>
+    </div>
+    <div class="prop-body">
+      <div class="ing-head">${perX ? 'Per me' : 'Ingredienti'}</div>
+      ${lista(p.ingredienti_io)}
+      ${perX ? `<div class="ing-head">Per X</div>${lista(p.ingredienti_x)}` : ''}
+      ${p.scongelamento ? `<div class="nota freezer">❄ ${esc(p.scongelamento)}</div>` : ''}
+      ${p.avanzo        ? `<div class="nota avanzo">🍱 ${esc(p.avanzo)}</div>` : ''}
+      ${(p.manca || []).length ? `<div class="nota manca">Non ce l'hai: ${esc(p.manca.join(', '))}</div>` : ''}
+      ${p.perche ? `<div class="nota perche">${esc(p.perche)}</div>` : ''}
+    </div>
+    <div class="prop-actions">
+      <button data-act="altra">↻ Un'altra</button>
+      <button data-act="pers">✎ Personalizza</button>
+      <button data-act="scelgo">✓ Scelgo questa</button>
+    </div>
+  </article>`;
+}
+
+/** Rigenera UNA sola scheda, lasciando le altre dove sono. */
+async function rigenera(i, richiestaExtra){
+  const card = $(`#cuBody .prop[data-i="${i}"]`);
+  if (!card || CU.inCorso) return;
+  CU.inCorso = true;
+  card.classList.add('working');
+  card.querySelectorAll('button').forEach(b => b.disabled = true);
+  try{
+    const corpo = { ...baseRichiesta(), quante: 1 };
+    if (richiestaExtra){
+      corpo.personalizza = richiestaExtra;
+      corpo.escludi = CU.visti.filter(n => n !== CU.proposte[i].nome);
+    }
+    const [nuova] = await chiamaGeneratore(corpo);
+    CU.proposte[i] = nuova;
+    if (!CU.visti.includes(nuova.nome)) CU.visti.push(nuova.nome);
+    renderProposte();
+  }catch(e){
+    banner(e.message);
+    card.classList.remove('working');
+    card.querySelectorAll('button').forEach(b => b.disabled = false);
+  }finally{
+    CU.inCorso = false;
+  }
+}
+
+$('#cuBody').addEventListener('click', async (ev) => {
+  const btn = ev.target.closest('[data-act]');
+  if (!btn) return;
+  const card = btn.closest('.prop');
+  const i = Number(card.dataset.i);
+  const p = CU.proposte[i];
+  if (!p) return;
+
+  if (btn.dataset.act === 'altra') rigenera(i);
+
+  if (btn.dataset.act === 'pers') apriPersonalizza(card, i);
+
+  if (btn.dataset.act === 'scelgo') await scegliRicetta(p, btn);
+});
+
+/** Campo libero per dire cosa cambiare, in italiano. */
+function apriPersonalizza(card, i){
+  if (card.querySelector('.pers-box')) return;
+  const box = document.createElement('div');
+  box.className = 'pers-box';
+  box.innerHTML = `
+    <input class="field" placeholder="es. col riso invece della pasta" autocomplete="off">
+    <div class="form-row">
+      <button class="btn small" data-ok style="flex:1">Rigenera così</button>
+      <button class="btn small ghost" data-no>Annulla</button>
+    </div>`;
+  card.appendChild(box);
+  const inp = box.querySelector('input');
+  inp.focus();
+
+  const conferma = () => {
+    const t = inp.value.trim();
+    if (!t) { inp.focus(); return; }
+    box.remove();
+    rigenera(i, t);
+  };
+  box.querySelector('[data-ok]').onclick = conferma;
+  box.querySelector('[data-no]').onclick = () => box.remove();
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); conferma(); } });
+}
+
+/** Salva fra le Ricette col voto ♥, poi propone di scalare la dispensa. */
+async function scegliRicetta(p, btn){
+  btn.disabled = true;
+  try{
+    const esistente = S.rec.find(r => r.name.toLowerCase() === p.nome.toLowerCase());
+    if (esistente){
+      if (esistente.pref !== 'fav'){
+        const { error } = await sb.from('recipes').update({ pref:'fav' }).eq('id', esistente.id);
+        if (error) throw error;
+        esistente.pref = 'fav';
+      }
+      toast(`«${p.nome}» era già fra le ricette: l'ho messa fra le preferite.`);
+    }else{
+      const { data, error } = await sb.from('recipes')
+        .insert({ name: p.nome, pref: 'fav' }).select().single();
+      if (error) throw error;
+      S.rec.push(data);
+      S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
+      toast(`Salvata fra le ricette: ${p.nome}`);
+    }
+    renderRec();
+    proponiScalo(p);
+  }catch(e){
+    banner(spiegaErrore(e));
+  }finally{
+    btn.disabled = false;
+  }
+}
+
+/* ---------- scalare gli ingredienti dalla dispensa ---------- */
+
+/** "250 g" -> {n:250, u:'g'} · "1,5 kg" -> {n:1.5, u:'kg'} · "2" -> {n:2, u:''} */
+function leggiQta(testo){
+  const m = String(testo ?? '').trim().match(/^([\d]+(?:[.,]\d+)?)\s*([^\d\s]*)/);
+  if (!m) return null;
+  return { n: parseFloat(m[1].replace(',', '.')), u: (m[2] || '').toLowerCase() };
+}
+
+const senzaAccenti = (s) => String(s ?? '').toLowerCase()
+  .normalize('NFD').replace(/\p{Diacritic}/gu, '').trim();
+
+/** Trova la voce di dispensa che corrisponde a un ingrediente. */
+function cercaInDispensa(nomeIngrediente){
+  const ing = senzaAccenti(nomeIngrediente);
+  if (!ing) return null;
+  let migliore = null;
+  for (const voce of S.inv){
+    const nome = senzaAccenti(voce.name);
+    if (!nome) continue;
+    if (ing.includes(nome) || nome.includes(ing)){
+      // a parità, vince il nome più lungo: è il più specifico
+      if (!migliore || nome.length > senzaAccenti(migliore.name).length) migliore = voce;
+    }
+  }
+  return migliore;
+}
+
+/** Pannello: "vuoi scalare questi ingredienti dalla dispensa?" */
+function proponiScalo(p){
+  const usati = [...(p.ingredienti_io || []), ...(p.ingredienti_x || [])];
+  const righe = [];
+
+  for (const ing of usati){
+    const voce = cercaInDispensa(ing.nome);
+    if (!voce) continue;
+    if (righe.some(r => r.voce.id === voce.id)) continue;   // già elencata
+
+    const ora  = leggiQta(voce.qty);
+    const usa  = leggiQta(ing.quantita);
+    let proposta = voce.qty;
+    if (ora && usa && ora.u === usa.u && !String(voce.qty).includes('?')){
+      const resto = Math.max(0, Math.round((ora.n - usa.n) * 100) / 100);
+      proposta = resto === 0 ? '0 ' + ora.u : `${String(resto).replace('.', ',')} ${ora.u}`.trim();
+    }
+    righe.push({ voce, usato: ing.quantita, proposta });
+  }
+
+  if (!righe.length){
+    toast('Nessun ingrediente da scalare: non li ho ritrovati in dispensa.');
+    return;
+  }
+
+  const box = document.createElement('div');
+  box.className = 'panel';
+  box.style.cssText = 'border-color:var(--green);margin-top:4px';
+  box.innerHTML = `
+    <div class="q-label" style="margin-top:0">Scalo questi dalla dispensa?</div>
+    <p class="hint" style="margin:0 0 8px">Ho già calcolato quello che resta dove ho potuto.
+      Correggi pure a mano prima di confermare.</p>
+    ${righe.map((r, k) => `
+      <div class="ing" style="align-items:center;gap:10px;padding:5px 0">
+        <div style="flex:1">${esc(r.voce.name)}
+          <span style="color:var(--ink-soft);font-size:12.5px">
+            (ora ${esc(r.voce.qty)}, ne usi ${esc(r.usato)})</span></div>
+        <input class="field" data-k="${k}" value="${esc(r.proposta)}"
+               style="width:96px;padding:6px 8px;font-size:15px">
+      </div>`).join('')}
+    <div class="form-row">
+      <button class="btn" data-ok style="flex:1">Sì, aggiorna la dispensa</button>
+      <button class="btn ghost" data-no>No, lascia stare</button>
+    </div>`;
+
+  $('#cuBody').prepend(box);
+  box.scrollIntoView({ block:'nearest', behavior:'smooth' });
+
+  box.querySelector('[data-no]').onclick = () => box.remove();
+  box.querySelector('[data-ok]').onclick = async () => {
+    box.querySelectorAll('button').forEach(b => b.disabled = true);
+    let fatti = 0;
+    try{
+      for (const [k, r] of righe.entries()){
+        const nuovo = box.querySelector(`input[data-k="${k}"]`).value.trim() || '—';
+        if (nuovo === r.voce.qty) continue;
+        const { error } = await sb.from('inventory_items')
+          .update({ qty: nuovo }).eq('id', r.voce.id);
+        if (error) throw error;
+        r.voce.qty = nuovo;
+        fatti++;
+      }
+      renderInv();
+      box.remove();
+      toast(fatti ? `Dispensa aggiornata: ${fatti} voci.` : 'Nessuna quantità cambiata.');
+    }catch(e){
+      banner(spiegaErrore(e));
+      box.querySelectorAll('button').forEach(b => b.disabled = false);
+    }
+  };
+}
+
+/* ============================================================
    COPIA PER CLAUDE
    ============================================================ */
 function testoExport(){
@@ -673,7 +1057,7 @@ $$('nav.tabs button').forEach(b => {
   b.onclick = () => {
     S.tab = b.dataset.tab;
     $$('nav.tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
-    ['piano','dispensa','ricette'].forEach(t => { $('#tab-' + t).hidden = (t !== S.tab); });
+    ['piano','dispensa','ricette','cucino'].forEach(t => { $('#tab-' + t).hidden = (t !== S.tab); });
     window.scrollTo(0, 0);
     if (S.tab === 'piano') renderPlan();
   };

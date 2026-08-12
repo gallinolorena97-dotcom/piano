@@ -74,6 +74,52 @@ pratiche, per essere chiari:
 
 ---
 
+## La tab "Cosa cucino"
+
+Parte dalla tua dispensa vera e propone piatti che rispettano il metodo.
+
+**Come si usa, in cucina:**
+
+1. Apri la tab **Cosa cucino**.
+2. Tre tocchi: pranzo o cena · sola o con X · quanto tempo hai.
+3. Se vuoi, scrivi cosa hai già mangiato oggi (facoltativo, ma migliora molto le
+   proposte: calcola le proteine che ti restano).
+4. **Genera 3 proposte**. Ci vuole una decina di secondi.
+5. Su ogni scheda hai tre pulsanti:
+   - **↻ Un'altra** — cambia solo quella, tenendo le altre due
+   - **✎ Personalizza** — scrivi cosa cambiare ("col riso invece della pasta")
+   - **✓ Scelgo questa** — la salva fra le Ricette col cuore ♥ e ti chiede se
+     scalare gli ingredienti dalla dispensa
+
+Quando accetti di scalare, ti mostro riga per riga cosa resta: **i numeri li ho già
+calcolati io dove ho potuto**, tu correggi quello che non torna e confermi.
+
+### Quanto costa e perché c'è un tetto
+
+Ogni generazione costa circa **2 centesimi** di credito Anthropic. Siccome l'app non
+ha login, chiunque abbia l'indirizzo potrebbe premere Genera: per questo c'è un
+**tetto di 30 generazioni al giorno**, controllato dal server e non aggirabile
+dall'app. Nel caso peggiore la spesa si ferma a circa 60 centesimi al giorno.
+
+Se un giorno le finisci per sbaglio, in Supabase → SQL Editor:
+
+```sql
+update public.generator_usage set count = 0 where day = current_date;
+```
+
+Per alzare o abbassare il tetto si cambia `MAX_AL_GIORNO` nella Edge Function.
+
+### Se il generatore non risponde
+
+I messaggi sono già scritti in italiano semplice. I due più probabili:
+
+| Messaggio | Cosa fare |
+|---|---|
+| «Per oggi hai già usato tutte le 30 generazioni» | aspetta domani, o azzera il contatore col comando qui sopra |
+| «Il credito del generatore è esaurito» | ricarica il credito su console.anthropic.com |
+
+---
+
 ## File della cartella
 
 | File | A cosa serve | Pubblicato online? |
@@ -82,6 +128,8 @@ pratiche, per essere chiari:
 | `apple-touch-icon.png` | l'icona sulla home dell'iPhone | sì |
 | `setup.sql` | crea il database da zero (serve solo ripartendo da un progetto nuovo) | no |
 | `cambio-accesso-libero.sql` | il passaggio ad app senza login (già eseguito) | sì |
+| `edge-function-cosa-cucino.ts` | il generatore di ricette, da incollare in Supabase | sì (ma non è l'app: è una copia di riferimento) |
+| `limite-generatore.sql` | il tetto giornaliero che protegge il credito | sì |
 | `seed-dati-iniziali.sql` | carica inventario e ricette di partenza | sì |
 | `README-OPERATIVO.md` | questo foglio | sì |
 | `CLAUDE.md` | promemoria per le prossime chat con Claude | sì |

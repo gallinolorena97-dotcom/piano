@@ -51,7 +51,9 @@ nuovo della vecchia `anon`.
 | `recipes` | `id`, `name`, `pref` (`fav`/`ok`/`no`, null = senza voto), `updated_at` |
 | `settings` | `key`, `value` — contiene `kcal_target` e `protein_target` |
 
-Queste quattro sono **tutte** le tabelle. `allowed_writers` e la funzione `is_writer()` sono
+| `generator_usage` | `day` (date, PK), `count` — contatore del generatore, **senza policy**: invisibile all'app |
+
+Queste sono **tutte** le tabelle. `allowed_writers` e la funzione `is_writer()` sono
 state cancellate dal database il 12/08/2026: non esistono più.
 
 ### Sicurezza — ⚠️ l'app NON ha login
@@ -104,6 +106,59 @@ fondo a `setup.sql`.
 - `type: "note"` → riga in corsivo grigia
 - `kcal`, `prot`, `tag`, `tot` sono facoltativi: se mancano non vengono mostrati
 
+## Il generatore di ricette — tab "Cosa cucino"
+
+Aggiunta del 12/08/2026. Propone piatti partendo dalla dispensa reale.
+
+### Come è fatto
+
+```
+iPhone (index.html)  →  Supabase Edge Function "cosa-cucino"  →  API Anthropic
+      tab "Cosa cucino"        legge da sé inventario/ricette          Claude
+```
+
+- **La chiave API non è mai nel frontend.** Sta nei Secrets di Supabase.
+  La function la cerca da sola: prova i nomi più comuni (`ANTHROPIC_API_KEY`,
+  `CLAUDE_API_KEY`, …) e, se non li trova, cerca fra tutti i secrets un valore
+  che inizi con `sk-ant-`. Non serve rinominare nulla.
+- **La function non si fida del client**: legge inventario, ricette e settings
+  direttamente dal database con la chiave di servizio (iniettata da Supabase,
+  mai scritta a mano né richiesta all'utente).
+- **Modello**: `claude-sonnet-5`, `effort: medium`, adaptive thinking, structured
+  outputs (`output_config.format`) — così la risposta è JSON garantito e non
+  serve parsing fragile.
+
+### Il freno di spesa — ⚠️ leggere prima di toccare
+
+L'app non ha login: chiunque abbia l'indirizzo può premere "Genera" e consumare
+credito. La difesa è **un tetto giornaliero applicato lato server**:
+
+- tabella `generator_usage` (RLS accesa, **zero policy** → invisibile alla chiave
+  pubblica, non manomettibile dall'esterno);
+- funzione `consuma_generazione(limite)`, `security definer`, eseguibile solo da
+  `service_role`; incrementa e restituisce `-1` se il tetto è raggiunto;
+- il tetto vero è la costante `MAX_AL_GIORNO` nella Edge Function (oggi **30**).
+
+Costo indicativo: ~2 centesimi a generazione. 30/giorno = tetto di spesa di circa
+60 centesimi al giorno nel caso peggiore.
+
+**Non rimuovere il contatore** senza sostituirlo con qualcos'altro: è l'unica cosa
+che sta fra l'indirizzo pubblico e la carta di credito.
+
+### Vincoli del metodo
+
+Le 8 regole (proteine dominanti, kcal, deperibili, cucina-doppio, scongelamento,
+pasti liberi, commensale X, tempo) stanno nella costante `REGOLE` dentro
+`edge-function-cosa-cucino.ts`. **Se il metodo cambia, si cambia lì**, non nel
+frontend.
+
+### Cosa NON fare qui
+
+- Non mettere la chiave API in `index.html` per nessun motivo.
+- Non far passare l'inventario dal client alla function: la function lo rilegge.
+- Non aggiungere un database alimenti né conteggio calorie interattivo:
+  i numeri li stima Claude dentro la proposta e restano lì.
+
 ## Vincoli di metodo (importanti quanto quelli tecnici)
 
 - **Niente database alimenti**, niente conteggio calorie interattivo: i numeri di kcal e
@@ -127,6 +182,8 @@ In sintesi: parsing del testo incollato → riepilogo → conferma → file SQL 
 | `apple-touch-icon.png` | icona home screen |
 | `setup.sql` | schema + RLS + seed dei settings, per ripartire da un progetto Supabase nuovo. È in `.gitignore` per una richiesta dell'utente di quando conteneva la sua email; oggi non la contiene più |
 | `cambio-accesso-libero.sql` | la migrazione che ha tolto il login dal database: cancella `allowed_writers` e `is_writer()`, azzera le vecchie policy e ne mette una sola per tabella. Rieseguibile senza danni |
+| `edge-function-cosa-cucino.ts` | il codice della Edge Function. **Non viene servito da Pages**: sta nel repo solo come copia di riferimento, va incollato nel pannello Supabase |
+| `limite-generatore.sql` | tabella e funzione del tetto giornaliero di generazioni |
 | `seed-dati-iniziali.sql` | inventario e ricette di partenza (11/08) |
 | `README-OPERATIVO.md` | la routine per l'utente |
 | `DATI-INIZIALI.txt` | fotografia di partenza |
