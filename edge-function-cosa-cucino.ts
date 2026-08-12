@@ -165,6 +165,14 @@ Un piatto può richiedere qualcosa che non è in dispensa, ma con regole strette
 - ALMENO UNA delle 3 proposte deve essere completamente fattibile con quello che c'è:
   la sua lista "manca" deve essere vuota.
 
+## 10. NON RIPETERTI
+Ti viene dato l'elenco di quello che è stato mangiato negli ultimi giorni.
+- La stessa fonte proteica principale non va proposta più di 2 volte in 3 giorni.
+- Lo stesso piatto non va riproposto se è stato mangiato negli ultimi 2 giorni.
+- Dichiara sempre la fonte proteica in "proteina_principale", in una parola minuscola
+  e generica: pollo, tacchino, tonno, uova, manzo, pesce, legumi, formaggio, maiale.
+  Serve proprio a far funzionare questa regola nei giorni successivi.
+
 ## COSA NON FARE
 - Non riproporre mai le ricette segnate come "da non riproporre".
 - Le ricette segnate come preferite hanno priorità, se gli ingredienti ci sono.
@@ -290,6 +298,18 @@ Deno.serve(async (req) => {
     return errore('Non riesco a leggere la dispensa. Riprova fra poco.', 500);
   }
 
+  // Gli ultimi 5 giorni di pasti, per non ripetere sempre le stesse cose.
+  // Se la tabella non esiste ancora, si va avanti lo stesso.
+  let recenti: Array<{ day: string; piatto: string; proteina: string | null }> = [];
+  try {
+    const da = new Date();
+    da.setDate(da.getDate() - 5);
+    recenti = await leggi(
+      'meals_log',
+      `day,piatto,proteina&day=gte.${da.toISOString().slice(0, 10)}&order=day.desc`,
+    );
+  } catch { /* niente diario: pazienza */ }
+
   if (!inv.length) {
     return errore('La dispensa è vuota: aggiungi qualche ingrediente e riprova.', 400);
   }
@@ -318,6 +338,11 @@ ${perCat('dispensa')}
 Preferite (priorità): ${nomiPref('fav')}
 Vanno bene: ${nomiPref('ok')}
 DA NON RIPROPORRE MAI: ${nomiPref('no')}
+
+## MANGIATO NEGLI ULTIMI GIORNI (per non ripeterti)
+${recenti.length
+  ? recenti.map((m) => `- ${m.day}: ${m.piatto}${m.proteina ? ` [proteina: ${m.proteina}]` : ''}`).join('\n')
+  : '- (nessun pasto registrato)'}
 
 ## OBIETTIVI DEL GIORNO
 ${impostazioni.kcal_target ?? 2200} kcal · ${impostazioni.protein_target ?? 170} g di proteine

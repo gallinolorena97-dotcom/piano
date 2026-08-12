@@ -246,6 +246,26 @@ section[hidden]{display:none}
 .cuc-scelte button[aria-pressed="true"]::after{content:'';}
 .cuc-esito.zero .cuc-scelte button[aria-pressed="true"]{background:#6d3f10;color:#fff;border-color:#6d3f10}
 
+/* ---------- DIARIO ---------- */
+.dg-giorno{
+  background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  overflow:hidden;margin-bottom:10px;
+}
+.dg-band{
+  background:var(--sage);padding:7px 12px;display:flex;align-items:baseline;gap:8px;
+  border-bottom:1px solid var(--line);
+}
+.dg-data{flex:1;font-weight:700;color:var(--green);font-size:14.5px}
+.dg-tot{font-size:13px;font-weight:700;color:var(--green);font-variant-numeric:tabular-nums}
+.dg-riga{display:flex;gap:8px;padding:7px 12px;align-items:baseline;font-size:14.5px}
+.dg-riga + .dg-riga{border-top:1px dashed #F0EADC}
+.dg-quale{
+  font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--ink-soft);
+  text-transform:uppercase;min-width:64px;
+}
+.dg-piatto{flex:1;word-break:break-word}
+.dg-num{color:var(--ink-soft);font-size:12.5px;white-space:nowrap;font-variant-numeric:tabular-nums}
+
 /* ---------- SPESA ---------- */
 .sp-item{display:flex;align-items:center;gap:11px;padding:12px;font-size:15.5px}
 .sp-item + .sp-item{border-top:1px solid #F2ECE0}
@@ -335,6 +355,12 @@ section[hidden]{display:none}
 
   <!-- ============ COSA CUCINO ============ -->
   <section id="tab-cucino" hidden>
+    <div class="chips" data-group="vista" style="margin-bottom:12px">
+      <button data-v="proposte" aria-pressed="true">Proposte</button>
+      <button data-v="diario"   aria-pressed="false">Diario</button>
+    </div>
+
+    <div id="cuProposte">
     <div class="panel">
       <div class="q-label">Quale pasto</div>
       <div class="chips" data-group="pasto">
@@ -365,6 +391,34 @@ section[hidden]{display:none}
     </div>
 
     <div id="cuBody"></div>
+    </div><!-- /cuProposte -->
+
+    <div id="cuDiario" hidden>
+      <div class="panel">
+        <div class="q-label" style="margin-top:0">Aggiungi un pasto a mano</div>
+        <p class="hint" style="margin:0 0 8px">Per quando mangi fuori o cucini
+          senza passare dal generatore.</p>
+        <input class="field" id="dgPiatto" placeholder="Cosa hai mangiato" autocomplete="off">
+        <div class="form-row">
+          <input class="field" id="dgGiorno" type="date" style="flex:1.2">
+          <select class="field" id="dgPasto" style="flex:1">
+            <option value="pranzo">Pranzo</option>
+            <option value="cena">Cena</option>
+            <option value="colazione">Colazione</option>
+            <option value="spuntino">Spuntino</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <input class="field" id="dgProt" type="number" inputmode="numeric" placeholder="proteine g">
+          <input class="field" id="dgKcal" type="number" inputmode="numeric" placeholder="kcal">
+          <button class="btn" id="dgAdd">+</button>
+        </div>
+      </div>
+      <div id="dgBody"><div class="loading">Carico il diario…</div></div>
+      <div class="form-row" id="dgAzioni" hidden>
+        <button class="btn ghost" id="dgCopia" style="flex:1">Copia il riepilogo della settimana</button>
+      </div>
+    </div>
   </section>
 
   <!-- ============ SPESA ============ -->
@@ -480,6 +534,7 @@ async function loadAll(){
     S.settings = Object.fromEntries((s.data || []).map(x => [x.key, x.value]));
     // la lista della spesa è facoltativa: se la tabella non c'è, il resto vive lo stesso
     S.spesa = sp.error ? [] : (sp.data || []);
+    await caricaDiario();
 
     banner(null);
     renderAll();
@@ -488,7 +543,10 @@ async function loadAll(){
   }
 }
 
-function renderAll(){ renderTargets(); renderPlan(); renderInv(); renderRec(); renderSpesa(); }
+function renderAll(){
+  renderTargets(); renderPlan(); renderInv(); renderRec(); renderSpesa(); renderDiario();
+  $('#dgGiorno').value = oggiISO();
+}
 
 function renderTargets(){
   const k = S.settings.kcal_target, pr = S.settings.protein_target;
@@ -770,6 +828,7 @@ $$('#tab-cucino .chips').forEach(gruppo => {
     if (!b) return;
     [...gruppo.children].forEach(x => x.setAttribute('aria-pressed', String(x === b)));
     const campo = gruppo.dataset.group;
+    if (campo === 'vista'){ mostraVista(b.dataset.v); return; }
     CU[campo] = campo === 'minuti' ? Number(b.dataset.v) : b.dataset.v;
   });
 });
@@ -1145,8 +1204,9 @@ async function confermaCucinato(p, righe, box){
 
     // 4. diario dei pasti (se la tabella non c'è ancora, non è un dramma)
     pasto = await registraPasto(p);
+    if (pasto) await caricaDiario();
 
-    renderInv(); renderRec();
+    renderInv(); renderRec(); renderDiario();
     box.remove();
 
     const quante = fatte.length;
@@ -1236,6 +1296,137 @@ async function registraPasto(p){
     return null;   // tabella non ancora creata: il resto funziona lo stesso
   }
 }
+
+/* ============================================================
+   BLOCCO 3 — DIARIO DEI PASTI
+   Un registro, non una pagella: niente punteggi, niente streak,
+   niente grafici di aderenza.
+   ============================================================ */
+const PASTO_ORDINE = { colazione:0, spuntino:1, pranzo:2, cena:3 };
+
+function mostraVista(quale){
+  $('#cuProposte').hidden = (quale !== 'proposte');
+  $('#cuDiario').hidden   = (quale !== 'diario');
+  if (quale === 'diario') renderDiario();
+  window.scrollTo(0, 0);
+}
+
+async function caricaDiario(){
+  const da = new Date();
+  da.setDate(da.getDate() - 13);
+  const dal = `${da.getFullYear()}-${String(da.getMonth()+1).padStart(2,'0')}-${String(da.getDate()).padStart(2,'0')}`;
+  const { data, error } = await sb.from('meals_log')
+    .select('id,day,pasto,piatto,prot,kcal,chi')
+    .gte('day', dal)
+    .order('day', { ascending:false });
+  S.diario = error ? [] : (data || []);
+}
+
+function renderDiario(){
+  const box = $('#dgBody');
+  $('#dgAzioni').hidden = !S.diario.length;
+
+  if (!S.diario.length){
+    box.innerHTML = `<div class="empty"><b>Il diario è vuoto.</b><br>
+      Si riempie da solo quando premi «Ho cucinato questo»,
+      oppure aggiungi un pasto a mano qui sopra.</div>`;
+    return;
+  }
+
+  const perGiorno = new Map();
+  for (const m of S.diario){
+    if (!perGiorno.has(m.day)) perGiorno.set(m.day, []);
+    perGiorno.get(m.day).push(m);
+  }
+
+  box.innerHTML = [...perGiorno.entries()].map(([giorno, pasti]) => {
+    pasti.sort((a,b) => (PASTO_ORDINE[a.pasto] ?? 9) - (PASTO_ORDINE[b.pasto] ?? 9));
+    const tot = pasti.reduce((s,m) => s + (Number(m.prot) || 0), 0);
+    return `<article class="dg-giorno">
+      <div class="dg-band">
+        <span class="dg-data">${esc(labelData(giorno))}</span>
+        ${tot ? `<span class="dg-tot">${tot} g proteine</span>` : ''}
+      </div>
+      ${pasti.map(m => `<div class="dg-riga" data-id="${m.id}">
+        <div class="dg-quale">${esc(m.pasto)}</div>
+        <div class="dg-piatto">${esc(m.piatto)}</div>
+        <div class="dg-num">${[
+          m.prot != null ? `${m.prot} g P` : '',
+          m.kcal != null ? `${m.kcal} kcal` : '',
+        ].filter(Boolean).join(' · ')}</div>
+        <button class="icon-btn" data-act="del" aria-label="Elimina">×</button>
+      </div>`).join('')}
+    </article>`;
+  }).join('');
+}
+
+$('#dgAdd').onclick = async () => {
+  const piatto = $('#dgPiatto').value.trim();
+  if (!piatto){ toast('Scrivi cosa hai mangiato.'); return; }
+  const riga = {
+    day: $('#dgGiorno').value || oggiISO(),
+    pasto: $('#dgPasto').value,
+    piatto,
+    prot: $('#dgProt').value === '' ? null : Number($('#dgProt').value),
+    kcal: $('#dgKcal').value === '' ? null : Number($('#dgKcal').value),
+    chi: null,
+  };
+  try{
+    const { data, error } = await sb.from('meals_log').insert(riga).select().single();
+    if (error) throw error;
+    S.diario.unshift(data);
+    S.diario.sort((a,b) => b.day.localeCompare(a.day));
+    ['#dgPiatto','#dgProt','#dgKcal'].forEach(s => $(s).value = '');
+    renderDiario();
+    toast(`Segnato: ${piatto}`);
+  }catch(e){ banner(spiegaErrore(e)); }
+};
+
+$('#dgBody').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('[data-act="del"]');
+  if (!b) return;
+  const id = b.closest('.dg-riga').dataset.id;
+  const m = S.diario.find(x => x.id === id);
+  if (!m) return;
+  try{
+    const { error } = await sb.from('meals_log').delete().eq('id', id);
+    if (error) throw error;
+    S.diario = S.diario.filter(x => x.id !== id);
+    renderDiario();
+    toast(`Tolto dal diario: ${m.piatto}`, async () => {
+      const { data, error } = await sb.from('meals_log').insert({
+        id:m.id, day:m.day, pasto:m.pasto, piatto:m.piatto,
+        prot:m.prot, kcal:m.kcal, chi:m.chi,
+      }).select().single();
+      if (error){ banner(spiegaErrore(error)); return; }
+      S.diario.push(data);
+      S.diario.sort((a,b) => b.day.localeCompare(a.day));
+      renderDiario(); toast('Rimesso nel diario.');
+    });
+  }catch(e){ banner(spiegaErrore(e)); }
+});
+
+$('#dgCopia').onclick = () => {
+  const da = new Date(); da.setDate(da.getDate() - 6);
+  const dal = `${da.getFullYear()}-${String(da.getMonth()+1).padStart(2,'0')}-${String(da.getDate()).padStart(2,'0')}`;
+  const settimana = S.diario.filter(m => m.day >= dal);
+
+  const out = ['DIARIO — ultimi 7 giorni', ''];
+  const perGiorno = new Map();
+  for (const m of settimana){
+    if (!perGiorno.has(m.day)) perGiorno.set(m.day, []);
+    perGiorno.get(m.day).push(m);
+  }
+  if (!perGiorno.size) out.push('(nessun pasto registrato)');
+  for (const [giorno, pasti] of [...perGiorno.entries()].sort((a,b) => a[0].localeCompare(b[0]))){
+    pasti.sort((a,b) => (PASTO_ORDINE[a.pasto] ?? 9) - (PASTO_ORDINE[b.pasto] ?? 9));
+    const tot = pasti.reduce((s,m) => s + (Number(m.prot) || 0), 0);
+    out.push(`${labelData(giorno)}${tot ? ` — ${tot} g proteine` : ''}`);
+    pasti.forEach(m => out.push(`- ${m.pasto}: ${m.piatto}${m.prot != null ? ` (${m.prot} g P)` : ''}`));
+    out.push('');
+  }
+  copiaTesto(out.join('\n'), 'Riepilogo copiato!');
+};
 
 /* ============================================================
    BLOCCO 2 — LISTA DELLA SPESA
@@ -1333,7 +1524,7 @@ $('#spPulisci').onclick = async () => {
     if (error) throw error;
     S.spesa = S.spesa.filter(x => !x.done);
     renderSpesa();
-    toast(`Tolte ${fatte.length} voci spuntate.`, async () => {
+    toast(fatte.length === 1 ? 'Tolta 1 voce spuntata.' : `Tolte ${fatte.length} voci spuntate.`, async () => {
       const { data, error } = await sb.from('shopping_list')
         .insert(fatte.map(x => ({ id:x.id, name:x.name, done:x.done }))).select();
       if (error){ banner(spiegaErrore(error)); return; }
