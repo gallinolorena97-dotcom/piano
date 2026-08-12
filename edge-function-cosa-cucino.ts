@@ -212,6 +212,27 @@ Ti viene dato l'elenco di quello che è stato mangiato negli ultimi giorni.
   e generica: pollo, tacchino, tonno, uova, manzo, pesce, legumi, formaggio, maiale.
   Serve proprio a far funzionare questa regola nei giorni successivi.
 
+## 11. LA VOGLIA — orienta, non comanda
+A volte viene dichiarata una voglia: "qualcosa di cremoso", "asiatico",
+"voglio usare i porcini". Trattala come una DIREZIONE, con questa precedenza:
+
+1. **I divieti dei profili e il minimo proteico vengono prima, sempre.**
+   Nessuna voglia li scavalca, per nessun motivo.
+2. Dentro quei limiti, avvicinati il più possibile a quello che è stato chiesto:
+   se la voglia è "cremoso", cerca la cremosità; se è "asiatico", vai in quella
+   direzione; se nomina un ingrediente, costruiscici sopra il piatto.
+3. **Se la voglia si scontra con i vincoli, non scartarla e non ignorarla**:
+   proponi la versione più vicina che li rispetta e **dichiara il compromesso**
+   nel campo "perche". Per esempio:
+   "carbonara alleggerita: guanciale 40 g e più albumi per restare nei target"
+   oppure "niente pomodoro crudo come chiede il profilo: uso datterini saltati".
+   Chi legge deve capire che cosa è stato cambiato e perché.
+4. Se la voglia richiede un ingrediente che non c'è in dispensa, vale la regola 9:
+   proponi comunque, mettilo in "manca" (sempre entro il limite di 2, e mai come
+   fonte proteica principale).
+
+Se la voglia non è dichiarata, non inventartene una: comportati normalmente.
+
 ## COSA NON FARE
 - Non riproporre mai le ricette segnate come "da non riproporre".
 - Le ricette segnate come preferite hanno priorità, se gli ingredienti ci sono.
@@ -306,6 +327,7 @@ Deno.serve(async (req) => {
   const minuti = [15, 30, 60].includes(Number(body.minuti)) ? Number(body.minuti) : 30;
   const quante = Number(body.quante) === 1 ? 1 : 3;
   const giaMangiato  = String(body.gia_mangiato ?? '').slice(0, 600);
+  const voglia       = String(body.voglia ?? '').slice(0, 300);
   const personalizza = String(body.personalizza ?? '').slice(0, 400);
   const escludi = Array.isArray(body.escludi)
     ? (body.escludi as unknown[]).slice(0, 40).map((x) => String(x).slice(0, 120))
@@ -441,6 +463,9 @@ Chi mangia: ${(() => {
 })()}
 Tempo a disposizione: ${minuti === 60 ? "un'ora o più" : `${minuti} minuti al massimo`}
 ${giaMangiato ? `Già mangiato oggi: ${giaMangiato}\n(calcola quante proteine mancano e dimensiona il pasto di conseguenza)` : 'Già mangiato oggi: non dichiarato'}
+${voglia
+  ? `VOGLIA DICHIARATA: ${voglia}\n(vedi la regola 11: orienta le proposte in questa direzione, ma i divieti e il minimo proteico vengono prima. Se c'è un compromesso, dichiaralo nel campo "perche".)`
+  : 'Voglia dichiarata: nessuna'}
 ${escludi.length ? `\nPIATTI DA NON RIPROPORRE IN QUESTA SESSIONE (già visti o scartati):\n${escludi.map((n) => `- ${n}`).join('\n')}` : ''}
 ${personalizza ? `\nRICHIESTA DI MODIFICA DA RISPETTARE: ${personalizza}\n(ricalcola proteine e kcal dopo la modifica)` : ''}
 

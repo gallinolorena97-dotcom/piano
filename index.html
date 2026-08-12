@@ -746,6 +746,12 @@ select.field{appearance:none;-webkit-appearance:none;
       <p class="hint" style="margin-top:6px">Se lo scrivi, calcolo quante proteine ti mancano
         e dimensiono il pasto di conseguenza.</p>
 
+      <div class="q-label">Che voglia hai? <span>— facoltativo</span></div>
+      <input class="field" id="cuVoglia" autocomplete="off"
+             placeholder="es. qualcosa di cremoso · asiatico · voglio usare i porcini">
+      <p class="hint" style="margin-top:6px">Orienta le proposte in quella direzione.
+        Non tocca i tuoi vincoli: proteine e divieti restano quelli.</p>
+
       <button class="btn" id="cuGen" style="width:100%;margin-top:12px">Genera 3 proposte</button>
     </div>
 
@@ -1422,6 +1428,7 @@ const baseRichiesta = () => ({
   io_slug: S.io,          // chi sta usando l'app: i profili li rilegge la function
   minuti: CU.minuti,
   gia_mangiato: $('#cuGia').value.trim(),
+  voglia: $('#cuVoglia').value.trim(),
   escludi: CU.visti,
 });
 
