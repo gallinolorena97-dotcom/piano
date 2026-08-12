@@ -427,6 +427,95 @@ select.field{appearance:none;-webkit-appearance:none;
   padding:11px 16px;text-align:right;font-size:13.5px;font-weight:700;color:var(--ink);
   font-variant-numeric:tabular-nums;
 }
+.day-tot .tot-nota{
+  display:block;margin-top:4px;font-size:12px;font-weight:500;color:var(--muted);
+}
+
+/* ------------------------------------------------------------
+   8-bis · V5 · LA STRISCIA DEI 7 GIORNI
+   Si appiccica sotto la testata come le intestazioni della
+   Dispensa, e per lo stesso motivo e' una pillola dichiarata e
+   non un rettangolo mimetico: il fondo dell'app e' sfumato.
+   ------------------------------------------------------------ */
+.settimana{
+  position:-webkit-sticky;position:sticky;
+  top:calc(var(--h-alt) + var(--nav-alt) + 6px);
+  z-index:24;
+  display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;
+  padding:7px 6px;margin:0 0 14px;
+  background:linear-gradient(96deg,#EDE4FA 0%,#F7F0FB 55%,#E9F5EF 100%);
+  border-radius:999px;box-shadow:0 2px 8px rgba(43,36,64,.07);
+  scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none;
+}
+.settimana::-webkit-scrollbar{display:none}
+/* I 7 giorni devono starci tutti sullo schermo di un telefono, senza
+   scorrere: si allargano se c'e' posto, ma non scendono sotto i 42px.
+   Con piu' di 7 giorni (piano lungo) la striscia scorre. */
+.gg{
+  flex:1 0 42px;min-width:42px;min-height:56px;padding:6px 3px 7px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  background:var(--surface);border:1.5px solid transparent;border-radius:var(--r-m);
+  scroll-snap-align:center;transition:background var(--t),border-color var(--t);
+}
+.gg-dow{font-size:10px;font-weight:700;letter-spacing:.9px;color:var(--muted);text-transform:uppercase}
+.gg-num{font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;color:var(--ink);line-height:1.1}
+/* il pallino dice se quel giorno ha un piano, e di che tipo */
+.gg-pt{width:6px;height:6px;border-radius:50%;background:var(--menta);margin-top:1px}
+.gg.bozza .gg-pt{background:transparent;border:1.5px solid var(--lavanda)}
+.gg.vuoto .gg-pt,.gg.passato .gg-pt{background:transparent}
+.gg.passato .gg-num{font-weight:500;color:var(--muted)}
+.gg.oggi{border-color:var(--viola)}
+.gg[aria-pressed="true"]{background:var(--viola);border-color:var(--viola)}
+.gg[aria-pressed="true"] .gg-num,
+.gg[aria-pressed="true"] .gg-dow{color:#fff}
+.gg[aria-pressed="true"] .gg-pt{background:#fff;border-color:#fff}
+.gg[aria-pressed="true"].vuoto .gg-pt{background:transparent;border:1.5px solid #fff}
+
+/* ------------------------------------------------------------
+   8-ter · V5 · I TRE TRATTAMENTI DEL GIORNO
+   Un giorno lontano cambiera': l'interfaccia deve dirlo. Ma lo
+   dice col bordo e con l'etichetta, non sbiadendo il testo:
+   in cucina i numeri devono restare leggibili.
+   ------------------------------------------------------------ */
+.day.bozza{border-style:dashed;border-color:var(--linea-forte);box-shadow:none}
+.day.bozza .day-band{background:linear-gradient(104deg,#F3EDFB 0%,#FAF3EA 66%,#F0F7F3 100%)}
+.day.passato .day-band{background:var(--surface-2)}
+.badge-bozza,.badge-passato{
+  font-size:10.5px;font-weight:700;letter-spacing:.8px;padding:3px 9px;border-radius:99px;
+}
+.badge-bozza{background:var(--lavanda-soft);color:var(--viola-testo);border:1px dashed var(--viola)}
+.badge-passato{background:var(--surface-2);color:var(--muted);border:1px solid var(--linea-forte)}
+
+.pasto{padding:13px 16px}
+.pasto + .pasto,.row + .pasto{border-top:1px solid var(--bg)}
+.pasto-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:6px}
+.pasto-quale{
+  font-size:10.5px;font-weight:700;letter-spacing:.9px;color:var(--muted);text-transform:uppercase;
+}
+.pasto-chi{
+  font-size:12.5px;font-weight:600;color:var(--viola-testo);
+  background:var(--lavanda-soft);padding:3px 10px;border-radius:99px;
+}
+.pasto-tempo{font-size:12.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
+.pasto-piatto{
+  font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:17px;line-height:1.3;
+  color:var(--ink);
+}
+.pasto-num{margin-top:5px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pasto-num b{color:var(--viola);font-weight:700}
+.pasto-niente{color:var(--muted);font-style:italic;font-size:14.5px}
+.pasto.fuori .pasto-piatto,.pasto.libero .pasto-piatto{
+  font-family:'Outfit',sans-serif;font-size:15.5px;font-weight:600;color:var(--muted);
+}
+/* etichetta dentro i riquadri (dolce, avanzo, spesa, freezer) */
+.nota-eti{
+  display:block;font-size:10px;font-weight:700;letter-spacing:1px;
+  text-transform:uppercase;margin-bottom:3px;opacity:.85;
+}
+/* Il tocco dolce ha un riquadro suo: non si mescola agli ingredienti */
+.nota.dolce{background:var(--lavanda-soft);color:var(--viola-testo)}
+.row-per{color:inherit;opacity:.85;font-size:13.5px}
 
 /* ============================================================
    9 · CATEGORIE APPICCICOSE (Dispensa)
@@ -1021,11 +1110,13 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth:{ persistSession:fals
 
 /* ---------- stato dell'app ---------- */
 const S = {
-  plan:[], inv:[], rec:[], settings:{}, spesa:[], diario:[],
+  piano:[], inv:[], rec:[], settings:{}, spesa:[], diario:[],
   profili:[],            // i due profili, letti dal database
   voti:{},               // voti per ricetta: { idRicetta: { slug: 'fav' } }
   io:'lorena',           // chi sono su QUESTO telefono (salvato nel dispositivo)
   tab:'piano',
+  giornoSel:null,        // il giorno aperto nel calendario
+  pianoErr:null,         // se la tabella plan_meals non c'è ancora
 };
 try { S.io = localStorage.getItem('piano-io') || S.io; } catch { /* modalità privata */ }
 
@@ -1093,7 +1184,8 @@ function spiegaErrore(e){
   if (/Could not find the table|schema cache|does not exist/i.test(m)){
     const t = (m.match(/public\.([a-z_]+)/i) || [])[1];
     const quale = { recipe_votes:'tabelle-voti-v7.sql', profiles:'tabelle-profili-v6.sql',
-                    meals_log:'tabelle-generatore-v4.sql', shopping_list:'tabelle-generatore-v4.sql' }[t];
+                    meals_log:'tabelle-generatore-v4.sql', shopping_list:'tabelle-generatore-v4.sql',
+                    plan_meals:'tabelle-piano-v5.sql' }[t];
     return quale
       ? `Manca una tabella nel database. Esegui ${quale} su Supabase e riprova.`
       : 'Manca una tabella nel database: c’è un file SQL da eseguire su Supabase.';
@@ -1113,9 +1205,16 @@ async function loadAll(){
     $('#recBody').innerHTML  = '<div class="empty">Nessun dato: manca la connessione.</div>';
     return;
   }
+  // Il calendario guarda una finestra intorno a oggi: indietro quanto
+  // basta per rivedere la settimana appena passata, avanti quanto serve
+  // al piano generato. Lo storico piu' vecchio resta nel database.
+  const daISO = addGiorni(oggiISO(), -13);
+  const aISO  = addGiorni(oggiISO(), 20);
+
   try{
     const [p, i, r, s, sp, pf, vt] = await Promise.all([
-      sb.from('plan_days').select('day,payload').order('day', { ascending:true }),
+      sb.from('plan_meals').select('*').gte('day', daISO).lte('day', aISO)
+        .order('day', { ascending:true }),
       sb.from('inventory_items').select('id,name,qty,cat'),
       sb.from('recipes').select('id,name,pref'),
       sb.from('settings').select('key,value'),
@@ -1123,9 +1222,12 @@ async function loadAll(){
       sb.from('profiles').select('*').order('slug', { ascending:true }),
       sb.from('recipe_votes').select('recipe_id,profile_slug,pref'),
     ]);
-    for (const res of [p,i,r,s]) if (res.error) throw res.error;
+    for (const res of [i,r,s]) if (res.error) throw res.error;
 
-    S.plan = p.data || [];
+    // Il calendario e' facoltativo: se la tabella non c'e' ancora, il
+    // resto dell'app vive lo stesso e la tab Piano lo dice da sola.
+    S.piano = p.error ? [] : (p.data || []);
+    S.pianoErr = p.error || null;
     S.inv  = (i.data || []).sort((a,b) => a.name.localeCompare(b.name,'it'));
     S.rec  = (r.data || []).sort((a,b) => a.name.localeCompare(b.name,'it'));
     S.settings = Object.fromEntries((s.data || []).map(x => [x.key, x.value]));
@@ -1178,77 +1280,345 @@ function renderTargets(){
 }
 
 /* ============================================================
-   TAB 1 — PIANO
+   TAB 1 — PIANO · il calendario (v5, Blocco 1)
+
+   La tabella si chiama plan_meals e ha UNA RIGA PER PASTO, non per
+   giorno: i promemoria di scongelamento vanno mostrati su un giorno
+   diverso da quello del pasto, e gli avanzi collegano due pasti fra
+   loro. La vecchia plan_days non viene piu' letta da qui.
    ============================================================ */
 const oggiISO = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 };
 
+/** Sposta una data ISO di n giorni restando sul fuso locale. */
+function addGiorni(iso, n){
+  const [y,m,d] = iso.split('-').map(Number);
+  const dt = new Date(y, m-1, d + n);
+  return `${dt.getFullYear()}-${String(dt.getMonth()+1).padStart(2,'0')}-${String(dt.getDate()).padStart(2,'0')}`;
+}
+
+const GIORNI = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'];
+
 function labelData(iso){
   const [y,m,d] = iso.split('-').map(Number);
   const dt = new Date(y, m-1, d);
-  const g = ['Domenica','Lunedì','Martedì','Mercoledì','Giovedì','Venerdì','Sabato'][dt.getDay()];
-  return `${g} ${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`;
+  return `${GIORNI[dt.getDay()]} ${String(d).padStart(2,'0')}/${String(m).padStart(2,'0')}`;
+}
+
+function dowBreve(iso){
+  const [y,m,d] = iso.split('-').map(Number);
+  return GIORNI[new Date(y, m-1, d).getDay()].slice(0,3);
+}
+
+/** "oggi", "domani", "ieri"… serve ai promemoria che parlano di altri giorni. */
+function quandoRelativo(iso){
+  const o = oggiISO();
+  if (iso === o)                return 'oggi';
+  if (iso === addGiorni(o,  1)) return 'domani';
+  if (iso === addGiorni(o, -1)) return 'ieri';
+  if (iso === addGiorni(o,  2)) return 'dopodomani';
+  return labelData(iso).toLowerCase();
+}
+
+/* Le voci fisse della giornata di Ciprian. Entrano nel totale, ma
+   restano scritte sotto: un numero non deve mai arrivare dal nulla. */
+const FISSE_CIPRIAN = [
+  { nome:'colazione',    prot:20, kcal:290 },
+  { nome:'yogurt greco', prot:17, kcal:100 },
+];
+
+/* ⚠️ Gli slug della tabella profiles NON sono i nomi delle persone
+   (vedi CLAUDE.md): lo slug 'lorena' contiene il profilo di Ciprian e
+   lo slug 'x' quello di Lorena. Il campo "chi" di plan_meals usa invece
+   i nomi veri, ed e' qui che i due mondi si incontrano. */
+const SLUG_DI_CHI  = { ciprian:'lorena', lorena:'x' };
+const NOME_RIPIEGO = { ciprian:'Ciprian', lorena:'Lorena' };
+const nomeDiChi = (c) => profilo(SLUG_DI_CHI[c])?.nome || NOME_RIPIEGO[c] || c;
+const nomeChi = (chi) => chi === 'entrambi'
+  ? `${nomeDiChi('ciprian')} e ${nomeDiChi('lorena')}`
+  : nomeDiChi(chi);
+const mangiaCiprian = (r) => r.chi === 'ciprian' || r.chi === 'entrambi';
+
+const pastiDi = (iso) => S.piano.filter(r => r.day === iso);
+
+/** Il trattamento visivo del giorno: passato · confermato · bozza. */
+function statoGiorno(iso, righe){
+  const o = oggiISO();
+  if (iso < o) return 'passato';
+  if (!righe.length) return 'vuoto';
+  // se il generatore ha gia' scritto lo stato lo rispetto; se manca, lo
+  // deduco dalla distanza: oggi e domani confermati, da dopodomani bozza
+  const stati = righe.map(r => (r.stato === 'bozza' || r.stato === 'confermato')
+    ? r.stato
+    : (iso <= addGiorni(o,1) ? 'confermato' : 'bozza'));
+  return stati.includes('bozza') ? 'bozza' : 'confermato';
+}
+
+/** I giorni della striscia: quelli del piano, e comunque almeno 7. */
+function giorniStriscia(){
+  const o = oggiISO();
+  const dal = addGiorni(o, -6), al = addGiorni(o, 13);
+  const conPiano = [...new Set(S.piano.map(r => r.day))]
+    .filter(d => d >= dal && d <= al).sort();
+
+  let inizio = o, fine = o;
+  if (conPiano.length){
+    if (conPiano[0] < inizio) inizio = conPiano[0];
+    if (conPiano[conPiano.length-1] > fine) fine = conPiano[conPiano.length-1];
+  }
+  const lista = [];
+  for (let d = inizio; d <= fine; d = addGiorni(d,1)) lista.push(d);
+  while (lista.length < 7) lista.push(addGiorni(lista[lista.length-1], 1));
+  return lista;
 }
 
 function renderPlan(){
   const box = $('#planBody');
-  if (!S.plan.length){
-    box.innerHTML = `<div class="empty vuoto-ill">
-      <svg viewBox="0 0 180 138" width="176" height="135" aria-hidden="true"><use href="#ill-piano"/></svg>
-      <b>Nessun piano caricato.</b>
-      <p>Il piano settimanale si aggiunge incollandolo a Claude Code,
-         che lo scrive nel database. Vedi <b>README-OPERATIVO.md</b>.</p></div>`;
+
+  if (S.pianoErr){
+    box.innerHTML = `<div class="empty">
+      <b>Il calendario non è ancora installato.</b>
+      <p style="margin:8px 0 0">Esegui <b>tabelle-piano-v5.sql</b> su Supabase,
+         poi riapri l'app.</p></div>`;
     return;
   }
-  const today = oggiISO();
-  box.innerHTML = S.plan.map(d => cardGiorno(d, today)).join('');
 
-  const el = box.querySelector(`.day[data-day="${today}"]`);
-  if (el) setTimeout(() => el.scrollIntoView({ block:'start', behavior:'auto' }), 60);
-}
-
-function cardGiorno(rec, today){
-  const p = rec.payload || {};
-  const isToday = rec.day === today;
-  const rows = Array.isArray(p.rows) ? p.rows : [];
-
-  const rowsHtml = rows.map(r => {
-    const tipo = r.type === 'freezer' ? 'freezer' : (r.type === 'note' ? 'note' : 'meal');
-    const num  = [
-      r.kcal != null ? `${r.kcal} kcal` : '',
-      r.prot != null ? `${r.prot} g P`  : '',
-    ].filter(Boolean).join(' · ');
-    const titolo = r.title ? `<div class="row-title">${esc(r.title)}</div>` : '';
-    const testo  = tipo === 'freezer' && !/^❄/.test(r.text || '')
-      ? '❄ ' + (r.text || '') : (r.text || '');
-    return `<div class="row ${tipo}">
-      ${titolo}
-      <div class="row-text">${esc(testo)}</div>
-      ${num ? `<div class="row-num">${esc(num)}</div>` : ''}
+  if (!S.piano.length){
+    box.innerHTML = `<div class="empty vuoto-ill">
+      <svg viewBox="0 0 180 138" width="176" height="135" aria-hidden="true"><use href="#ill-piano"/></svg>
+      <b>Non c'è ancora un piano.</b>
+      <p>Sette giorni di pranzi e cene, costruiti su quello che hai
+         davvero in dispensa.</p>
+      <button class="btn" id="pnGenera" style="margin-top:16px">Genera la settimana</button>
     </div>`;
-  }).join('');
-
-  let tot = '';
-  if (typeof p.tot === 'string') tot = p.tot;
-  else if (p.tot && typeof p.tot === 'object'){
-    tot = [
-      p.tot.kcal != null ? `${p.tot.kcal} kcal` : '',
-      p.tot.prot != null ? `${p.tot.prot} g proteine` : '',
-    ].filter(Boolean).join('  ·  ');
+    return;
   }
 
-  return `<article class="day ${isToday ? 'today' : ''}" data-day="${esc(rec.day)}">
+  const giorni = giorniStriscia();
+  if (!giorni.includes(S.giornoSel))
+    S.giornoSel = giorni.includes(oggiISO()) ? oggiISO() : giorni[0];
+
+  box.innerHTML =
+    `<div class="settimana" id="pnStriscia" aria-label="I giorni del piano">
+       ${giorni.map(chipGiorno).join('')}
+     </div>
+     <div id="pnCard">${cardGiorno(S.giornoSel)}</div>`;
+
+  const sel = box.querySelector('.gg[aria-pressed="true"]');
+  if (sel) setTimeout(() => sel.scrollIntoView({ inline:'center', block:'nearest' }), 60);
+}
+
+function chipGiorno(iso){
+  const righe = pastiDi(iso);
+  const st    = statoGiorno(iso, righe);
+  const oggi  = iso === oggiISO();
+  const cls   = ['gg', st, oggi ? 'oggi' : ''].filter(Boolean).join(' ');
+  const eti   = [labelData(iso), oggi ? 'oggi' : '', st === 'bozza' ? 'bozza' : '']
+    .filter(Boolean).join(', ');
+  return `<button class="${cls}" data-gg="${esc(iso)}"
+      aria-pressed="${iso === S.giornoSel}" aria-label="${esc(eti)}">
+    <span class="gg-dow">${esc(dowBreve(iso))}</span>
+    <span class="gg-num">${esc(iso.slice(8))}</span>
+    <span class="gg-pt" aria-hidden="true"></span>
+  </button>`;
+}
+
+function cardGiorno(iso){
+  const righe   = pastiDi(iso);
+  const st      = statoGiorno(iso, righe);
+  const isToday = iso === oggiISO();
+
+  const etichetta = st === 'bozza'   ? '<span class="badge-bozza">BOZZA</span>'
+                  : st === 'passato' ? '<span class="badge-passato">PASSATO</span>' : '';
+
+  return `<article class="day ${isToday ? 'today' : ''} ${st}" data-day="${esc(iso)}">
     <div class="day-band">
-      <span class="day-label">${esc(p.label || labelData(rec.day))}</span>
+      <span class="day-label">${esc(labelData(iso))}</span>
       ${isToday ? '<span class="badge-oggi">OGGI</span>' : ''}
-      ${p.tag ? `<span class="day-tag">${esc(p.tag)}</span>` : ''}
+      ${etichetta}
     </div>
-    <div class="day-rows">${rowsHtml || '<div class="row note"><div class="row-text">— nessun pasto indicato —</div></div>'}</div>
-    ${tot ? `<div class="day-tot">TOT ${esc(tot)}</div>` : ''}
+    <div class="day-rows">
+      ${st === 'passato' ? corpoPassato(iso, righe) : corpoPiano(iso, righe)}
+    </div>
+    ${st === 'passato' ? '' : totaliHtml(righe)}
   </article>`;
 }
+
+/** Un giorno futuro mostra il piano, coi promemoria che scadono quel giorno. */
+function corpoPiano(iso, righe){
+  const pezzi = promemoriaDi(iso);
+  for (const quale of ['pranzo','cena']){
+    const r = righe.find(x => x.pasto === quale);
+    pezzi.push(r ? bloccoPasto(r) : `<div class="pasto">
+      <div class="pasto-top"><span class="pasto-quale">${quale}</span></div>
+      <div class="pasto-niente">— niente in programma —</div>
+    </div>`);
+  }
+  return pezzi.join('');
+}
+
+/* I promemoria di scongelamento si mostrano sul giorno in cui vanno
+   fatti, che non e' quello del pasto: e' tutto il motivo per cui la
+   tabella ha una riga per pasto. */
+function promemoriaDi(iso){
+  return S.piano
+    .filter(r => r.scongelare_il === iso && r.scongelamento)
+    .map(r => `<div class="row freezer">
+      <div class="row-text">❄ ${esc(r.scongelamento)}
+        <span class="row-per">— per ${esc(r.pasto)} di ${esc(quandoRelativo(r.day))}</span></div>
+    </div>`);
+}
+
+const riquadro = (stile, eti, testo) =>
+  `<div class="nota ${stile}"><span class="nota-eti">${esc(eti)}</span>${esc(testo)}</div>`;
+
+const frecciaAvanzo = (t) => /^→/.test(String(t).trim()) ? t : `→ ${t}`;
+
+function bloccoPasto(r){
+  const testa = `<div class="pasto-top">
+      <span class="pasto-quale">${esc(r.pasto)}</span>
+      <span class="pasto-chi">${esc(nomeChi(r.chi))}</span>
+      ${r.tempo ? `<span class="pasto-tempo">${esc(String(r.tempo))} min</span>` : ''}
+    </div>`;
+
+  // Fuori e Libero non hanno un piatto da cucinare, ma restano segnati.
+  // Il pasto libero fa parte del metodo: non si chiama mai "sgarro".
+  if (r.modo !== 'casa'){
+    const titolo = r.modo === 'fuori' ? 'Si mangia fuori' : 'Pasto libero';
+    return `<div class="pasto ${esc(r.modo)}">${testa}
+      <div class="pasto-piatto">${esc(r.piatto || titolo)}</div>
+      ${r.nota ? `<div class="nota perche">${esc(r.nota)}</div>` : ''}
+    </div>`;
+  }
+
+  // I numeri sono di Ciprian soltanto: nei pasti di sola Lorena non
+  // compaiono, coerentemente col resto dell'app.
+  const num = mangiaCiprian(r) && (r.prot != null || r.kcal != null)
+    ? `<div class="pasto-num">Per ${esc(nomeDiChi('ciprian'))}: ${[
+        r.prot != null ? `<b>${esc(String(r.prot))} g</b> proteine` : '',
+        r.kcal != null ? `${esc(String(r.kcal))} kcal` : '',
+      ].filter(Boolean).join(' · ')}</div>`
+    : '';
+
+  return `<div class="pasto">
+    ${testa}
+    <div class="pasto-piatto">${esc(r.piatto || '— da decidere —')}</div>
+    ${num}
+    ${ingredientiHtml(r)}
+    ${r.dolce ? riquadro('dolce', 'Tocco dolce', r.dolce) : ''}
+    ${r.avanzo_per ? riquadro('avanzo', 'Avanzo', frecciaAvanzo(r.avanzo_per)) : ''}
+    ${r.scongelamento ? riquadro('freezer', 'Da scongelare', r.scongelamento +
+        (r.scongelare_il ? ` — te lo ricordo ${quandoRelativo(r.scongelare_il)}` : '')) : ''}
+    ${r.dipende_da_spesa ? riquadro('manca', 'Dipende dalla spesa',
+        'Questo pasto aspetta un acquisto: guarda la lista della spesa.') : ''}
+    ${r.nota   ? `<div class="nota perche">${esc(r.nota)}</div>`   : ''}
+    ${r.perche ? `<div class="nota perche">${esc(r.perche)}</div>` : ''}
+  </div>`;
+}
+
+/** Gli ingredienti sono in grammi PER PERSONA: le porzioni diverse
+    delle due persone stanno dentro lo stesso pasto. */
+function ingredientiHtml(r){
+  const lista = Array.isArray(r.ingredienti) ? r.ingredienti : [];
+  if (!lista.length) return '';
+
+  const ordine = ['tutti','ciprian','lorena'];
+  const gruppi = new Map();
+  for (const i of lista){
+    const per = ordine.includes(i.per) ? i.per : 'tutti';
+    if (!gruppi.has(per)) gruppi.set(per, []);
+    gruppi.get(per).push(i);
+  }
+  const unico = gruppi.size === 1;
+
+  return ordine.filter(k => gruppi.has(k)).map(k => {
+    const titolo = unico
+      ? (r.chi === 'entrambi' ? 'Ingredienti · a testa' : 'Ingredienti')
+      : (k === 'tutti' ? 'In comune' : `Per ${nomeDiChi(k)}`);
+    return `<div class="ing-head">${esc(titolo)}</div>` +
+      gruppi.get(k).map(i => `<div class="ing">
+        <div style="flex:1">${esc(i.nome || '')}</div>
+        <div class="ing-q">${esc(i.qta || '')}</div></div>`).join('');
+  }).join('');
+}
+
+/** Il totale della giornata e' SOLO di Ciprian: Lorena non ha obiettivi. */
+function totaliHtml(righe){
+  const suoi = righe.filter(r => r.modo === 'casa' && mangiaCiprian(r));
+  if (!suoi.length) return '';
+
+  let prot = 0, kcal = 0, senzaNumeri = 0;
+  for (const r of suoi){
+    if (r.prot == null && r.kcal == null) senzaNumeri++;
+    prot += Number(r.prot) || 0;
+    kcal += Number(r.kcal) || 0;
+  }
+  const fP = FISSE_CIPRIAN.reduce((s,f) => s + f.prot, 0);
+  const fK = FISSE_CIPRIAN.reduce((s,f) => s + f.kcal, 0);
+  prot += fP; kcal += fK;
+
+  // Nei giorni con un pasto fuori o libero il totale scende, e va bene
+  // cosi': non si compensa nei giorni vicini. Lo diciamo, non lo nascondiamo.
+  const fuori = righe.filter(r => r.modo !== 'casa' && mangiaCiprian(r));
+  const comeSiChiama = (r) => r.modo === 'fuori'
+    ? `${r.pasto} fuori casa`
+    : (r.pasto === 'cena' ? 'cena libera' : 'pranzo libero');
+  const note = [
+    `${FISSE_CIPRIAN.map(f => f.nome).join(' e ')} compresi (${fP} g · ${fK} kcal)`,
+    fuori.length ? `${fuori.map(comeSiChiama).join(' e ')} non nel totale` : '',
+    senzaNumeri  ? 'su qualche pasto mancano i numeri' : '',
+  ].filter(Boolean).join(' · ');
+
+  return `<div class="day-tot">TOT ${esc(nomeDiChi('ciprian'))} ${prot} g proteine · ${kcal} kcal
+    <span class="tot-nota">${esc(note)}</span></div>`;
+}
+
+/** Un giorno passato mostra il diario: cosa si è mangiato davvero.
+    Nessun rimprovero: un giorno non registrato è un fatto, non una colpa. */
+function corpoPassato(iso, righe){
+  const veri = S.diario.filter(m => m.day === iso)
+    .sort((a,b) => (PASTO_ORDINE[a.pasto] ?? 9) - (PASTO_ORDINE[b.pasto] ?? 9));
+
+  if (veri.length){
+    return veri.map(m => `<div class="pasto">
+      <div class="pasto-top"><span class="pasto-quale">${esc(m.pasto)}</span></div>
+      <div class="pasto-piatto">${esc(m.piatto)}</div>
+      ${(m.prot != null || m.kcal != null) ? `<div class="pasto-num">${[
+        m.prot != null ? `<b>${esc(String(m.prot))} g</b> proteine` : '',
+        m.kcal != null ? `${esc(String(m.kcal))} kcal` : '',
+      ].filter(Boolean).join(' · ')}</div>` : ''}
+    </div>`).join('');
+  }
+
+  const previsti = righe.filter(r => r.piatto || r.modo !== 'casa');
+  return `<div class="pasto">
+      <div class="pasto-niente">Niente segnato per questo giorno.</div>
+    </div>` +
+    (previsti.length
+      ? `<div class="row note"><div class="row-text">Era in programma:</div></div>` +
+        previsti.map(r => `<div class="pasto">
+          <div class="pasto-top"><span class="pasto-quale">${esc(r.pasto)}</span></div>
+          <div class="pasto-piatto">${esc(r.piatto ||
+            (r.modo === 'fuori' ? 'Si mangia fuori' : 'Pasto libero'))}</div>
+        </div>`).join('')
+      : '');
+}
+
+/* --- i tocchi: cambio giorno e bottone dello stato vuoto --- */
+$('#planBody').addEventListener('click', ev => {
+  const g = ev.target.closest('[data-gg]');
+  if (g){
+    S.giornoSel = g.dataset.gg;
+    $$('#pnStriscia .gg').forEach(b => b.setAttribute('aria-pressed', String(b === g)));
+    $('#pnCard').innerHTML = cardGiorno(S.giornoSel);
+    return;
+  }
+  if (ev.target.closest('#pnGenera')){
+    toast('Il generatore della settimana non è ancora pronto: arriva col prossimo aggiornamento.');
+  }
+});
 
 /* ============================================================
    TAB 2 — DISPENSA

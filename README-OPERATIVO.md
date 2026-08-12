@@ -9,6 +9,10 @@ Accedi, nessuna email, nessun codice. Lo stesso vale per chiunque abbia l'indiri
 
 ## ⭐ La routine settimanale (le 10 righe che servono davvero)
 
+> ⚠️ **Questa routine sta per cambiare.** La tab Piano è ora un calendario, e il tasto
+> **«Genera la settimana»** dentro l'app arriva col prossimo passo (v5 Blocco 2). Fino ad
+> allora il piano si carica ancora così, con `/piano-settimana`.
+
 1. Apri la chat con Claude Code nella cartella `piano`.
 2. Scrivi `/piano-settimana` e subito sotto incolla il piano della settimana.
 3. Claude ti mostra un riepilogo: quali date copre, quanti pasti per giorno.
@@ -24,8 +28,28 @@ Accedi, nessuna email, nessun codice. Lo stesso vale per chiunque abbia l'indiri
 
 ## Come si usa, tab per tab
 
-**Piano** — solo da leggere. Il giorno di oggi ha il badge **OGGI** e l'app ci scorre da sola
-all'apertura.
+**Piano** — è un **calendario**. In alto c'è la striscia dei giorni: tocchi un giorno e sotto
+compaiono il suo pranzo e la sua cena.
+
+- **Chi mangia** è scritto col nome vero (Ciprian · Ciprian e Lorena · Lorena), non con sigle.
+- Gli **ingredienti sono a persona**: se le porzioni sono diverse, vedi «Per Ciprian» e
+  «Per Lorena» una sotto l'altra.
+- Il **tocco dolce** ha un riquadro tutto suo: non si mescola agli ingredienti.
+- I promemoria **❄ da scongelare** compaiono sul giorno in cui vanno fatti, non su quello
+  del pasto: se stasera devi spostare il pesce dal freezer, lo leggi oggi.
+- Il **totale del giorno** è solo di Ciprian, colazione e yogurt compresi (sono scritti,
+  così il numero non arriva dal nulla). Nei pasti di sola Lorena non compare nessun numero.
+
+I tre modi in cui un giorno si presenta:
+
+| Come lo vedi | Cosa vuol dire |
+|---|---|
+| bordo pieno, badge **OGGI** | oggi e domani: il piano è quello, confermato |
+| bordo tratteggiato, badge **BOZZA** | da dopodomani in poi: cambierà, non fidarti dei dettagli |
+| fondo grigio, badge **PASSATO** | mostra il **diario**, cioè cosa hai mangiato davvero |
+
+Un giorno passato senza niente segnato dice solo «Niente segnato per questo giorno».
+Nessun rimprovero: è un fatto, non una colpa.
 
 **Dispensa** — aggiungi con nome, quantità e categoria; tocca la quantità per correggerla;
 la **×** elimina, e per 8 secondi hai il tasto **Annulla**.
@@ -170,6 +194,8 @@ I messaggi sono già scritti in italiano semplice. I due più probabili:
 | `cambio-accesso-libero.sql` | il passaggio ad app senza login (già eseguito) | sì |
 | `edge-function-cosa-cucino.ts` | il generatore di ricette, da incollare in Supabase | sì (ma non è l'app: è una copia di riferimento) |
 | `limite-generatore.sql` | il tetto giornaliero che protegge il credito | sì |
+| `tabelle-piano-v5.sql` | crea la tabella del calendario (`plan_meals`) | sì |
+| `prova-piano-v5.sql` | una settimana finta, solo per guardare il calendario | sì |
 | `seed-dati-iniziali.sql` | carica inventario e ricette di partenza | sì |
 | `README-OPERATIVO.md` | questo foglio | sì |
 | `CLAUDE.md` | promemoria per le prossime chat con Claude | sì |

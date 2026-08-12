@@ -77,6 +77,7 @@ nuovo della vecchia `anon`.
 | `shopping_list` | `id`, `name`, `done`, `created_at` — la lista della spesa |
 | `meals_log` | `id`, `day`, `pasto`, `piatto`, `prot`, `kcal`, `chi`, `proteina` — il diario dei pasti |
 | `profiles` | `slug` (`lorena`/`x`), `nome`, `prot_target`, `kcal_target`, `ripetizione`, `non_mangia[]`, `evita[]`, `ama[]`, `note` |
+| `plan_meals` | il calendario v5: **una riga per pasto**. Vedi lo schema più sotto |
 
 Queste sono **tutte** le tabelle. `allowed_writers` e la funzione `is_writer()` sono
 state cancellate dal database il 12/08/2026: non esistono più.
@@ -254,6 +255,40 @@ scritto a mano dentro una regola.
   Rigenerabili con lo script in `scratchpad/icona.ps1` — è disegnata con primitive
   geometriche, non convertita da un'immagine.
 
+### La v5 — il calendario (12/08/2026, Blocco 1)
+
+La tab **Piano** non legge più `plan_days`: legge **`plan_meals`**, una riga per pasto.
+Lo schema sta in `tabelle-piano-v5.sql`, con i campi commentati uno per uno.
+
+- **Striscia dei 7 giorni** appiccicata sotto la testata, con la stessa meccanica delle
+  intestazioni della Dispensa (`--h-alt` + `--nav-alt`). I chip sono `flex:1 0 42px`:
+  **sette devono starci tutti sullo schermo di un iPhone**, oltre i sette la striscia scorre.
+- **Tre trattamenti**: `passato` (mostra il **diario**, non il piano) · `confermato`
+  (oggi e domani) · `bozza` (da dopodomani, bordo tratteggiato + badge). Lo stato scritto
+  nel database vince; se manca, `statoGiorno()` lo deduce dalla distanza da oggi.
+  Il trattamento cambia **bordo ed etichetta, mai il contrasto del testo**.
+- **I numeri sono solo di Ciprian**, voci fisse comprese (colazione 20 g · 290 kcal,
+  yogurt 17 g · 100 kcal, costante `FISSE_CIPRIAN`). Le fisse sono **scritte sotto il
+  totale**: un numero non deve mai arrivare dal nulla. Nei pasti di sola Lorena non
+  compare nessun numero. Nei giorni con Fuori/Libero il totale scende e lo si dichiara:
+  **non si compensa mai** nei giorni vicini.
+- **`chi` usa i nomi veri** (`ciprian`/`entrambi`/`lorena`), non gli slug. La traduzione
+  verso `profiles` sta nella costante `SLUG_DI_CHI` in `index.html`: è l'unico punto in
+  cui i due vocabolari si incontrano, e c'è l'avvertenza sul posto.
+- **`dolce` ha un riquadro suo** (`.nota.dolce`), non si mescola agli ingredienti.
+- **Gli scongelamenti si mostrano su `scongelare_il`**, non sul giorno del pasto:
+  `promemoriaDi()` gira tutto il piano cercando i promemoria che scadono quel giorno.
+  È il motivo per cui la tabella ha una riga per pasto e non per giorno.
+- Se la tabella non esiste ancora, la tab lo dice e **il resto dell'app continua a
+  funzionare** (`S.pianoErr`): il calendario è facoltativo come spesa e profili.
+- `prova-piano-v5.sql` mette una settimana finta per poter collaudare prima del Blocco 2.
+  Contiene apposta tutti i casi: entrambi, solo uno, un fuori, un libero, un avanzo che
+  passa da Ciprian a tutti e due, due scongelamenti, un «dipende dalla spesa», un giorno
+  senza cena, un giorno vuoto.
+
+⚠️ Il tasto **«Genera la settimana»** dello stato vuoto per ora dà solo un messaggio:
+si accende col Blocco 2. È voluto, non è un pezzo dimenticato.
+
 ### ⚠️ Ogni azione che salva deve dare un esito visibile
 
 Regola introdotta dopo un bug vero: il pulsante «Conferma e aggiorna» falliva e
@@ -274,12 +309,15 @@ pannello in fondo. Sembrava che il pulsante non funzionasse.
 
 #### ✅ Fatto e online
 
-v4 (blocchi 1-3), v6 (blocchi 1-3) e **v7 completa**: stile ricco su tutte le
-schermate, illustrazioni degli stati vuoti (spesa, piano, diario), pentola fumante
-animata durante l'attesa, icona e favicon nel repo.
+v4 (blocchi 1-3), v6 (blocchi 1-3), **v7 completa** e **v5 Blocco 1** (il calendario:
+striscia dei 7 giorni, tre stati, totali di solo Ciprian, dolce e scongelamenti).
 
-Tutti i file SQL sono stati eseguiti su Supabase, e la Edge Function online è quella
-col campo «che voglia hai?». **Non c'è niente in sospeso da installare.**
+⚠️ **In sospeso da installare**: `tabelle-piano-v5.sql` va eseguito su Supabase, altrimenti
+la tab Piano dice «Il calendario non è ancora installato». `prova-piano-v5.sql` è
+facoltativo e serve solo a collaudare. Collaudo: `COLLAUDO-V5.md`.
+
+Per il resto tutti i file SQL sono stati eseguiti, e la Edge Function online è quella
+col campo «che voglia hai?».
 
 #### ⛔ Decisioni chiuse — non riaprirle
 
@@ -288,39 +326,22 @@ col campo «che voglia hai?». **Non c'è niente in sospeso da installare.**
 - **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.
 - **Stile: la passata ricca è approvata** nella versione attualmente online.
 
-#### ▶️ PROSSIMO PASSO — v5 Blocco 1
+#### ▶️ PROSSIMO PASSO — v5 Blocco 2
 
 Brief: `PROMPT-V5-PIANO.md` (sostituisce il vecchio `…-SETTIMANALE.md`, eliminato).
 Si va **un blocco alla volta con push separati, e ci si ferma dopo il Blocco 3.**
 
-Il Blocco 1 **non è stato iniziato**. Lo schema qui sotto è **già stato approvato
-dall'utente**: si può passare direttamente all'SQL, senza riproporlo.
+Il Blocco 2 è **«Genera la settimana»**: prima la passata dei 7 giorni a bottoni
+(A casa / Fuori / Libero · chi mangia · nota), poi la generazione a blocchi di 2-3
+giorni in streaming, che **conta come una sola generazione** sul tetto giornaliero.
+I nove vincoli in ordine di priorità stanno nel brief: il primo, la coerenza di
+magazzino, è quello che giustifica tutti gli altri.
 
-##### Schema approvato: `plan_meals` — una riga per PASTO, non per giorno
-
-| Campo | Contenuto |
-|---|---|
-| `day` + `pasto` | giorno, e se è pranzo o cena |
-| `modo` | `casa` · `fuori` · `libero` (la passata dei 7 giorni) |
-| `chi` | `ciprian` · `entrambi` · `lorena` |
-| `stato` | `bozza` · `confermato` · `passato` (i tre trattamenti visivi) |
-| `piatto`, `perche` | cosa si mangia e la ragione della scelta |
-| `ingredienti` | grammi **per persona**: le porzioni diverse stanno nello stesso pasto |
-| **`dolce`** | testo facoltativo. **Il tocco dolce di Lorena non si mescola agli ingredienti**: arriva già distinto e la card lo mostra in un riquadro suo |
-| **`tempo`** | minuti di preparazione, mostrati sulla card |
-| `prot`, `kcal` | **solo per Ciprian**; vuoti nei pasti di sola Lorena |
-| `scongelamento`, `scongelare_il` | il promemoria e **su quale giorno** mostrarlo |
-| `avanzo_per` | il rimando «→ pranzo di domani» |
-| `dipende_da_spesa` | il giorno che aspetta un acquisto |
-| `nota` | la nota libera della passata |
-
-**Perché per pasto e non per giorno:** i promemoria di scongelamento vanno mostrati su
-un giorno diverso da quello del pasto, gli avanzi collegano due pasti fra loro, e la
-rigenerazione (Blocco 4) deve poter toccare un singolo pasto senza riscrivere la
-giornata.
+Il tasto c'è già nello stato vuoto della tab Piano (`#pnGenera`) e per ora dà solo un
+messaggio: va collegato lì.
 
 `plan_days` resta dov'è, vuota e inutilizzata: non si cancella mentre se ne introduce
-un'altra.
+un'altra. Il frontend non la legge più.
 
 #### Rimasto indietro, minore
 
@@ -351,6 +372,9 @@ Comando: `/piano-settimana` (vedi `.claude/commands/piano-settimana.md`).
 In sintesi: parsing del testo incollato → riepilogo → conferma → file SQL di `upsert`.
 **I giorni vecchi non si cancellano mai**: restano come storico.
 
+Dalla v5 il comando **scrive in `plan_meals`**, una riga per pasto, ed è diventato un
+**ripiego**: la strada normale sarà «Genera la settimana» dentro l'app (Blocco 2).
+
 ## File
 
 | File | Note |
@@ -361,6 +385,9 @@ In sintesi: parsing del testo incollato → riepilogo → conferma → file SQL 
 | `cambio-accesso-libero.sql` | la migrazione che ha tolto il login dal database: cancella `allowed_writers` e `is_writer()`, azzera le vecchie policy e ne mette una sola per tabella. Rieseguibile senza danni |
 | `edge-function-cosa-cucino.ts` | il codice della Edge Function. **Non viene servito da Pages**: sta nel repo solo come copia di riferimento, va incollato nel pannello Supabase |
 | `limite-generatore.sql` | tabella e funzione del tetto giornaliero di generazioni |
+| `tabelle-piano-v5.sql` | la tabella `plan_meals` del calendario, coi campi commentati |
+| `prova-piano-v5.sql` | una settimana finta per collaudare il calendario prima del Blocco 2 |
+| `COLLAUDO-V5.md` | la checklist di collaudo del calendario. Come tutti i `COLLAUDO-*`, resta **solo sul computer**: è in `.gitignore` |
 | `seed-dati-iniziali.sql` | inventario e ricette di partenza (11/08) |
 | `README-OPERATIVO.md` | la routine per l'utente |
 | `DATI-INIZIALI.txt` | fotografia di partenza |
