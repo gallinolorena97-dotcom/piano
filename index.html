@@ -929,17 +929,64 @@ function aggiornaChiMangia(){
     `<button data-v="${v}" aria-pressed="${CU.chi === v}">${esc(testo)}</button>`).join('');
 }
 
-/* --- la chiamata al generatore --- */
-async function chiamaGeneratore(corpo){
-  const { data, error } = await sb.functions.invoke('cosa-cucino', { body: corpo });
-  if (error){
+/* --- la chiamata al generatore, in streaming ---
+   La funzione manda una riga JSON per volta: uno stato di avanzamento,
+   poi una proposta appena è pronta. Così la prima compare mentre le
+   altre si stanno ancora scrivendo. */
+async function chiamaGeneratore(corpo, alRicevere){
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/cosa-cucino`, {
+    method: 'POST',
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(corpo),
+  });
+
+  if (!r.ok){
     let msg = '';
-    try { msg = (await error.context?.json())?.errore || ''; } catch { /* risposta non leggibile */ }
+    try { msg = (await r.json())?.errore || ''; } catch { /* risposta non leggibile */ }
     throw new Error(msg || 'Il generatore non risponde. Riprova fra un minuto.');
   }
-  if (data?.errore) throw new Error(data.errore);
-  if (!data?.proposte?.length) throw new Error('Il generatore non ha trovato nulla da proporre.');
-  return data.proposte;
+
+  const raccolte = [];
+  let problema = null;
+
+  const leggiRiga = (riga) => {
+    if (!riga.trim()) return;
+    let ev;
+    try { ev = JSON.parse(riga); } catch { return; }
+    if (ev.tipo === 'proposta'){
+      raccolte.push(ev.proposta);
+      alRicevere?.({ tipo:'proposta', proposta:ev.proposta });
+    } else if (ev.tipo === 'stato'){
+      alRicevere?.(ev);
+    } else if (ev.tipo === 'errore'){
+      problema = ev.errore;
+    }
+  };
+
+  if (r.body && r.body.getReader){
+    const lettore = r.body.getReader();
+    const dec = new TextDecoder();
+    let resto = '';
+    while (true){
+      const { done, value } = await lettore.read();
+      if (done) break;
+      resto += dec.decode(value, { stream:true });
+      const righe = resto.split('\n');
+      resto = righe.pop() ?? '';
+      righe.forEach(leggiRiga);
+    }
+    leggiRiga(resto);
+  }else{
+    // browser senza streaming: leggiamo tutto in fondo, funziona lo stesso
+    (await r.text()).split('\n').forEach(leggiRiga);
+  }
+
+  if (!raccolte.length) throw new Error(problema || 'Il generatore non ha trovato nulla da proporre.');
+  return raccolte;
 }
 
 /** Dati comuni a ogni richiesta: cosa ho scelto e cosa ho già visto. */
@@ -956,12 +1003,20 @@ $('#cuGen').onclick = async () => {
   if (CU.inCorso) return;
   CU.inCorso = true;
   $('#cuGen').disabled = true;
-  $('#cuBody').innerHTML =
-    `<div class="loading">Sto pensando ai piatti…<br>
-     <span style="font-size:13.5px">Servono circa <b>mezzo minuto</b>: è normale,
-     sto facendo i conti delle proteine. Non ricaricare la pagina.</span></div>`;
+  CU.proposte = [];
+  renderProposte('Sto leggendo la dispensa…');
   try{
-    const p = await chiamaGeneratore({ ...baseRichiesta(), quante: 3 });
+    const p = await chiamaGeneratore(
+      { ...baseRichiesta(), quante: 3 },
+      (ev) => {
+        if (ev.tipo === 'proposta'){
+          CU.proposte.push(ev.proposta);
+          renderProposte(CU.proposte.length < 3 ? 'Sto scrivendo la prossima…' : '');
+        }else if (ev.tipo === 'stato'){
+          renderProposte(ev.testo);
+        }
+      },
+    );
     CU.proposte = p;
     CU.visti = [...new Set([...CU.visti, ...p.map(x => x.nome)])];
     renderProposte();
@@ -974,8 +1029,14 @@ $('#cuGen').onclick = async () => {
   }
 };
 
-function renderProposte(){
-  $('#cuBody').innerHTML = CU.proposte.map(cardProposta).join('');
+/** Disegna le proposte già arrivate, e sotto lo stato di avanzamento. */
+function renderProposte(stato){
+  const schede = CU.proposte.map(cardProposta).join('');
+  const attesa = stato
+    ? `<div class="loading" style="padding:18px 10px">${esc(stato)}<br>
+       <span style="font-size:13px">Non ricaricare la pagina.</span></div>`
+    : '';
+  $('#cuBody').innerHTML = schede + attesa;
 }
 
 function cardProposta(p, i){

@@ -412,7 +412,18 @@ ${personalizza ? `\nRICHIESTA DI MODIFICA DA RISPETTARE: ${personalizza}\n(rical
 
 Genera ${quante === 1 ? 'UNA sola proposta' : 'ESATTAMENTE 3 proposte diverse fra loro'}.`;
 
-  // --- 5. la chiamata a Claude ------------------------------
+  // --- 5. la chiamata a Claude, in streaming ----------------
+  //
+  // Perché streaming: la risposta completa impiega ~30 secondi, ma la PRIMA
+  // proposta è pronta molto prima. Leggiamo il flusso man mano che arriva e
+  // spediamo ogni proposta al telefono appena è completa, così si comincia a
+  // leggere mentre le altre si stanno ancora scrivendo.
+  //
+  // Resta UNA SOLA chiamata al modello: conta come una generazione sola
+  // rispetto al tetto giornaliero, e il modello vede tutte e tre le proposte
+  // insieme (serve per garantire che almeno una sia fattibile e che siano
+  // diverse fra loro).
+
   let risposta: Response;
   try {
     risposta = await fetch('https://api.anthropic.com/v1/messages', {
@@ -432,14 +443,15 @@ Genera ${quante === 1 ? 'UNA sola proposta' : 'ESATTAMENTE 3 proposte diverse fr
           format: { type: 'json_schema', schema: SCHEMA },
         },
         messages: [{ role: 'user', content: contesto }],
+        stream: true,
       }),
     });
   } catch {
     return errore('Il generatore non risponde. Riprova fra un minuto.', 502);
   }
 
-  if (!risposta.ok) {
-    const dettaglio = await risposta.text();
+  if (!risposta.ok || !risposta.body) {
+    const dettaglio = await risposta.text().catch(() => '');
     console.error('Anthropic', risposta.status, dettaglio);
     if (risposta.status === 401) return errore('La chiave del generatore non è valida. Va rifatta nei Secrets di Supabase.', 500);
     if (risposta.status === 429) return errore('Il generatore è momentaneamente occupato. Riprova fra un minuto.', 503);
@@ -448,27 +460,125 @@ Genera ${quante === 1 ? 'UNA sola proposta' : 'ESATTAMENTE 3 proposte diverse fr
     return errore('Il generatore non risponde. Riprova fra un minuto.', 502);
   }
 
-  const dati = await risposta.json();
-
-  if (dati.stop_reason === 'refusal') {
-    return errore('Il generatore non se la sente di rispondere a questa richiesta. Prova a riformularla.', 422);
+  // Riconosce le proposte complete dentro il JSON che si sta scrivendo.
+  // Tiene conto delle stringhe e delle virgolette scappate, così una graffa
+  // dentro un testo (es. "sugo {piccante}") non lo confonde.
+  function creaLettore() {
+    let buf = '', i = 0;
+    let dentroArray = false, profondita = 0, inizio = -1, inStringa = false, scappato = false;
+    return {
+      aggiungi(pezzo: string): unknown[] {
+        buf += pezzo;
+        const complete: unknown[] = [];
+        for (; i < buf.length; i++) {
+          const c = buf[i];
+          if (inStringa) {
+            if (scappato) { scappato = false; continue; }
+            if (c === '\\') { scappato = true; continue; }
+            if (c === '"') inStringa = false;
+            continue;
+          }
+          if (c === '"') { inStringa = true; continue; }
+          if (!dentroArray) { if (c === '[') dentroArray = true; continue; }
+          if (c === '{') { if (profondita === 0) inizio = i; profondita++; continue; }
+          if (c === '}') {
+            profondita--;
+            if (profondita === 0 && inizio >= 0) {
+              try { complete.push(JSON.parse(buf.slice(inizio, i + 1))); } catch { /* non ancora valida */ }
+              inizio = -1;
+            }
+          }
+        }
+        return complete;
+      },
+      testoIntero: () => buf,
+    };
   }
-  if (dati.stop_reason === 'max_tokens') {
-    return errore('La risposta si è interrotta a metà. Riprova.', 502);
-  }
 
-  const testo = (dati.content ?? []).find((b: { type: string }) => b.type === 'text')?.text;
-  if (!testo) return errore('Il generatore ha risposto a vuoto. Riprova.', 502);
+  const codificatore = new TextEncoder();
+  const flusso = new ReadableStream({
+    async start(controller) {
+      const manda = (o: unknown) =>
+        controller.enqueue(codificatore.encode(JSON.stringify(o) + '\n'));
 
-  let proposte: unknown[];
-  try {
-    proposte = JSON.parse(testo).proposte;
-  } catch {
-    return errore('Non riesco a leggere la risposta del generatore. Riprova.', 502);
-  }
-  if (!Array.isArray(proposte) || !proposte.length) {
-    return errore('Il generatore non ha trovato nulla da proporre con questa dispensa.', 422);
-  }
+      const lettore = creaLettore();
+      const decodificatore = new TextDecoder();
+      const sorgente = risposta.body!.getReader();
+      let resto = '';
+      let quante_inviate = 0;
+      let motivoStop = '';
 
-  return json({ proposte: proposte.slice(0, quante) });
+      manda({ tipo: 'stato', testo: 'Sto pensando alla prima proposta…' });
+
+      try {
+        while (true) {
+          const { done, value } = await sorgente.read();
+          if (done) break;
+          resto += decodificatore.decode(value, { stream: true });
+
+          const righe = resto.split('\n');
+          resto = righe.pop() ?? '';
+
+          for (const riga of righe) {
+            if (!riga.startsWith('data:')) continue;
+            const corpo = riga.slice(5).trim();
+            if (!corpo || corpo === '[DONE]') continue;
+
+            let ev: Record<string, any>;
+            try { ev = JSON.parse(corpo); } catch { continue; }
+
+            if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+              for (const proposta of lettore.aggiungi(ev.delta.text ?? '')) {
+                if (quante_inviate >= quante) continue;
+                quante_inviate++;
+                manda({ tipo: 'proposta', proposta });
+                if (quante_inviate < quante) {
+                  manda({
+                    tipo: 'stato',
+                    testo: quante_inviate === 1
+                      ? 'Prima proposta pronta. Sto scrivendo la seconda…'
+                      : 'Ci siamo, ultima proposta…',
+                  });
+                }
+              }
+            }
+
+            if (ev.type === 'message_delta' && ev.delta?.stop_reason) {
+              motivoStop = ev.delta.stop_reason;
+            }
+            if (ev.type === 'error') {
+              manda({ tipo: 'errore', errore: 'Il generatore si è interrotto. Riprova.' });
+            }
+          }
+        }
+
+        if (!quante_inviate) {
+          if (motivoStop === 'refusal') {
+            manda({ tipo: 'errore', errore: 'Il generatore non se la sente di rispondere a questa richiesta. Prova a riformularla.' });
+          } else if (motivoStop === 'max_tokens') {
+            manda({ tipo: 'errore', errore: 'La risposta si è interrotta a metà. Riprova.' });
+          } else {
+            console.error('nessuna proposta; testo grezzo:', lettore.testoIntero().slice(0, 500));
+            manda({ tipo: 'errore', errore: 'Il generatore non ha trovato nulla da proporre con questa dispensa.' });
+          }
+        } else {
+          manda({ tipo: 'fine', quante: quante_inviate });
+        }
+      } catch (e) {
+        console.error('streaming', e);
+        manda({ tipo: 'errore', errore: 'Il collegamento col generatore si è interrotto. Riprova.' });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(flusso, {
+    headers: {
+      ...CORS,
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no',
+    },
+  });
 });
