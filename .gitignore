@@ -2,6 +2,11 @@
 # non deve finire nel repository pubblico.
 setup.sql
 
+# I brief per Claude e le checklist di collaudo restano sul computer:
+# sono appunti di lavoro, non fanno parte dell'app pubblicata.
+PROMPT-*.md
+COLLAUDO-*.md
+
 # impostazioni locali di Claude Code (valgono solo su questo computer)
 .claude/settings.local.json
 
