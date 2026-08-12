@@ -63,8 +63,8 @@ nav.tabs{
   display:flex;background:var(--sage);border-bottom:1px solid var(--line);
 }
 nav.tabs button{
-  flex:1;padding:12px 4px;font-size:14px;font-weight:600;color:var(--green);
-  border-bottom:3px solid transparent;opacity:.65;
+  flex:1;padding:12px 2px;font-size:13px;font-weight:600;color:var(--green);
+  border-bottom:3px solid transparent;opacity:.65;white-space:nowrap;
 }
 nav.tabs button[aria-selected="true"]{opacity:1;border-bottom-color:var(--green);background:rgba(255,255,255,.45)}
 
@@ -246,6 +246,21 @@ section[hidden]{display:none}
 .cuc-scelte button[aria-pressed="true"]::after{content:'';}
 .cuc-esito.zero .cuc-scelte button[aria-pressed="true"]{background:#6d3f10;color:#fff;border-color:#6d3f10}
 
+/* ---------- SPESA ---------- */
+.sp-item{display:flex;align-items:center;gap:11px;padding:12px;font-size:15.5px}
+.sp-item + .sp-item{border-top:1px solid #F2ECE0}
+.sp-box{
+  width:24px;height:24px;flex:0 0 24px;border:2px solid var(--green);border-radius:7px;
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;font-weight:700;
+}
+.sp-item.fatto .sp-box{background:var(--green)}
+.sp-item.fatto .sp-nome{text-decoration:line-through;color:var(--ink-soft)}
+.sp-nome{flex:1;min-width:0;word-break:break-word}
+.nota.manca button{
+  display:block;margin-top:6px;border:1px solid #6d3f10;background:#fff;color:#6d3f10;
+  border-radius:8px;padding:5px 10px;font-size:12.5px;font-weight:700;
+}
+
 /* ---------- toast / undo ---------- */
 #toast{
   position:fixed;left:12px;right:12px;bottom:calc(14px + var(--safe-b));z-index:60;
@@ -274,7 +289,8 @@ section[hidden]{display:none}
   <button role="tab" data-tab="piano"    aria-selected="true">Piano</button>
   <button role="tab" data-tab="dispensa" aria-selected="false">Dispensa</button>
   <button role="tab" data-tab="ricette"  aria-selected="false">Ricette</button>
-  <button role="tab" data-tab="cucino"   aria-selected="false">Cosa cucino</button>
+  <button role="tab" data-tab="cucino"   aria-selected="false">Cucino</button>
+  <button role="tab" data-tab="spesa"    aria-selected="false">Spesa</button>
 </nav>
 
 <div id="banner" hidden></div>
@@ -350,6 +366,21 @@ section[hidden]{display:none}
 
     <div id="cuBody"></div>
   </section>
+
+  <!-- ============ SPESA ============ -->
+  <section id="tab-spesa" hidden>
+    <div class="panel">
+      <div class="form-row" style="margin-top:0">
+        <input class="field" id="spNome" placeholder="Cosa serve comprare" autocomplete="off">
+        <button class="btn" id="spAdd">+</button>
+      </div>
+    </div>
+    <div id="spBody"><div class="loading">Carico la lista…</div></div>
+    <div class="form-row" id="spAzioni" hidden>
+      <button class="btn ghost" id="spCopia" style="flex:1">Copia la lista</button>
+      <button class="btn ghost" id="spPulisci">Togli le spuntate</button>
+    </div>
+  </section>
 </main>
 
 <div id="toast" hidden><span id="toastText"></span><button id="toastAction">Annulla</button></div>
@@ -374,7 +405,7 @@ const SUPABASE_KEY = 'sb_publishable_7Awm1XgdbMqUfNRPfqtTug_9qHVBc4E';
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth:{ persistSession:false } });
 
 /* ---------- stato dell'app ---------- */
-const S = { plan:[], inv:[], rec:[], settings:{}, tab:'piano' };
+const S = { plan:[], inv:[], rec:[], settings:{}, spesa:[], diario:[], tab:'piano' };
 
 /* ---------- scorciatoie ---------- */
 const $  = (s) => document.querySelector(s);
@@ -434,11 +465,12 @@ async function loadAll(){
     return;
   }
   try{
-    const [p, i, r, s] = await Promise.all([
+    const [p, i, r, s, sp] = await Promise.all([
       sb.from('plan_days').select('day,payload').order('day', { ascending:true }),
       sb.from('inventory_items').select('id,name,qty,cat'),
       sb.from('recipes').select('id,name,pref'),
       sb.from('settings').select('key,value'),
+      sb.from('shopping_list').select('id,name,done').order('created_at', { ascending:true }),
     ]);
     for (const res of [p,i,r,s]) if (res.error) throw res.error;
 
@@ -446,6 +478,8 @@ async function loadAll(){
     S.inv  = (i.data || []).sort((a,b) => a.name.localeCompare(b.name,'it'));
     S.rec  = (r.data || []).sort((a,b) => a.name.localeCompare(b.name,'it'));
     S.settings = Object.fromEntries((s.data || []).map(x => [x.key, x.value]));
+    // la lista della spesa è facoltativa: se la tabella non c'è, il resto vive lo stesso
+    S.spesa = sp.error ? [] : (sp.data || []);
 
     banner(null);
     renderAll();
@@ -454,7 +488,7 @@ async function loadAll(){
   }
 }
 
-function renderAll(){ renderTargets(); renderPlan(); renderInv(); renderRec(); }
+function renderAll(){ renderTargets(); renderPlan(); renderInv(); renderRec(); renderSpesa(); }
 
 function renderTargets(){
   const k = S.settings.kcal_target, pr = S.settings.protein_target;
@@ -807,7 +841,8 @@ function cardProposta(p, i){
       ${perX ? `<div class="ing-head">Per X</div>${lista(p.ingredienti_x)}` : ''}
       ${p.scongelamento ? `<div class="nota freezer">❄ ${esc(p.scongelamento)}</div>` : ''}
       ${p.avanzo        ? `<div class="nota avanzo">🍱 ${esc(p.avanzo)}</div>` : ''}
-      ${(p.manca || []).length ? `<div class="nota manca">Non ce l'hai: ${esc(p.manca.join(', '))}</div>` : ''}
+      ${(p.manca || []).length ? `<div class="nota manca">Ti manca: ${esc(p.manca.join(', '))}
+        <button data-act="spesa">+ Aggiungi alla spesa</button></div>` : ''}
       ${p.perche ? `<div class="nota perche">${esc(p.perche)}</div>` : ''}
     </div>
     <div class="prop-actions">
@@ -857,6 +892,13 @@ $('#cuBody').addEventListener('click', async (ev) => {
   if (btn.dataset.act === 'pers') apriPersonalizza(card, i);
 
   if (btn.dataset.act === 'cucinato') apriCucinato(p, card);
+
+  if (btn.dataset.act === 'spesa'){
+    btn.disabled = true;
+    const aggiunti = await aggiungiAllaSpesa(p.manca || []);
+    btn.disabled = false;
+    btn.textContent = aggiunti ? '✓ Aggiunti alla spesa' : '+ Aggiungi alla spesa';
+  }
 });
 
 /** Campo libero per dire cosa cambiare, in italiano. */
@@ -1196,6 +1238,119 @@ async function registraPasto(p){
 }
 
 /* ============================================================
+   BLOCCO 2 — LISTA DELLA SPESA
+   ============================================================ */
+function renderSpesa(){
+  const box = $('#spBody');
+  $('#spAzioni').hidden = !S.spesa.length;
+
+  if (!S.spesa.length){
+    box.innerHTML = `<div class="empty"><b>La lista è vuota.</b><br>
+      Aggiungi qui sopra quello che ti serve, oppure prendilo
+      dal «ti manca» di una proposta nella tab Cucino.</div>`;
+    return;
+  }
+  const daPrendere = S.spesa.filter(x => !x.done).length;
+  box.innerHTML = `<div class="cat-head">DA PRENDERE <span>· ${daPrendere} di ${S.spesa.length}</span></div>
+    <div class="list">${S.spesa.map(rigaSpesa).join('')}</div>`;
+}
+
+function rigaSpesa(v){
+  return `<div class="sp-item ${v.done ? 'fatto' : ''}" data-id="${v.id}">
+    <div class="sp-box" data-act="tog">${v.done ? '✓' : ''}</div>
+    <div class="sp-nome" data-act="tog">${esc(v.name)}</div>
+    <button class="icon-btn" data-act="del" aria-label="Togli">×</button>
+  </div>`;
+}
+
+/** Aggiunge nomi alla lista, saltando i doppioni. Restituisce quanti ne ha messi. */
+async function aggiungiAllaSpesa(nomi){
+  const puliti = [...new Set(
+    (Array.isArray(nomi) ? nomi : [nomi])
+      .map(n => String(n || '').trim())
+      .filter(Boolean)
+      .filter(n => !S.spesa.some(v => senzaAccenti(v.name) === senzaAccenti(n)))
+  )];
+  if (!puliti.length){ toast('Erano già tutti in lista.'); return 0; }
+  try{
+    const { data, error } = await sb.from('shopping_list')
+      .insert(puliti.map(name => ({ name }))).select();
+    if (error) throw error;
+    S.spesa.push(...data);
+    renderSpesa();
+    toast(puliti.length === 1 ? `In lista: ${puliti[0]}` : `Aggiunti ${puliti.length} articoli.`);
+    return puliti.length;
+  }catch(e){ banner(spiegaErrore(e)); return 0; }
+}
+
+$('#spAdd').onclick = async () => {
+  const n = $('#spNome').value.trim();
+  if (!n){ toast('Scrivi cosa serve.'); return; }
+  const messi = await aggiungiAllaSpesa([n]);
+  if (messi) $('#spNome').value = '';
+};
+$('#spNome').addEventListener('keydown', e => {
+  if (e.key === 'Enter'){ e.preventDefault(); $('#spAdd').click(); }
+});
+
+$('#spBody').addEventListener('click', async (ev) => {
+  const el = ev.target.closest('[data-act]');
+  if (!el) return;
+  const riga = el.closest('.sp-item');
+  const v = S.spesa.find(x => x.id === riga.dataset.id);
+  if (!v) return;
+
+  if (el.dataset.act === 'tog'){
+    const nuovo = !v.done;
+    try{
+      const { error } = await sb.from('shopping_list').update({ done:nuovo }).eq('id', v.id);
+      if (error) throw error;
+      v.done = nuovo; renderSpesa();
+    }catch(e){ banner(spiegaErrore(e)); }
+  }
+
+  if (el.dataset.act === 'del'){
+    try{
+      const { error } = await sb.from('shopping_list').delete().eq('id', v.id);
+      if (error) throw error;
+      S.spesa = S.spesa.filter(x => x.id !== v.id);
+      renderSpesa();
+      toast(`Tolto: ${v.name}`, async () => {
+        const { data, error } = await sb.from('shopping_list')
+          .insert({ id:v.id, name:v.name, done:v.done }).select().single();
+        if (error){ banner(spiegaErrore(error)); return; }
+        S.spesa.push(data); renderSpesa(); toast('Rimesso in lista.');
+      });
+    }catch(e){ banner(spiegaErrore(e)); }
+  }
+});
+
+$('#spPulisci').onclick = async () => {
+  const fatte = S.spesa.filter(x => x.done);
+  if (!fatte.length){ toast('Non c’è niente di spuntato.'); return; }
+  try{
+    const { error } = await sb.from('shopping_list').delete().in('id', fatte.map(x => x.id));
+    if (error) throw error;
+    S.spesa = S.spesa.filter(x => !x.done);
+    renderSpesa();
+    toast(`Tolte ${fatte.length} voci spuntate.`, async () => {
+      const { data, error } = await sb.from('shopping_list')
+        .insert(fatte.map(x => ({ id:x.id, name:x.name, done:x.done }))).select();
+      if (error){ banner(spiegaErrore(error)); return; }
+      S.spesa.push(...data); renderSpesa(); toast('Rimesse in lista.');
+    });
+  }catch(e){ banner(spiegaErrore(e)); }
+};
+
+$('#spCopia').onclick = async () => {
+  const da = S.spesa.filter(x => !x.done).map(x => `- ${x.name}`);
+  const gia = S.spesa.filter(x => x.done).map(x => `- ${x.name}`);
+  const testo = ['LISTA DELLA SPESA', '', ...(da.length ? da : ['- (niente)'])]
+    .concat(gia.length ? ['', 'Già prese:', ...gia] : []).join('\n');
+  await copiaTesto(testo, 'Lista copiata!');
+};
+
+/* ============================================================
    COPIA PER CLAUDE
    ============================================================ */
 function testoExport(){
@@ -1235,24 +1390,26 @@ function testoExport(){
   return out.join('\n');
 }
 
-$('#copyBtn').onclick = async () => {
-  const testo = testoExport();
+/** Copia negli appunti, con ripiego per i browser che bloccano la clipboard. */
+async function copiaTesto(testo, messaggio){
   try{
     await navigator.clipboard.writeText(testo);
-    toast('Copiato! Incollalo pure in chat.');
-  }catch{
-    // ripiego per i browser che bloccano la clipboard
-    const ta = document.createElement('textarea');
-    ta.value = testo;
-    ta.style.cssText = 'position:fixed;top:50%;left:5%;width:90%;height:40%;z-index:99;font-size:12px';
-    document.body.appendChild(ta);
-    ta.select();
-    let ok = false;
-    try { ok = document.execCommand('copy'); } catch {}
-    ta.remove();
-    toast(ok ? 'Copiato! Incollalo pure in chat.' : 'Non riesco a copiare da solo: riprova.');
-  }
-};
+    toast(messaggio);
+    return;
+  }catch{ /* provo il ripiego qui sotto */ }
+
+  const ta = document.createElement('textarea');
+  ta.value = testo;
+  ta.style.cssText = 'position:fixed;top:50%;left:5%;width:90%;height:40%;z-index:99;font-size:12px';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch { /* niente da fare */ }
+  ta.remove();
+  toast(ok ? messaggio : 'Non riesco a copiare da solo: riprova.');
+}
+
+$('#copyBtn').onclick = () => copiaTesto(testoExport(), 'Copiato! Incollalo pure in chat.');
 
 /* ============================================================
    TAB e AVVIO
@@ -1261,7 +1418,7 @@ $$('nav.tabs button').forEach(b => {
   b.onclick = () => {
     S.tab = b.dataset.tab;
     $$('nav.tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
-    ['piano','dispensa','ricette','cucino'].forEach(t => { $('#tab-' + t).hidden = (t !== S.tab); });
+    ['piano','dispensa','ricette','cucino','spesa'].forEach(t => { $('#tab-' + t).hidden = (t !== S.tab); });
     window.scrollTo(0, 0);
     if (S.tab === 'piano') renderPlan();
   };

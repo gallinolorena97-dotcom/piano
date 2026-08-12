@@ -156,11 +156,19 @@ lascia "ingredienti_x" come lista vuota.
 Rispetta il tempo dichiarato. Sotto i 15 minuti significa davvero niente forno
 e niente scongelamenti.
 
+## 9. INGREDIENTI CHE MANCANO
+Un piatto può richiedere qualcosa che non è in dispensa, ma con regole strette:
+- al massimo 2 ingredienti mancanti per proposta;
+- MAI la fonte proteica principale: quella deve sempre esserci già;
+- gli ingredienti mancanti vanno SOLO nell'elenco "manca", mai fra gli ingredienti
+  del piatto, e i conti di proteine e kcal li considerano comunque presenti;
+- ALMENO UNA delle 3 proposte deve essere completamente fattibile con quello che c'è:
+  la sua lista "manca" deve essere vuota.
+
 ## COSA NON FARE
-- Non inventare ingredienti che non sono in dispensa. Se servirebbe qualcosa che non c'è,
-  mettilo nell'elenco "manca" come nota, MAI fra gli ingredienti del piatto.
 - Non riproporre mai le ricette segnate come "da non riproporre".
 - Le ricette segnate come preferite hanno priorità, se gli ingredienti ci sono.
+- Non spacciare per presente un ingrediente che non c'è: se manca, va dichiarato.
 
 ## FORMA
 Scrivi in italiano semplice e concreto. Il campo "perche" è una riga sola che spiega
@@ -188,19 +196,22 @@ const SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          nome:           { type: 'string' },
-          ingredienti_io: { type: 'array', items: INGREDIENTE },
-          ingredienti_x:  { type: 'array', items: INGREDIENTE },
-          proteine_g:     { type: 'integer' },
-          kcal:           { type: 'integer' },
-          minuti:         { type: 'integer' },
-          scongelamento:  { type: 'string' },
-          avanzo:         { type: 'string' },
-          perche:         { type: 'string' },
-          manca:          { type: 'array', items: { type: 'string' } },
+          nome:                { type: 'string' },
+          ingredienti_io:      { type: 'array', items: INGREDIENTE },
+          ingredienti_x:       { type: 'array', items: INGREDIENTE },
+          proteine_g:          { type: 'integer' },
+          kcal:                { type: 'integer' },
+          minuti:              { type: 'integer' },
+          scongelamento:       { type: 'string' },
+          avanzo:              { type: 'string' },
+          perche:              { type: 'string' },
+          manca:               { type: 'array', items: { type: 'string' } },
+          // la fonte proteica in una parola (pollo, tonno, uova…):
+          // serve a non riproporre la stessa proteina troppo spesso
+          proteina_principale: { type: 'string' },
         },
         required: ['nome','ingredienti_io','ingredienti_x','proteine_g','kcal',
-                   'minuti','scongelamento','avanzo','perche','manca'],
+                   'minuti','scongelamento','avanzo','perche','manca','proteina_principale'],
         additionalProperties: false,
       },
     },
