@@ -326,12 +326,12 @@ Deno.serve(async (req) => {
 
   // --- 3. i dati veri, letti qui dal database ---------------
   let inv: Array<{ name: string; qty: string; cat: string }>;
-  let rec: Array<{ name: string; pref: string | null }>;
+  let rec: Array<{ id: string; name: string; pref: string | null }>;
   let setRows: Array<{ key: string; value: string }>;
   try {
     [inv, rec, setRows] = await Promise.all([
       leggi('inventory_items', 'name,qty,cat'),
-      leggi('recipes', 'name,pref'),
+      leggi('recipes', 'id,name,pref'),
       leggi('settings', 'key,value'),
     ]);
   } catch {
@@ -344,6 +344,10 @@ Deno.serve(async (req) => {
     ripetizione: string; non_mangia: string[]; evita: string[]; ama: string[]; note: string | null;
   }> = [];
   try { profili = await leggi('profiles', '*'); } catch { /* v6 non ancora installata */ }
+
+  // I voti sono per persona: il cuore di uno non è il cuore dell'altra.
+  let voti: Array<{ recipe_id: string; profile_slug: string; pref: string }> = [];
+  try { voti = await leggi('recipe_votes', 'recipe_id,profile_slug,pref'); } catch { /* niente voti */ }
 
   // Gli ultimi 5 giorni di pasti, per non ripetere sempre le stesse cose.
   // Se la tabella non esiste ancora, si va avanti lo stesso.
@@ -377,6 +381,13 @@ Deno.serve(async (req) => {
     const righe = inv.filter((i) => i.cat === c);
     return righe.length ? righe.map((i) => `- ${i.name} — ${i.qty}`).join('\n') : '- (vuoto)';
   };
+  /** I voti di una persona, per nome di ricetta. */
+  const votiDi = (slug: string, pref: string) => {
+    const ids = new Set(voti.filter((v) => v.profile_slug === slug && v.pref === pref)
+                            .map((v) => v.recipe_id));
+    return rec.filter((r) => ids.has(r.id)).map((r) => r.name).join(' · ') || '(nessuna)';
+  };
+
   const nomiPref = (p: string | null) =>
     rec.filter((r) => r.pref === p).map((r) => r.name).join(' · ') || '(nessuna)';
   const impostazioni = Object.fromEntries(setRows.map((s) => [s.key, s.value]));
@@ -393,10 +404,19 @@ ${perCat('freezer')}
 DISPENSA
 ${perCat('dispensa')}
 
-## RICETTE GIÀ VOTATE
-Preferite (priorità): ${nomiPref('fav')}
-Vanno bene: ${nomiPref('ok')}
-DA NON RIPROPORRE MAI: ${nomiPref('no')}
+## RICETTE GIÀ VOTATE — i voti sono PER PERSONA
+${profili.length
+  ? profili.map((p) => [
+      `### secondo ${p.nome}`,
+      `- preferite: ${votiDi(p.slug, 'fav')}`,
+      `- vanno bene: ${votiDi(p.slug, 'ok')}`,
+      `- DA NON RIPROPORRE MAI: ${votiDi(p.slug, 'no')}`,
+    ].join('\n')).join('\n\n')
+  : `Preferite (priorità): ${nomiPref('fav')}\nVanno bene: ${nomiPref('ok')}\nDA NON RIPROPORRE MAI: ${nomiPref('no')}`}
+
+Regola sui voti: un piatto con **NO da una qualsiasi delle persone che mangiano
+adesso** non va proposto, mai. Un piatto con il cuore di TUTTE le persone che
+mangiano ha la precedenza. I voti di chi stasera non mangia non contano.
 
 ## LE PERSONE
 ${profili.length ? profili.map(descriviProfilo).join('\n\n') : '- (profili non configurati: considera una sola persona con gli obiettivi qui sotto)'}

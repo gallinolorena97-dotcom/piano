@@ -291,6 +291,9 @@ select.field{appearance:none;-webkit-appearance:none;
   transition:background var(--t),color var(--t);
 }
 .icon-btn:hover{background:var(--corallo-soft);color:var(--corallo-ink)}
+/* la matita non è un'eliminazione: si accende in viola, non in corallo */
+.icon-btn.modifica{color:var(--viola)}
+.icon-btn.modifica:hover{background:var(--lavanda-soft);color:var(--viola-testo)}
 
 .q-label{
   font-size:11.5px;font-weight:700;letter-spacing:1.1px;color:var(--muted);
@@ -386,6 +389,20 @@ select.field{appearance:none;-webkit-appearance:none;
   border:1px solid var(--pesca);color:var(--pesca-ink);background:var(--surface);
   font-size:10px;font-weight:700;letter-spacing:.7px;padding:3px 8px;border-radius:99px;
 }
+
+/* ricette: una riga di voto per persona, così da un colpo d'occhio
+   si capisce chi ha votato cosa */
+.rec-item{padding:13px 16px}
+.rec-item + .rec-item{border-top:1px solid var(--bg)}
+.rec-testa{display:flex;align-items:center;gap:10px}
+.rec-testa .item-name{font-size:15.5px;font-weight:500}
+.voto-riga{display:flex;align-items:center;gap:10px;margin-top:8px}
+.voto-riga.mio .voto-chi{color:var(--viola-testo);font-weight:700}
+.voto-chi{
+  flex:1;min-width:0;font-size:13px;font-weight:600;color:var(--muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.voto-riga.mio{background:var(--lavanda-soft);border-radius:var(--r-s);padding:5px 8px;margin-left:-8px;margin-right:-8px}
 
 /* voti delle ricette */
 .pref{display:flex;gap:7px}
@@ -557,6 +574,18 @@ select.field{appearance:none;-webkit-appearance:none;
     </g>
     <g id="i-menu" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2">
       <path d="M4 7h16M4 12h16M4 17h16"/>
+    </g>
+    <g id="i-matita" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9">
+      <path d="M15.5 5.5l3 3M4 20l1-4L16.2 4.8a1.8 1.8 0 0 1 2.5 0l.5.5a1.8 1.8 0 0 1 0 2.5L8 19z"/>
+    </g>
+    <g id="i-frigo" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9">
+      <rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M5 10h14M8.5 6v2M8.5 13v2.5"/>
+    </g>
+    <g id="i-freezer" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.9">
+      <path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/>
+    </g>
+    <g id="i-scorta" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9">
+      <path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M4 7l2-4h12l2 4M10 12h4"/>
     </g>
   </defs>
 </svg>
@@ -784,6 +813,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth:{ persistSession:fals
 const S = {
   plan:[], inv:[], rec:[], settings:{}, spesa:[], diario:[],
   profili:[],            // i due profili, letti dal database
+  voti:{},               // voti per ricetta: { idRicetta: { slug: 'fav' } }
   io:'lorena',           // chi sono su QUESTO telefono (salvato nel dispositivo)
   tab:'piano',
 };
@@ -797,6 +827,7 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, c =>
 
 const CAT_LABEL = { frigo:'FRIGO', freezer:'CONGELATORE', dispensa:'DISPENSA' };
 const CAT_ORDER = ['frigo','freezer','dispensa'];
+const CAT_ICONA = { frigo:'frigo', freezer:'freezer', dispensa:'scorta' };
 const daVerificare = (qty) => String(qty ?? '').includes('?');
 
 /* ============================================================
@@ -847,13 +878,14 @@ async function loadAll(){
     return;
   }
   try{
-    const [p, i, r, s, sp, pf] = await Promise.all([
+    const [p, i, r, s, sp, pf, vt] = await Promise.all([
       sb.from('plan_days').select('day,payload').order('day', { ascending:true }),
       sb.from('inventory_items').select('id,name,qty,cat'),
       sb.from('recipes').select('id,name,pref'),
       sb.from('settings').select('key,value'),
       sb.from('shopping_list').select('id,name,done').order('created_at', { ascending:true }),
       sb.from('profiles').select('*').order('slug', { ascending:true }),
+      sb.from('recipe_votes').select('recipe_id,profile_slug,pref'),
     ]);
     for (const res of [p,i,r,s]) if (res.error) throw res.error;
 
@@ -867,6 +899,11 @@ async function loadAll(){
     // l'app continua a funzionare come prima
     S.profili = pf.error ? [] : (pf.data || []);
     if (S.profili.length && !S.profili.some(x => x.slug === S.io)) S.io = S.profili[0].slug;
+    // i voti per persona: anche questi facoltativi
+    S.voti = {};
+    if (!vt.error) for (const v of (vt.data || [])){
+      S.voti[v.recipe_id] = { ...(S.voti[v.recipe_id] || {}), [v.profile_slug]: v.pref };
+    }
     await caricaDiario();
 
     banner(null);
@@ -999,7 +1036,10 @@ function renderInv(){
     // ogni categoria è una sezione a sé: è ciò che rende l'intestazione
     // appiccicosa "sua" e la fa cambiare entrando nella sezione dopo
     return `<section class="cat">
-      <div class="cat-head">${CAT_LABEL[cat]} <span>· ${sub.length}</span></div>
+      <div class="cat-head">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="#i-${CAT_ICONA[cat]}"/></svg>
+        ${CAT_LABEL[cat]} <span>· ${sub.length}</span>
+      </div>
       <div class="list">${sub.map(rigaInv).join('')}</div>
     </section>`;
   }).join('');
@@ -1011,7 +1051,10 @@ function rigaInv(i){
     <div class="item-name">${esc(i.name)}</div>
     ${v ? '<span class="tag-verifica">VERIFICA</span>' : ''}
     <div class="item-qty editable" data-act="qty">${esc(i.qty)}</div>
-    <button class="icon-btn" data-act="del" aria-label="Elimina">×</button>
+    <button class="icon-btn modifica" data-act="qty" aria-label="Modifica la quantità di ${esc(i.name)}">
+      <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><use href="#i-matita"/></svg>
+    </button>
+    <button class="icon-btn" data-act="del" aria-label="Elimina ${esc(i.name)}">×</button>
   </div>`;
 }
 
@@ -1057,7 +1100,8 @@ $('#invBody').addEventListener('click', async (ev) => {
     }catch(e){ banner(spiegaErrore(e)); }
   }
 
-  if (btn.dataset.act === 'qty') apriEditorQty(btn, item);
+  // sia il tocco sulla quantità sia la matita aprono lo stesso editor
+  if (btn.dataset.act === 'qty') apriEditorQty(btn.closest('.item').querySelector('.item-qty'), item);
 });
 
 function apriEditorQty(cell, item){
@@ -1093,22 +1137,59 @@ function apriEditorQty(cell, item){
    ============================================================ */
 const PREF_LABEL = { fav:'♥', ok:'OK', no:'NO' };
 
+/** Il voto di una persona su una ricetta (null = non ha votato). */
+const votoDi = (idRicetta, slug) => (S.voti[idRicetta] || {})[slug] ?? null;
+
+/** Chi vota: i due profili, oppure una riga sola se i profili non ci sono. */
+const votanti = () => S.profili.length
+  ? S.profili.map(p => ({ slug:p.slug, nome:p.nome }))
+  : [{ slug:'lorena', nome:'Voto' }];
+
 function renderRec(){
   const box = $('#recBody');
   if (!S.rec.length){
     box.innerHTML = `<div class="empty"><b>Nessuna ricetta.</b><br>
-      Aggiungine una col modulo qui sopra.</div>`;
+      Aggiungine una col modulo qui sopra, oppure salvale
+      da «Ho cucinato questo» nella tab Cucino.</div>`;
     return;
   }
+  const chi = votanti();
   box.innerHTML = `<div class="list">${S.rec.map(r => `
-    <div class="item" data-id="${r.id}">
-      <div class="item-name">${esc(r.name)}</div>
-      <div class="pref">
-        ${['fav','ok','no'].map(p =>
-          `<button data-p="${p}" aria-pressed="${r.pref === p}">${PREF_LABEL[p]}</button>`).join('')}
+    <div class="rec-item" data-id="${r.id}">
+      <div class="rec-testa">
+        <div class="item-name">${esc(r.name)}</div>
+        <button class="icon-btn" data-act="del" aria-label="Elimina ${esc(r.name)}">×</button>
       </div>
-      <button class="icon-btn" data-act="del" aria-label="Elimina">×</button>
+      ${chi.map(c => `<div class="voto-riga ${c.slug === S.io ? 'mio' : ''}">
+        <span class="voto-chi">${esc(c.nome)}</span>
+        <div class="pref">
+          ${['fav','ok','no'].map(p =>
+            `<button data-slug="${esc(c.slug)}" data-p="${p}"
+               aria-pressed="${votoDi(r.id, c.slug) === p}"
+               aria-label="${esc(c.nome)}: ${p === 'fav' ? 'preferita' : (p === 'ok' ? 'va bene' : 'da non riproporre')}"
+             >${PREF_LABEL[p]}</button>`).join('')}
+        </div>
+      </div>`).join('')}
     </div>`).join('')}</div>`;
+}
+
+/** Scrive (o cancella) il voto di una persona. */
+async function salvaVoto(idRicetta, slug, pref){
+  try{
+    if (pref === null){
+      const { error } = await sb.from('recipe_votes').delete()
+        .eq('recipe_id', idRicetta).eq('profile_slug', slug);
+      if (error) throw error;
+      if (S.voti[idRicetta]) delete S.voti[idRicetta][slug];
+    }else{
+      const { error } = await sb.from('recipe_votes')
+        .upsert({ recipe_id:idRicetta, profile_slug:slug, pref },
+                { onConflict:'recipe_id,profile_slug' });
+      if (error) throw error;
+      S.voti[idRicetta] = { ...(S.voti[idRicetta] || {}), [slug]: pref };
+    }
+    renderRec();
+  }catch(e){ banner(spiegaErrore(e)); }
 }
 
 $('#recAdd').onclick = async () => {
@@ -1125,25 +1206,35 @@ $('#recAdd').onclick = async () => {
 };
 
 $('#recBody').addEventListener('click', async (ev) => {
-  const row = ev.target.closest('.item');
+  const row = ev.target.closest('.rec-item');
   if (!row) return;
   const rec = S.rec.find(x => x.id === row.dataset.id);
   if (!rec) return;
 
   const del = ev.target.closest('[data-act="del"]');
   if (del){
+    // i voti spariscono insieme alla ricetta: me li salvo per l'annulla
+    const votiPrima = { ...(S.voti[rec.id] || {}) };
     try{
       const { error } = await sb.from('recipes').delete().eq('id', rec.id);
       if (error) throw error;
       S.rec = S.rec.filter(x => x.id !== rec.id);
+      delete S.voti[rec.id];
       renderRec();
       toast(`Eliminata: ${rec.name}`, async () => {
         const { data, error } = await sb.from('recipes')
-          .insert({ id:rec.id, name:rec.name, pref:rec.pref }).select().single();
+          .insert({ id:rec.id, name:rec.name }).select().single();
         if (error) { banner(spiegaErrore(error)); return; }
         S.rec.push(data);
         S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
-        renderRec(); toast('Ripristinata.');
+        // rimetto anche i voti di tutti
+        const righe = Object.entries(votiPrima).map(([slug, pref]) =>
+          ({ recipe_id:rec.id, profile_slug:slug, pref }));
+        if (righe.length){
+          const { error: e2 } = await sb.from('recipe_votes').insert(righe);
+          if (!e2) S.voti[rec.id] = votiPrima;
+        }
+        renderRec(); toast('Ripristinata, voti compresi.');
       });
     }catch(e){ banner(spiegaErrore(e)); }
     return;
@@ -1151,12 +1242,10 @@ $('#recBody').addEventListener('click', async (ev) => {
 
   const pb = ev.target.closest('[data-p]');
   if (pb && !pb.disabled){
-    const nuovo = (rec.pref === pb.dataset.p) ? null : pb.dataset.p;  // ritocca = toglie il voto
-    try{
-      const { error } = await sb.from('recipes').update({ pref:nuovo }).eq('id', rec.id);
-      if (error) throw error;
-      rec.pref = nuovo; renderRec();
-    }catch(e){ banner(spiegaErrore(e)); }
+    const slug = pb.dataset.slug;
+    // ritoccare lo stesso voto lo toglie
+    const nuovo = (votoDi(rec.id, slug) === pb.dataset.p) ? null : pb.dataset.p;
+    await salvaVoto(rec.id, slug, nuovo);
   }
 });
 
@@ -1327,6 +1416,13 @@ function renderProposte(stato){
   $('#cuBody').innerHTML = schede + attesa;
 }
 
+/** Un riquadro che dice "nessuno" è rumore: meglio non mostrarlo affatto. */
+function vuoto(testo){
+  const t = senzaAccenti(testo).replace(/[.,;:!]/g, ' ').trim();
+  if (!t) return true;
+  return /^(nessuno|nessuna|niente|non serve|non necessario|no)\b/.test(t);
+}
+
 function cardProposta(p, i){
   const lista = (arr) => (arr || []).map(x =>
     `<div class="ing"><div style="flex:1">${esc(x.nome)}</div>
@@ -1345,8 +1441,8 @@ function cardProposta(p, i){
       ${lista(p.ingredienti_io)}
       ${perX ? `<div class="ing-head">${esc(`Per ${altroProfilo()?.nome || 'l\'altra persona'}`)}</div>
         ${lista(p.ingredienti_x)}` : ''}
-      ${p.scongelamento ? `<div class="nota freezer">❄ ${esc(p.scongelamento)}</div>` : ''}
-      ${p.avanzo        ? `<div class="nota avanzo">🍱 ${esc(p.avanzo)}</div>` : ''}
+      ${vuoto(p.scongelamento) ? '' : `<div class="nota freezer">❄ ${esc(p.scongelamento)}</div>`}
+      ${vuoto(p.avanzo)        ? '' : `<div class="nota avanzo">🍱 ${esc(p.avanzo)}</div>`}
       ${(p.manca || []).length ? `<div class="nota manca">Ti manca: ${esc(p.manca.join(', '))}
         <button data-act="spesa">+ Aggiungi alla spesa</button></div>` : ''}
       ${p.perche ? `<div class="nota perche">${esc(p.perche)}</div>` : ''}
@@ -1688,12 +1784,12 @@ async function annullaCucinato(modifiche, ricetta, pasto, silenzioso){
     S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
 
     if (ricetta && ricetta.creata){
+      // cancellando la ricetta se ne va anche il voto (vincolo del database)
       await sb.from('recipes').delete().eq('id', ricetta.id);
       S.rec = S.rec.filter(x => x.id !== ricetta.id);
+      delete S.voti[ricetta.id];
     }else if (ricetta){
-      await sb.from('recipes').update({ pref: ricetta.prefPrima }).eq('id', ricetta.id);
-      const r = S.rec.find(x => x.id === ricetta.id);
-      if (r) r.pref = ricetta.prefPrima;
+      await salvaVoto(ricetta.id, S.io, ricetta.prefPrima);   // rimette il voto di prima
     }
 
     if (pasto) await sb.from('meals_log').delete().eq('id', pasto);
@@ -1708,21 +1804,22 @@ async function annullaCucinato(modifiche, ricetta, pasto, silenzioso){
 /** Salva (o promuove a ♥) la ricetta. Restituisce di che cosa tener conto per l'annulla. */
 async function salvaRicetta(p){
   const esistente = S.rec.find(r => r.name.toLowerCase() === p.nome.toLowerCase());
+  let id, creata = false;
+
   if (esistente){
-    const prefPrima = esistente.pref;
-    if (esistente.pref !== 'fav'){
-      const { error } = await sb.from('recipes').update({ pref:'fav' }).eq('id', esistente.id);
-      if (error) throw error;
-      esistente.pref = 'fav';
-    }
-    return { creata:false, id:esistente.id, prefPrima };
+    id = esistente.id;
+  }else{
+    const { data, error } = await sb.from('recipes').insert({ name:p.nome }).select().single();
+    if (error) throw error;
+    S.rec.push(data);
+    S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
+    id = data.id; creata = true;
   }
-  const { data, error } = await sb.from('recipes')
-    .insert({ name:p.nome, pref:'fav' }).select().single();
-  if (error) throw error;
-  S.rec.push(data);
-  S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
-  return { creata:true, id:data.id, prefPrima:null };
+
+  // il cuore lo mette CHI STA CUCINANDO, non "l'app": i voti sono per persona
+  const prefPrima = votoDi(id, S.io);
+  await salvaVoto(id, S.io, 'fav');
+  return { creata, id, prefPrima };
 }
 
 /** Scrive il pasto nel diario. Se la tabella non esiste ancora, tira dritto. */
@@ -2257,16 +2354,28 @@ function testoExport(){
   else dv.forEach(i => out.push(`- ${i.name}`));
   out.push('');
 
-  out.push('RICETTE');
-  const gruppi = [
-    ['Preferite',          S.rec.filter(r => r.pref === 'fav')],
-    ['Vanno bene',         S.rec.filter(r => r.pref === 'ok')],
-    ['Da non riproporre',  S.rec.filter(r => r.pref === 'no')],
-    ['Senza voto',         S.rec.filter(r => !r.pref)],
-  ];
-  for (const [titolo, lista] of gruppi){
-    // separatore « · » al posto della virgola: alcuni nomi contengono virgole
-    if (lista.length) out.push(`${titolo}: ${lista.map(r => r.name).join(' · ')}`);
+  out.push('RICETTE — i voti sono per persona');
+  // separatore « · » al posto della virgola: alcuni nomi contengono virgole
+  for (const c of votanti()){
+    out.push('');
+    out.push(`Secondo ${c.nome}:`);
+    const gruppi = [
+      ['  preferite',         S.rec.filter(r => votoDi(r.id, c.slug) === 'fav')],
+      ['  vanno bene',        S.rec.filter(r => votoDi(r.id, c.slug) === 'ok')],
+      ['  da non riproporre', S.rec.filter(r => votoDi(r.id, c.slug) === 'no')],
+    ];
+    let qualcosa = false;
+    for (const [titolo, lista] of gruppi){
+      if (!lista.length) continue;
+      qualcosa = true;
+      out.push(`${titolo}: ${lista.map(r => r.name).join(' · ')}`);
+    }
+    if (!qualcosa) out.push('  (non ha ancora votato niente)');
+  }
+  const senzaVoto = S.rec.filter(r => !Object.keys(S.voti[r.id] || {}).length);
+  if (senzaVoto.length){
+    out.push('');
+    out.push(`Nessuno ha votato: ${senzaVoto.map(r => r.name).join(' · ')}`);
   }
   return out.join('\n');
 }
