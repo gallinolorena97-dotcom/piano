@@ -233,11 +233,51 @@ sia fattibile e che siano diverse. Il client ha un ripiego per la function vecch
 ⚠️ **Non passare a tre chiamate parallele** per andare più veloce: si perderebbero
 proprio le garanzie fra proposte, e il costo triplicherebbe l'input.
 
+### La v7 — il design (12/08/2026)
+
+**⚠️ Regola per ogni schermata futura, v5 compresa: si usano i token, non si
+inventano colori.** Stanno in cima al `<style>` di `index.html`, sezione «1 · TOKEN».
+Se serve un colore che non c'è, si aggiunge un token lì e lo si usa: mai un valore
+scritto a mano dentro una regola.
+
+- **Palette** lavanda e menta. Il pastello sta su sfondi e superfici, **mai sul testo**.
+  `--viola-testo` esiste apposta: il viola pieno su `--lavanda-soft` dà 4.43, sotto la
+  soglia AA. Ogni combinazione in uso è stata misurata: la più bassa è 5.18.
+- **Tipografia**: Fraunces per i titoli, Outfit per l'interfaccia. Due famiglie, basta.
+- **Navigazione**: su telefono in basso, su desktop in alto (`@media (min-width:760px)`).
+  `misuraTestata()` misura le altezze a runtime e azzera `--nav-alt` quando la barra è
+  in basso: è ciò che tiene giuste le intestazioni appiccicose della Dispensa.
+- **Icone e illustrazioni**: tutte SVG scritte dentro `index.html`, in `<defs>`.
+  Nessuna immagine esterna, nessun download.
+- **Icona dell'app**: barattolo col germoglio. `apple-touch-icon.png` (180, quadrato
+  pieno: gli angoli li arrotonda iOS), `favicon.svg`, `favicon-32/180.png`.
+  Rigenerabili con lo script in `scratchpad/icona.ps1` — è disegnata con primitive
+  geometriche, non convertita da un'immagine.
+
+### ⚠️ Ogni azione che salva deve dare un esito visibile
+
+Regola introdotta dopo un bug vero: il pulsante «Conferma e aggiorna» falliva e
+l'errore usciva nel **banner in cima alla pagina**, invisibile a chi guardava il
+pannello in fondo. Sembrava che il pulsante non funzionasse.
+
+- **Errori delle azioni** → `esitoErrore(e)`, che usa il toast in basso: è fisso, si
+  vede da qualunque punto della pagina. Mai `banner()` per un'azione.
+- **Il banner** resta solo per i problemi di caricamento iniziale, quando sei in cima.
+- `spiegaErrore()` deve dire **quale file SQL eseguire**, non il messaggio del database.
+- Le operazioni accessorie non devono far fallire quelle principali: in
+  `confermaCucinato`, se la dispensa è aggiornata e fallisce il salvataggio della
+  ricetta, si tiene il lavoro fatto e si dice cosa non è riuscito.
+
 ### Ancora da fare
 
-`PROMPT-V5-PIANO-SETTIMANALE.md` (il piano settimanale, **dovrà tener conto dei due
-profili**), i blocchi 4-5 della v6 (voti per persona, registro con chi c'era) e
-`PROMPT-V7-DESIGN.md`.
+- `PROMPT-V5-PIANO-SETTIMANALE.md`: il piano settimanale. **Dovrà tener conto dei due
+  profili e usare i token della v7.**
+- v6 blocco 5: il registro deve segnare **chi** ha mangiato (il campo `chi` in
+  `meals_log` c'è già, la vista non lo mostra).
+- v7 blocco 3: mancano le illustrazioni di **piano vuoto** e **diario vuoto**. Quella
+  della spesa è fatta e fa da modello: stesso stile, tre colori, SVG in `<defs>`.
+- La texture di sfondo facoltativa della v7: non fatta, e al primo dubbio si lascia
+  perdere (lo dice il brief stesso).
 
 ### Cosa NON fare qui
 
