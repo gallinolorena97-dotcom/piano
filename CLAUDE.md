@@ -54,6 +54,7 @@ nuovo della vecchia `anon`.
 | `generator_usage` | `day` (date, PK), `count` — contatore del generatore, **senza policy**: invisibile all'app |
 | `shopping_list` | `id`, `name`, `done`, `created_at` — la lista della spesa |
 | `meals_log` | `id`, `day`, `pasto`, `piatto`, `prot`, `kcal`, `chi`, `proteina` — il diario dei pasti |
+| `profiles` | `slug` (`lorena`/`x`), `nome`, `prot_target`, `kcal_target`, `ripetizione`, `non_mangia[]`, `evita[]`, `ama[]`, `note` |
 
 Queste sono **tutte** le tabelle. `allowed_writers` e la funzione `is_writer()` sono
 state cancellate dal database il 12/08/2026: non esistono più.
@@ -178,7 +179,40 @@ gli ultimi 5 giorni e non ripete la stessa `proteina_principale` più di 2 volte
 3 giorni, né lo stesso piatto entro 2 giorni. Vista a 14 giorni, copia a 7 giorni.
 **Niente punteggi, streak o grafici**: è un registro, non una pagella.
 
-Blocchi 4-8 del brief (`PROMPT-GENERATORE-V4.md`) non ancora fatti.
+**I blocchi 4-8 della v4 sono annullati**: assorbiti da V5 e V6 (decisione del 12/08/2026).
+
+### La v6 — i due profili (12/08/2026)
+
+**Blocco 1 — profili.** Tabella `profiles`, due righe: `lorena` e `x`. La riga sotto il
+titolo mostra chi sei e i **tuoi** obiettivi; toccandola si apre la schermata Profilo
+(non è una tab: è `#tab-profilo`, mostrata da `apriProfilo()`).
+Il selettore «su questo telefono sono» sta in `localStorage` con chiave `piano-io`.
+**Non è un login e non protegge nulla**: entrambi i profili sono modificabili da
+entrambi. Le liste sono `text[]` in Postgres, array JS nel frontend.
+
+**Blocco 2 — chi mangia.** Tre voci con i nomi veri: `io` · `io_e_x` · `solo_x`
+(gli stessi valori accettati da `meals_log.chi`). Il frontend manda solo `chi` e
+`io_slug`: **i profili li rilegge la function dal database**, non arrivano dal telefono.
+I divieti non si negoziano; a pasto condiviso la fonte proteica può essere diversa per
+le due persone; se un piatto unico non funziona la function propone due piatti distinti.
+La regola della varietà è **per persona** (campo `ripetizione`).
+
+**Blocco 3 — streaming.** La function chiama Anthropic con `stream: true` e riconosce
+ogni proposta dentro il JSON mentre si scrive (`creaLettore()`: conta le graffe tenendo
+conto di stringhe ed escape), spedendola come **NDJSON** — una riga JSON per messaggio.
+Resta **una sola chiamata al modello**: conta come una generazione sola rispetto al
+tetto, e il modello vede le tre proposte insieme, che serve a garantire che almeno una
+sia fattibile e che siano diverse. Il client ha un ripiego per la function vecchia
+(blocco unico `{proposte:[…]}`) e per i browser senza streaming.
+
+⚠️ **Non passare a tre chiamate parallele** per andare più veloce: si perderebbero
+proprio le garanzie fra proposte, e il costo triplicherebbe l'input.
+
+### Ancora da fare
+
+`PROMPT-V5-PIANO-SETTIMANALE.md` (il piano settimanale, **dovrà tener conto dei due
+profili**), i blocchi 4-5 della v6 (voti per persona, registro con chi c'era) e
+`PROMPT-V7-DESIGN.md`.
 
 ### Cosa NON fare qui
 
