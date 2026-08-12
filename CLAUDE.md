@@ -268,16 +268,66 @@ pannello in fondo. Sembrava che il pulsante non funzionasse.
   `confermaCucinato`, se la dispensa è aggiornata e fallisce il salvataggio della
   ricetta, si tiene il lavoro fatto e si dice cosa non è riuscito.
 
-### Ancora da fare
+### 🔖 DOVE SIAMO — leggere per prima cosa in una sessione nuova
 
-- `PROMPT-V5-PIANO-SETTIMANALE.md`: il piano settimanale. **Dovrà tener conto dei due
-  profili e usare i token della v7.**
-- v6 blocco 5: il registro deve segnare **chi** ha mangiato (il campo `chi` in
-  `meals_log` c'è già, la vista non lo mostra).
-- v7 blocco 3: mancano le illustrazioni di **piano vuoto** e **diario vuoto**. Quella
-  della spesa è fatta e fa da modello: stesso stile, tre colori, SVG in `<defs>`.
-- La texture di sfondo facoltativa della v7: non fatta, e al primo dubbio si lascia
-  perdere (lo dice il brief stesso).
+**Aggiornato: 12/08/2026, fine sessione.**
+
+#### ✅ Fatto e online
+
+v4 (blocchi 1-3), v6 (blocchi 1-3) e **v7 completa**: stile ricco su tutte le
+schermate, illustrazioni degli stati vuoti (spesa, piano, diario), pentola fumante
+animata durante l'attesa, icona e favicon nel repo.
+
+Tutti i file SQL sono stati eseguiti su Supabase, e la Edge Function online è quella
+col campo «che voglia hai?». **Non c'è niente in sospeso da installare.**
+
+#### ⛔ Decisioni chiuse — non riaprirle
+
+- **Mascotte: cancellata.** Provata (un pancake) e scartata. Gli stati vuoti e
+  l'attesa usano **oggetti**, mai personaggi. Non riproporla.
+- **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.
+- **Stile: la passata ricca è approvata** nella versione attualmente online.
+
+#### ▶️ PROSSIMO PASSO — v5 Blocco 1
+
+Brief: `PROMPT-V5-PIANO.md` (sostituisce il vecchio `…-SETTIMANALE.md`, eliminato).
+Si va **un blocco alla volta con push separati, e ci si ferma dopo il Blocco 3.**
+
+Il Blocco 1 **non è stato iniziato**. Lo schema qui sotto è **già stato approvato
+dall'utente**: si può passare direttamente all'SQL, senza riproporlo.
+
+##### Schema approvato: `plan_meals` — una riga per PASTO, non per giorno
+
+| Campo | Contenuto |
+|---|---|
+| `day` + `pasto` | giorno, e se è pranzo o cena |
+| `modo` | `casa` · `fuori` · `libero` (la passata dei 7 giorni) |
+| `chi` | `ciprian` · `entrambi` · `lorena` |
+| `stato` | `bozza` · `confermato` · `passato` (i tre trattamenti visivi) |
+| `piatto`, `perche` | cosa si mangia e la ragione della scelta |
+| `ingredienti` | grammi **per persona**: le porzioni diverse stanno nello stesso pasto |
+| **`dolce`** | testo facoltativo. **Il tocco dolce di Lorena non si mescola agli ingredienti**: arriva già distinto e la card lo mostra in un riquadro suo |
+| **`tempo`** | minuti di preparazione, mostrati sulla card |
+| `prot`, `kcal` | **solo per Ciprian**; vuoti nei pasti di sola Lorena |
+| `scongelamento`, `scongelare_il` | il promemoria e **su quale giorno** mostrarlo |
+| `avanzo_per` | il rimando «→ pranzo di domani» |
+| `dipende_da_spesa` | il giorno che aspetta un acquisto |
+| `nota` | la nota libera della passata |
+
+**Perché per pasto e non per giorno:** i promemoria di scongelamento vanno mostrati su
+un giorno diverso da quello del pasto, gli avanzi collegano due pasti fra loro, e la
+rigenerazione (Blocco 4) deve poter toccare un singolo pasto senza riscrivere la
+giornata.
+
+`plan_days` resta dov'è, vuota e inutilizzata: non si cancella mentre se ne introduce
+un'altra.
+
+#### Rimasto indietro, minore
+
+- v6 blocco 5: il diario non mostra ancora **chi** ha mangiato (il campo `chi` in
+  `meals_log` esiste già).
+- La texture di sfondo facoltativa della v7: non fatta. Il brief stesso dice che al
+  primo dubbio si lascia perdere.
 
 ### Cosa NON fare qui
 
