@@ -57,14 +57,19 @@ create policy "accesso libero" on public.profiles
 --    "on conflict do nothing": se li hai gia' e li hai modificati
 --    dall'app, questo file NON te li riscrive.
 
+-- ATTENZIONE ALLO SLUG: e' un codice interno, NON il nome della persona.
+-- Per ragioni storiche lo slug 'lorena' contiene il profilo di CIPRIAN
+-- e lo slug 'x' contiene quello di LORENA. Non fidarti dello slug:
+-- la persona e' quella scritta nella colonna "nome".
+
 insert into public.profiles (slug, nome, prot_target, kcal_target, ripetizione, non_mangia, evita, ama, note)
 values
-  ('lorena', 'Lorena', 170, 2200, 'alta',
+  ('lorena', 'Ciprian', 170, 2200, 'alta',
    '{}',
    '{}',
    '{}',
-   'In deficit per dimagrire. Mangia sempre a casa. Tollera benissimo la ripetizione: riso e tonno due giorni di fila vanno bene. Quando X non c''e'', cucina comunque ma in modo piu'' semplice.'),
-  ('x', 'X', null, null, 'bassa',
+   'In deficit per dimagrire. Mangia sempre a casa. Tollera benissimo la ripetizione: riso e tonno due giorni di fila vanno bene. Quando Lorena non c''e'', cucina comunque ma in modo piu'' semplice.'),
+  ('x', 'Lorena', null, null, 'bassa',
    '{"pomodoro crudo","cetrioli","interiora"}',
    '{"abbinamenti strani","piatti con troppi ingredienti diversi insieme"}',
    '{"verdure"}',
@@ -72,7 +77,8 @@ values
 on conflict (slug) do nothing;
 
 -- CONTROLLO FINALE
--- Devi vedere due righe, Lorena e X, con le liste di X gia' compilate.
+-- Devi vedere due righe: Ciprian con 170 g / 2200 kcal, e Lorena senza
+-- obiettivi ma con la lista "non mangia" gia' compilata.
 
 select slug, nome, prot_target, kcal_target, ripetizione, non_mangia
 from public.profiles

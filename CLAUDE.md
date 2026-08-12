@@ -2,7 +2,29 @@
 
 > Promemoria per le sessioni future di Claude Code. Leggilo prima di toccare qualsiasi cosa.
 
-## Con chi stai lavorando
+## Con chi stai lavorando — ⚠️ leggi prima di nominare qualcuno
+
+Le persone sono **due, e non vanno confuse**:
+
+| | **Ciprian** | **Lorena** |
+|---|---|---|
+| Obiettivi | 170 g proteine · 2200 kcal, in deficit | **nessun obiettivo**, mangia normale |
+| Vincoli | nessuno | non mangia **pomodoro crudo, cetrioli, interiora** |
+| Abitudini | mangia sempre a casa, tollera la ripetizione | spesso non a casa, vuole varietà e il tocco dolce |
+
+- L'**account GitHub e Supabase è di Lorena** (`gallinolorena97-dotcom`).
+- Il **progetto è nato da Ciprian**, che all'inizio era l'unico a usarlo: per questo
+  i primi documenti davano per scontato che «io» fosse chi ha l'obiettivo proteico.
+- **Oggi lo usano entrambi**, ognuno col proprio profilo sul proprio telefono.
+
+⚠️ **I brief più vecchi contengono questo equivoco**: `PROMPT-V6-PROFILI.md` attribuisce
+a «Lorena» i 170 g di proteine e chiama «X» l'altra persona. **È sbagliato** — corretto
+dall'utente il 12/08/2026. Se un brief e questa tabella si contraddicono, vince questa
+tabella. Nel dubbio, chiedi invece di dedurre.
+
+⚠️ **Gli `slug` nel database non sono i nomi**: per ragioni storiche lo slug `lorena`
+contiene il profilo di **Ciprian**, e lo slug `x` quello di **Lorena**. La persona è
+sempre e solo quella scritta nella colonna `nome`.
 
 L'utente **non è programmatrice**. Spiega ogni passaggio in italiano semplice, senza gergo.
 Prima di ogni azione con effetti (push su GitHub, scritture sul database, cancellazioni):
@@ -183,8 +205,11 @@ gli ultimi 5 giorni e non ripete la stessa `proteina_principale` più di 2 volte
 
 ### La v6 — i due profili (12/08/2026)
 
-**Blocco 1 — profili.** Tabella `profiles`, due righe: `lorena` e `x`. La riga sotto il
-titolo mostra chi sei e i **tuoi** obiettivi; toccandola si apre la schermata Profilo
+**Blocco 1 — profili.** Tabella `profiles`, due righe (slug `lorena` = Ciprian,
+slug `x` = Lorena: vedi l'avvertenza in cima a questo file). La riga sotto il titolo
+**segue il profilo selezionato**: mostra il suo nome e i **suoi** obiettivi, e per chi
+non ne ha scrive «nessun obiettivo» senza numeri — i target **non sono universali** e
+non vanno più letti da `settings`. Toccandola si apre la schermata Profilo
 (non è una tab: è `#tab-profilo`, mostrata da `apriProfilo()`).
 Il selettore «su questo telefono sono» sta in `localStorage` con chiave `piano-io`.
 **Non è un login e non protegge nulla**: entrambi i profili sono modificabili da
