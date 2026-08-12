@@ -768,7 +768,8 @@ $('#cuGen').onclick = async () => {
   $('#cuGen').disabled = true;
   $('#cuBody').innerHTML =
     `<div class="loading">Sto pensando ai piatti…<br>
-     <span style="font-size:13.5px">Ci vuole una decina di secondi.</span></div>`;
+     <span style="font-size:13.5px">Servono circa <b>mezzo minuto</b>: è normale,
+     sto facendo i conti delle proteine. Non ricaricare la pagina.</span></div>`;
   try{
     const p = await chiamaGeneratore({ ...baseRichiesta(), quante: 3 });
     CU.proposte = p;
