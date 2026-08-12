@@ -547,6 +547,9 @@ select.field{appearance:none;-webkit-appearance:none;
 #toast[hidden]{display:none}
 #toast span{flex:1}
 #toast button{color:var(--lavanda);font-weight:700;font-size:14.5px;padding:6px;min-height:40px}
+/* un errore si vede che è un errore, senza urlare */
+#toast.errore{background:var(--corallo-ink)}
+#toast.errore button{color:#FFD9D2}
 @media (min-width:760px){ #toast{bottom:24px} }
 </style>
 </head>
@@ -841,14 +844,30 @@ function banner(msg){
 }
 
 let toastTimer = null, undoFn = null;
-function toast(text, onUndo){
+
+/**
+ * L'esito di un'azione. Compare in basso, sopra la navigazione, quindi
+ * è visibile ovunque tu sia nella pagina — anche in fondo a un pannello.
+ * tipo: 'ok' (verde) oppure 'errore' (corallo).
+ */
+function toast(text, onUndo, tipo){
   clearTimeout(toastTimer);
   $('#toastText').textContent = text;
   undoFn = onUndo || null;
   $('#toastAction').hidden = !onUndo;
-  $('#toast').hidden = false;
-  toastTimer = setTimeout(() => { $('#toast').hidden = true; undoFn = null; }, 8000);
+  const t = $('#toast');
+  t.className = tipo === 'errore' ? 'errore' : '';
+  t.hidden = false;
+  // un errore resta più a lungo: va letto, non intravisto
+  toastTimer = setTimeout(() => { t.hidden = true; undoFn = null; },
+    tipo === 'errore' ? 14000 : 8000);
 }
+
+/**
+ * Un'azione di salvataggio è andata male. Regola dell'app: OGNI azione
+ * che scrive deve lasciare un segno visibile, mai fallire in silenzio.
+ */
+function esitoErrore(e){ toast(spiegaErrore(e), null, 'errore'); }
 $('#toastAction').onclick = async () => {
   const f = undoFn; undoFn = null; $('#toast').hidden = true;
   if (f) await f();
@@ -909,6 +928,7 @@ async function loadAll(){
     banner(null);
     renderAll();
   }catch(e){
+    // qui il banner ha senso: è un problema di caricamento e sei in cima
     banner(spiegaErrore(e));
   }
 }
@@ -1073,7 +1093,7 @@ $('#invAdd').onclick = async () => {
     S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
     $('#invName').value = ''; $('#invQty').value = '';
     renderInv(); toast(`Aggiunto: ${name}`);
-  }catch(e){ banner(spiegaErrore(e)); }
+  }catch(e){ esitoErrore(e); }
 };
 
 $('#invBody').addEventListener('click', async (ev) => {
@@ -1092,12 +1112,12 @@ $('#invBody').addEventListener('click', async (ev) => {
       toast(`Eliminato: ${item.name}`, async () => {
         const { data, error } = await sb.from('inventory_items')
           .insert({ id:item.id, name:item.name, qty:item.qty, cat:item.cat }).select().single();
-        if (error) { banner(spiegaErrore(error)); return; }
+        if (error) { esitoErrore(error); return; }
         S.inv.push(data);
         S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
         renderInv(); toast('Ripristinato.');
       });
-    }catch(e){ banner(spiegaErrore(e)); }
+    }catch(e){ esitoErrore(e); }
   }
 
   // sia il tocco sulla quantità sia la matita aprono lo stesso editor
@@ -1123,7 +1143,7 @@ function apriEditorQty(cell, item){
       const { error } = await sb.from('inventory_items').update({ qty:nuovo }).eq('id', item.id);
       if (error) throw error;
       item.qty = nuovo; renderInv(); toast('Quantità aggiornata.');
-    }catch(e){ banner(spiegaErrore(e)); renderInv(); }
+    }catch(e){ esitoErrore(e); renderInv(); }
   };
   inp.addEventListener('blur', salva);
   inp.addEventListener('keydown', e => {
@@ -1173,23 +1193,25 @@ function renderRec(){
     </div>`).join('')}</div>`;
 }
 
-/** Scrive (o cancella) il voto di una persona. */
+/**
+ * Scrive (o cancella) il voto di una persona.
+ * Se qualcosa va storto SOLLEVA l'errore invece di ingoiarlo: chi chiama
+ * deve poterlo sapere, altrimenti un fallimento passerebbe per successo.
+ */
 async function salvaVoto(idRicetta, slug, pref){
-  try{
-    if (pref === null){
-      const { error } = await sb.from('recipe_votes').delete()
-        .eq('recipe_id', idRicetta).eq('profile_slug', slug);
-      if (error) throw error;
-      if (S.voti[idRicetta]) delete S.voti[idRicetta][slug];
-    }else{
-      const { error } = await sb.from('recipe_votes')
-        .upsert({ recipe_id:idRicetta, profile_slug:slug, pref },
-                { onConflict:'recipe_id,profile_slug' });
-      if (error) throw error;
-      S.voti[idRicetta] = { ...(S.voti[idRicetta] || {}), [slug]: pref };
-    }
-    renderRec();
-  }catch(e){ banner(spiegaErrore(e)); }
+  if (pref === null){
+    const { error } = await sb.from('recipe_votes').delete()
+      .eq('recipe_id', idRicetta).eq('profile_slug', slug);
+    if (error) throw error;
+    if (S.voti[idRicetta]) delete S.voti[idRicetta][slug];
+  }else{
+    const { error } = await sb.from('recipe_votes')
+      .upsert({ recipe_id:idRicetta, profile_slug:slug, pref },
+              { onConflict:'recipe_id,profile_slug' });
+    if (error) throw error;
+    S.voti[idRicetta] = { ...(S.voti[idRicetta] || {}), [slug]: pref };
+  }
+  renderRec();
 }
 
 $('#recAdd').onclick = async () => {
@@ -1202,7 +1224,7 @@ $('#recAdd').onclick = async () => {
     S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
     $('#recName').value = '';
     renderRec(); toast(`Aggiunta: ${name}`);
-  }catch(e){ banner(spiegaErrore(e)); }
+  }catch(e){ esitoErrore(e); }
 };
 
 $('#recBody').addEventListener('click', async (ev) => {
@@ -1224,7 +1246,7 @@ $('#recBody').addEventListener('click', async (ev) => {
       toast(`Eliminata: ${rec.name}`, async () => {
         const { data, error } = await sb.from('recipes')
           .insert({ id:rec.id, name:rec.name }).select().single();
-        if (error) { banner(spiegaErrore(error)); return; }
+        if (error) { esitoErrore(error); return; }
         S.rec.push(data);
         S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
         // rimetto anche i voti di tutti
@@ -1236,7 +1258,7 @@ $('#recBody').addEventListener('click', async (ev) => {
         }
         renderRec(); toast('Ripristinata, voti compresi.');
       });
-    }catch(e){ banner(spiegaErrore(e)); }
+    }catch(e){ esitoErrore(e); }
     return;
   }
 
@@ -1245,7 +1267,11 @@ $('#recBody').addEventListener('click', async (ev) => {
     const slug = pb.dataset.slug;
     // ritoccare lo stesso voto lo toglie
     const nuovo = (votoDi(rec.id, slug) === pb.dataset.p) ? null : pb.dataset.p;
-    await salvaVoto(rec.id, slug, nuovo);
+    const chi = (S.profili.find(x => x.slug === slug) || {}).nome || '';
+    try{
+      await salvaVoto(rec.id, slug, nuovo);
+      toast(nuovo ? `Voto di ${chi} salvato.` : `Voto di ${chi} tolto.`);
+    }catch(e){ esitoErrore(e); }
   }
 });
 
@@ -1473,7 +1499,7 @@ async function rigenera(i, richiestaExtra){
     if (!CU.visti.includes(nuova.nome)) CU.visti.push(nuova.nome);
     renderProposte();
   }catch(e){
-    banner(e.message);
+    toast(e.message, null, 'errore');
     card.classList.remove('working');
     card.querySelectorAll('button').forEach(b => b.disabled = false);
   }finally{
@@ -1742,25 +1768,35 @@ async function confermaCucinato(p, righe, box){
       fatte.push(m);
     }
 
-    // 3. ricetta col cuore
-    ricetta = await salvaRicetta(p);
+    // 3. ricetta e 4. diario sono due extra: se falliscono, la dispensa
+    //    è già a posto e disfare tutto sarebbe peggio. Si dice che cosa
+    //    non è riuscito e si va avanti.
+    const mancati = [];
+    try { ricetta = await salvaRicetta(p); }
+    catch { mancati.push('salvare la ricetta'); }
 
-    // 4. diario dei pasti (se la tabella non c'è ancora, non è un dramma)
-    pasto = await registraPasto(p);
+    pasto = await registraPasto(p);        // già tollerante ai propri errori
     if (pasto) await caricaDiario();
+    else mancati.push('segnare il pasto nel diario');
 
     renderInv(); renderRec(); renderDiario();
     box.remove();
 
     const quante = fatte.length;
-    toast(
-      `Fatto: ${quante ? `${quante} voci aggiornate` : 'nessuna voce da scalare'}${pasto ? ', pasto registrato' : ''}.`,
-      () => annullaCucinato(fatte, ricetta, pasto),
-    );
+    const buono = quante
+      ? `${quante} ${quante === 1 ? 'voce aggiornata' : 'voci aggiornate'}`
+      : 'nessuna voce da scalare';
+    if (mancati.length){
+      toast(`Dispensa a posto (${buono}), ma non sono riuscito a ${mancati.join(' né a ')}.`,
+            () => annullaCucinato(fatte, ricetta, pasto), 'errore');
+    }else{
+      toast(`Fatto: ${buono}, ricetta salvata e pasto registrato.`,
+            () => annullaCucinato(fatte, ricetta, pasto));
+    }
   }catch(e){
     // se qualcosa va storto a metà, rimetto a posto quello che ho già toccato
     await annullaCucinato(fatte, ricetta, pasto, true);
-    banner(spiegaErrore(e));
+    esitoErrore(e);
     box.querySelectorAll('button, input').forEach(x => x.disabled = false);
   }
 }
@@ -1797,7 +1833,7 @@ async function annullaCucinato(modifiche, ricetta, pasto, silenzioso){
     renderInv(); renderRec();
     if (!silenzioso) toast('Annullato: ho rimesso tutto com’era.');
   }catch(e){
-    banner(spiegaErrore(e));
+    esitoErrore(e);
   }
 }
 
@@ -1940,7 +1976,7 @@ function cambiaIo(slug){
       renderTargets();
       if (!$('#tab-profilo').hidden) renderProfilo();
       toast('Obiettivo aggiornato.');
-    }catch(e){ banner(spiegaErrore(e)); }
+    }catch(e){ esitoErrore(e); }
   });
 });
 
@@ -2021,7 +2057,7 @@ async function salvaProfilo(patch, messaggio){
     Object.assign(p, data);
     renderProfilo(); renderTargets();
     if (messaggio) toast(messaggio);
-  }catch(e){ banner(spiegaErrore(e)); }
+  }catch(e){ esitoErrore(e); }
 }
 
 /* --- i due selettori in cima --- */
@@ -2166,7 +2202,7 @@ $('#dgAdd').onclick = async () => {
     ['#dgPiatto','#dgProt','#dgKcal'].forEach(s => $(s).value = '');
     renderDiario();
     toast(`Segnato: ${piatto}`);
-  }catch(e){ banner(spiegaErrore(e)); }
+  }catch(e){ esitoErrore(e); }
 };
 
 $('#dgBody').addEventListener('click', async (ev) => {
@@ -2185,12 +2221,12 @@ $('#dgBody').addEventListener('click', async (ev) => {
         id:m.id, day:m.day, pasto:m.pasto, piatto:m.piatto,
         prot:m.prot, kcal:m.kcal, chi:m.chi,
       }).select().single();
-      if (error){ banner(spiegaErrore(error)); return; }
+      if (error){ esitoErrore(error); return; }
       S.diario.push(data);
       S.diario.sort((a,b) => b.day.localeCompare(a.day));
       renderDiario(); toast('Rimesso nel diario.');
     });
-  }catch(e){ banner(spiegaErrore(e)); }
+  }catch(e){ esitoErrore(e); }
 });
 
 $('#dgCopia').onclick = () => {
@@ -2258,7 +2294,7 @@ async function aggiungiAllaSpesa(nomi){
     renderSpesa();
     toast(puliti.length === 1 ? `In lista: ${puliti[0]}` : `Aggiunti ${puliti.length} articoli.`);
     return puliti.length;
-  }catch(e){ banner(spiegaErrore(e)); return 0; }
+  }catch(e){ esitoErrore(e); return 0; }
 }
 
 $('#spAdd').onclick = async () => {
@@ -2284,7 +2320,7 @@ $('#spBody').addEventListener('click', async (ev) => {
       const { error } = await sb.from('shopping_list').update({ done:nuovo }).eq('id', v.id);
       if (error) throw error;
       v.done = nuovo; renderSpesa();
-    }catch(e){ banner(spiegaErrore(e)); }
+    }catch(e){ esitoErrore(e); }
   }
 
   if (el.dataset.act === 'del'){
@@ -2296,10 +2332,10 @@ $('#spBody').addEventListener('click', async (ev) => {
       toast(`Tolto: ${v.name}`, async () => {
         const { data, error } = await sb.from('shopping_list')
           .insert({ id:v.id, name:v.name, done:v.done }).select().single();
-        if (error){ banner(spiegaErrore(error)); return; }
+        if (error){ esitoErrore(error); return; }
         S.spesa.push(data); renderSpesa(); toast('Rimesso in lista.');
       });
-    }catch(e){ banner(spiegaErrore(e)); }
+    }catch(e){ esitoErrore(e); }
   }
 });
 
@@ -2314,10 +2350,10 @@ $('#spPulisci').onclick = async () => {
     toast(fatte.length === 1 ? 'Tolta 1 voce spuntata.' : `Tolte ${fatte.length} voci spuntate.`, async () => {
       const { data, error } = await sb.from('shopping_list')
         .insert(fatte.map(x => ({ id:x.id, name:x.name, done:x.done }))).select();
-      if (error){ banner(spiegaErrore(error)); return; }
+      if (error){ esitoErrore(error); return; }
       S.spesa.push(...data); renderSpesa(); toast('Rimesse in lista.');
     });
-  }catch(e){ banner(spiegaErrore(e)); }
+  }catch(e){ esitoErrore(e); }
 };
 
 $('#spCopia').onclick = async () => {
