@@ -883,8 +883,18 @@ function spiegaErrore(e){
   if (!navigator.onLine)                return 'Sei senza connessione. I dati mostrati potrebbero non essere aggiornati.';
   if (/Failed to fetch|NetworkError/i.test(m))
     return 'Non riesco a raggiungere il database. Controlla la connessione e riprova.';
-  if (/row-level security|violates row-level/i.test(m))
-    return 'Il database non accetta le modifiche. Probabilmente manca un passaggio nella configurazione: vedi README-OPERATIVO.md.';
+  if (/violates row-level security/i.test(m))
+    return 'Il database non accetta le AGGIUNTE: manca un permesso. Esegui riparazione-permessi.sql su Supabase.';
+  if (/row-level security/i.test(m))
+    return 'Il database non accetta le modifiche: manca un permesso. Esegui riparazione-permessi.sql su Supabase.';
+  if (/Could not find the table|schema cache|does not exist/i.test(m)){
+    const t = (m.match(/public\.([a-z_]+)/i) || [])[1];
+    const quale = { recipe_votes:'tabelle-voti-v7.sql', profiles:'tabelle-profili-v6.sql',
+                    meals_log:'tabelle-generatore-v4.sql', shopping_list:'tabelle-generatore-v4.sql' }[t];
+    return quale
+      ? `Manca una tabella nel database. Esegui ${quale} su Supabase e riprova.`
+      : 'Manca una tabella nel database: c’è un file SQL da eseguire su Supabase.';
+  }
   if (/rate limit|too many/i.test(m))   return 'Troppi tentativi ravvicinati. Aspetta un minuto e riprova.';
   return 'Qualcosa è andato storto: ' + m;
 }
