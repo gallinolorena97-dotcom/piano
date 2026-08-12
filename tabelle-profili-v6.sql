@@ -68,12 +68,12 @@ values
    '{}',
    '{}',
    '{}',
-   'In deficit per dimagrire. Mangia sempre a casa. Tollera benissimo la ripetizione: riso e tonno due giorni di fila vanno bene. Quando Lorena non c''e'', cucina comunque ma in modo piu'' semplice.'),
+   'In deficit per dimagrire. Mangia sempre a casa. Tollera benissimo la ripetizione: riso e tonno due giorni di fila vanno bene. Quando Lorena non c''è, cucina in modo più semplice.'),
   ('x', 'Lorena', null, null, 'bassa',
    '{"pomodoro crudo","cetrioli","interiora"}',
    '{"abbinamenti strani","piatti con troppi ingredienti diversi insieme"}',
    '{"verdure"}',
-   'Nessun obiettivo proteico, mangia normale. Ama le verdure, mangia poca carne: la sua parte proteica pesca soprattutto da uova, formaggi, legumi e pesce. Vuole quasi sempre un tocco dolce a fine pasto: e'' parte del pasto, non un extra. Spesso non mangia a casa, in modo irregolare.')
+   'Nessun obiettivo proteico, mangia normale. Ama le verdure, mangia poca carne: la sua parte proteica pesca soprattutto da uova, formaggi, legumi e pesce. Vuole quasi sempre un tocco dolce a fine pasto: è parte del pasto, non un extra. Spesso non mangia a casa, in modo irregolare.')
 on conflict (slug) do nothing;
 
 -- CONTROLLO FINALE

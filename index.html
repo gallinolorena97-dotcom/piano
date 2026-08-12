@@ -923,7 +923,7 @@ function aggiornaChiMangia(){
   const mio = ioProfilo(), altro = altroProfilo();
   const voci = (mio && altro)
     ? [['io', `Solo ${mio.nome}`], ['io_e_x', 'Tutti e due'], ['solo_x', `Solo ${altro.nome}`]]
-    : [['io', 'Solo io'], ['io_e_x', 'Io e X']];
+    : [['io', 'Solo io'], ['io_e_x', 'In due']];   // ripiego se i profili non ci sono
   if (!voci.some(([v]) => v === CU.chi)) CU.chi = 'io';
   box.innerHTML = voci.map(([v, testo]) =>
     `<button data-v="${v}" aria-pressed="${CU.chi === v}">${esc(testo)}</button>`).join('');
@@ -1061,9 +1061,10 @@ function cardProposta(p, i){
         · ${esc(String(p.kcal))} kcal · ${esc(String(p.minuti))} min</div>
     </div>
     <div class="prop-body">
-      <div class="ing-head">${perX ? 'Per me' : 'Ingredienti'}</div>
+      <div class="ing-head">${perX ? esc(`Per ${ioProfilo()?.nome || 'me'}`) : 'Ingredienti'}</div>
       ${lista(p.ingredienti_io)}
-      ${perX ? `<div class="ing-head">Per X</div>${lista(p.ingredienti_x)}` : ''}
+      ${perX ? `<div class="ing-head">${esc(`Per ${altroProfilo()?.nome || 'l\'altra persona'}`)}</div>
+        ${lista(p.ingredienti_x)}` : ''}
       ${p.scongelamento ? `<div class="nota freezer">❄ ${esc(p.scongelamento)}</div>` : ''}
       ${p.avanzo        ? `<div class="nota avanzo">🍱 ${esc(p.avanzo)}</div>` : ''}
       ${(p.manca || []).length ? `<div class="nota manca">Ti manca: ${esc(p.manca.join(', '))}
