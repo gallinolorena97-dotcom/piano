@@ -54,7 +54,12 @@ header{
 }
 .h-top{display:flex;align-items:center;gap:10px}
 .h-title{font-size:19px;font-weight:700;letter-spacing:.2px;flex:1;margin:0}
-.h-targets{font-size:12.5px;opacity:.9;margin-top:2px}
+.h-targets{
+  font-size:12.5px;opacity:.9;margin-top:2px;color:#fff;
+  display:block;text-align:left;padding:3px 0;
+}
+.h-targets::after{content:'  ›';font-weight:700;opacity:.85}
+.h-targets:active{opacity:.65}
 .h-btn{
   background:rgba(255,255,255,.16);color:#fff;border-radius:999px;
   padding:7px 12px;font-size:13px;font-weight:600;white-space:nowrap;
@@ -265,6 +270,19 @@ section[hidden]{display:none}
 .cuc-scelte button[aria-pressed="true"]::after{content:'';}
 .cuc-esito.zero .cuc-scelte button[aria-pressed="true"]{background:#6d3f10;color:#fff;border-color:#6d3f10}
 
+/* ---------- PROFILO ---------- */
+.pf-lista{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 0}
+.pf-tag{
+  display:inline-flex;align-items:center;gap:6px;
+  border:1px solid var(--line);background:#fff;border-radius:999px;
+  padding:6px 8px 6px 12px;font-size:14px;
+}
+.pf-tag.vieta{border-color:#C2453F;color:#8d2f2a;background:#FBE3E3}
+.pf-tag.evita{border-color:var(--amber);color:#6d3f10;background:var(--amber-bg)}
+.pf-tag.ama{border-color:var(--green);color:var(--green);background:var(--sage)}
+.pf-tag button{font-size:17px;line-height:1;padding:0 3px;color:inherit;opacity:.7}
+.pf-vuota{font-size:13.5px;color:var(--ink-soft);font-style:italic;margin-top:6px}
+
 /* ---------- DIARIO ---------- */
 .dg-giorno{
   background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
@@ -321,7 +339,7 @@ section[hidden]{display:none}
     <h1 class="h-title">Piano &amp; Dispensa</h1>
     <button class="h-btn" id="copyBtn">Copia per Claude</button>
   </div>
-  <div class="h-targets" id="targets">&nbsp;</div>
+  <button class="h-targets" id="targets" type="button">&nbsp;</button>
 </header>
 
 <nav class="tabs" role="tablist">
@@ -388,10 +406,7 @@ section[hidden]{display:none}
       </div>
 
       <div class="q-label">Chi mangia</div>
-      <div class="chips" data-group="chi">
-        <button data-v="io"     aria-pressed="true">Solo io</button>
-        <button data-v="io_e_x" aria-pressed="false">Io e X</button>
-      </div>
+      <div class="chips" data-group="chi"></div>
 
       <div class="q-label">Quanto tempo ho</div>
       <div class="chips" data-group="minuti">
@@ -440,6 +455,25 @@ section[hidden]{display:none}
     </div>
   </section>
 
+  <!-- ============ PROFILO (non è una tab: si apre dalla testata) ============ -->
+  <section id="tab-profilo" hidden>
+    <div class="panel">
+      <div class="q-label" style="margin-top:0">Su questo telefono sono</div>
+      <div class="chips" id="chipIo"></div>
+      <p class="hint" style="margin-top:7px">Non è un login e non protegge niente:
+        serve solo a farmi sapere per chi sto cucinando. Resta impostato.</p>
+
+      <div class="q-label">Sto modificando il profilo di</div>
+      <div class="chips" id="chipEdit"></div>
+    </div>
+
+    <div id="profForm"><div class="loading">Carico i profili…</div></div>
+
+    <div class="form-row">
+      <button class="btn ghost" id="profChiudi" style="flex:1">‹ Torna all'app</button>
+    </div>
+  </section>
+
   <!-- ============ SPESA ============ -->
   <section id="tab-spesa" hidden>
     <div class="panel">
@@ -478,7 +512,13 @@ const SUPABASE_KEY = 'sb_publishable_7Awm1XgdbMqUfNRPfqtTug_9qHVBc4E';
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth:{ persistSession:false } });
 
 /* ---------- stato dell'app ---------- */
-const S = { plan:[], inv:[], rec:[], settings:{}, spesa:[], diario:[], tab:'piano' };
+const S = {
+  plan:[], inv:[], rec:[], settings:{}, spesa:[], diario:[],
+  profili:[],            // i due profili, letti dal database
+  io:'lorena',           // chi sono su QUESTO telefono (salvato nel dispositivo)
+  tab:'piano',
+};
+try { S.io = localStorage.getItem('piano-io') || S.io; } catch { /* modalità privata */ }
 
 /* ---------- scorciatoie ---------- */
 const $  = (s) => document.querySelector(s);
@@ -538,12 +578,13 @@ async function loadAll(){
     return;
   }
   try{
-    const [p, i, r, s, sp] = await Promise.all([
+    const [p, i, r, s, sp, pf] = await Promise.all([
       sb.from('plan_days').select('day,payload').order('day', { ascending:true }),
       sb.from('inventory_items').select('id,name,qty,cat'),
       sb.from('recipes').select('id,name,pref'),
       sb.from('settings').select('key,value'),
       sb.from('shopping_list').select('id,name,done').order('created_at', { ascending:true }),
+      sb.from('profiles').select('*').order('slug', { ascending:true }),
     ]);
     for (const res of [p,i,r,s]) if (res.error) throw res.error;
 
@@ -553,6 +594,10 @@ async function loadAll(){
     S.settings = Object.fromEntries((s.data || []).map(x => [x.key, x.value]));
     // la lista della spesa è facoltativa: se la tabella non c'è, il resto vive lo stesso
     S.spesa = sp.error ? [] : (sp.data || []);
+    // anche i profili sono facoltativi: se la tabella non c'è ancora,
+    // l'app continua a funzionare come prima
+    S.profili = pf.error ? [] : (pf.data || []);
+    if (S.profili.length && !S.profili.some(x => x.slug === S.io)) S.io = S.profili[0].slug;
     await caricaDiario();
 
     banner(null);
@@ -564,10 +609,22 @@ async function loadAll(){
 
 function renderAll(){
   renderTargets(); renderPlan(); renderInv(); renderRec(); renderSpesa(); renderDiario();
+  aggiornaChiMangia();
   $('#dgGiorno').value = oggiISO();
 }
 
 function renderTargets(){
+  const mio = ioProfilo();
+  if (mio){
+    // con i profili attivi la riga mostra chi sei e i TUOI obiettivi
+    const pezzi = [mio.nome];
+    if (mio.kcal_target) pezzi.push(`${mio.kcal_target} kcal`);
+    if (mio.prot_target) pezzi.push(`${mio.prot_target} g proteine`);
+    if (!mio.kcal_target && !mio.prot_target) pezzi.push('nessun obiettivo');
+    $('#targets').textContent = pezzi.join('  ·  ');
+    misuraTestata();
+    return;
+  }
   const k = S.settings.kcal_target, pr = S.settings.protein_target;
   $('#targets').textContent = (k || pr)
     ? `${k ? k + ' kcal' : ''}${k && pr ? '  ·  ' : ''}${pr ? pr + ' g proteine' : ''}`
@@ -859,6 +916,19 @@ $$('#tab-cucino .chips').forEach(gruppo => {
   });
 });
 
+/* --- V6 · Blocco 2: chi mangia, con i nomi veri dei profili --- */
+function aggiornaChiMangia(){
+  const box = $('#tab-cucino .chips[data-group="chi"]');
+  if (!box) return;
+  const mio = ioProfilo(), altro = altroProfilo();
+  const voci = (mio && altro)
+    ? [['io', `Solo ${mio.nome}`], ['io_e_x', 'Tutti e due'], ['solo_x', `Solo ${altro.nome}`]]
+    : [['io', 'Solo io'], ['io_e_x', 'Io e X']];
+  if (!voci.some(([v]) => v === CU.chi)) CU.chi = 'io';
+  box.innerHTML = voci.map(([v, testo]) =>
+    `<button data-v="${v}" aria-pressed="${CU.chi === v}">${esc(testo)}</button>`).join('');
+}
+
 /* --- la chiamata al generatore --- */
 async function chiamaGeneratore(corpo){
   const { data, error } = await sb.functions.invoke('cosa-cucino', { body: corpo });
@@ -876,6 +946,7 @@ async function chiamaGeneratore(corpo){
 const baseRichiesta = () => ({
   pasto: CU.pasto,
   chi: CU.chi,
+  io_slug: S.io,          // chi sta usando l'app: i profili li rilegge la function
   minuti: CU.minuti,
   gia_mangiato: $('#cuGia').value.trim(),
   escludi: CU.visti,
@@ -1324,6 +1395,181 @@ async function registraPasto(p){
 }
 
 /* ============================================================
+   V6 · BLOCCO 1 — I DUE PROFILI
+   Il selettore "su questo telefono sono" NON è un login: non
+   protegge niente, serve solo a sapere per chi si cucina.
+   ============================================================ */
+const CHIAVE_IO = 'piano-io';
+let profModificato = null;   // di chi sto vedendo/modificando il profilo
+
+const profilo = (slug) => S.profili.find(p => p.slug === slug) || null;
+const ioProfilo    = () => profilo(S.io) || S.profili[0] || null;
+const altroProfilo = () => S.profili.find(p => p.slug !== S.io) || null;
+
+function apriProfilo(){
+  if (!S.profili.length){ toast('I profili non sono ancora stati creati sul database.'); return; }
+  profModificato = profModificato || S.io;
+  ['piano','dispensa','ricette','cucino','spesa'].forEach(t => { $('#tab-' + t).hidden = true; });
+  $('#tab-profilo').hidden = false;
+  renderProfilo();
+  window.scrollTo(0, 0);
+}
+
+function chiudiProfilo(){
+  $('#tab-profilo').hidden = true;
+  ['piano','dispensa','ricette','cucino','spesa'].forEach(t => { $('#tab-' + t).hidden = (t !== S.tab); });
+  window.scrollTo(0, 0);
+}
+
+$('#targets').onclick   = apriProfilo;
+$('#profChiudi').onclick = chiudiProfilo;
+
+function renderProfilo(){
+  const scelte = (attivo, attr) => S.profili.map(p =>
+    `<button data-${attr}="${esc(p.slug)}" aria-pressed="${p.slug === attivo}">${esc(p.nome)}</button>`
+  ).join('');
+  $('#chipIo').innerHTML   = scelte(S.io, 'io');
+  $('#chipEdit').innerHTML = scelte(profModificato, 'edit');
+
+  const p = profilo(profModificato);
+  if (!p){ $('#profForm').innerHTML = '<div class="empty">Profilo non trovato.</div>'; return; }
+
+  $('#profForm').innerHTML = `
+    <div class="panel">
+      <div class="q-label" style="margin-top:0">Come ti chiamo</div>
+      <input class="field" data-campo="nome" value="${esc(p.nome)}">
+
+      <div class="q-label">Obiettivi del giorno</div>
+      <div class="form-row" style="margin-top:0">
+        <input class="field" data-campo="prot_target" type="number" inputmode="numeric"
+               placeholder="proteine g" value="${p.prot_target ?? ''}">
+        <input class="field" data-campo="kcal_target" type="number" inputmode="numeric"
+               placeholder="kcal" value="${p.kcal_target ?? ''}">
+      </div>
+      <p class="hint" style="margin-top:6px">Lascia vuoto se non hai obiettivi:
+        i piatti saranno normali ed equilibrati.</p>
+
+      <div class="q-label">Ripetere gli stessi piatti</div>
+      <div class="chips" data-campo="ripetizione">
+        <button data-v="alta"  aria-pressed="${p.ripetizione === 'alta'}">Non mi pesa</button>
+        <button data-v="bassa" aria-pressed="${p.ripetizione === 'bassa'}">Voglio varietà</button>
+      </div>
+    </div>
+
+    ${listaProfilo(p, 'non_mangia', 'Non mangia', 'vieta',
+      'Vincolo assoluto: non comparirà mai nei piatti.')}
+    ${listaProfilo(p, 'evita', 'Preferisce evitare', 'evita',
+      'Si userà solo se non se ne può fare a meno.')}
+    ${listaProfilo(p, 'ama', 'Ama', 'ama',
+      'Verrà privilegiato quando è possibile.')}
+
+    <div class="panel">
+      <div class="q-label" style="margin-top:0">Note libere</div>
+      <textarea class="field" data-campo="note" rows="4"
+        placeholder="Qualsiasi cosa utile a chi cucina">${esc(p.note || '')}</textarea>
+      <p class="hint" style="margin-top:6px">Le note vengono lette dal generatore
+        insieme alle liste qui sopra.</p>
+    </div>`;
+}
+
+function listaProfilo(p, campo, titolo, stile, spiega){
+  const voci = Array.isArray(p[campo]) ? p[campo] : [];
+  return `<div class="panel">
+    <div class="q-label" style="margin-top:0">${titolo}</div>
+    <p class="hint" style="margin:0">${spiega}</p>
+    <div class="pf-lista" data-lista="${campo}">
+      ${voci.length
+        ? voci.map(v => `<span class="pf-tag ${stile}">${esc(v)}
+            <button data-togli="${esc(v)}" aria-label="Togli">×</button></span>`).join('')
+        : '<span class="pf-vuota">— niente —</span>'}
+    </div>
+    <div class="form-row">
+      <input class="field" data-nuovo="${campo}" placeholder="Aggiungi e premi +" autocomplete="off">
+      <button class="btn" data-aggiungi="${campo}">+</button>
+    </div>
+  </div>`;
+}
+
+/** Scrive una modifica sul profilo che sto guardando. */
+async function salvaProfilo(patch, messaggio){
+  const p = profilo(profModificato);
+  if (!p) return;
+  try{
+    const { data, error } = await sb.from('profiles')
+      .update(patch).eq('id', p.id).select().single();
+    if (error) throw error;
+    Object.assign(p, data);
+    renderProfilo(); renderTargets();
+    if (messaggio) toast(messaggio);
+  }catch(e){ banner(spiegaErrore(e)); }
+}
+
+/* --- i due selettori in cima --- */
+$('#chipIo').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-io]');
+  if (!b) return;
+  S.io = b.dataset.io;
+  try { localStorage.setItem(CHIAVE_IO, S.io); } catch { /* privato: pazienza */ }
+  profModificato = S.io;
+  renderProfilo(); renderTargets(); aggiornaChiMangia();
+  toast(`Su questo telefono sei ${profilo(S.io)?.nome || S.io}.`);
+});
+
+$('#chipEdit').addEventListener('click', ev => {
+  const b = ev.target.closest('[data-edit]');
+  if (!b) return;
+  profModificato = b.dataset.edit;
+  renderProfilo();
+});
+
+/* --- i campi del profilo --- */
+$('#profForm').addEventListener('change', ev => {
+  const campo = ev.target.dataset.campo;
+  if (!campo) return;
+  let v = ev.target.value;
+  if (campo === 'prot_target' || campo === 'kcal_target') v = v === '' ? null : Number(v);
+  if (typeof v === 'string') v = v.trim();
+  if (campo === 'nome' && !v){ renderProfilo(); return; }
+  salvaProfilo({ [campo]: v }, 'Salvato.');
+});
+
+$('#profForm').addEventListener('click', async ev => {
+  // ripetizione alta/bassa
+  const rip = ev.target.closest('[data-campo="ripetizione"] button');
+  if (rip){ salvaProfilo({ ripetizione: rip.dataset.v }, 'Salvato.'); return; }
+
+  // togli una voce da una lista
+  const via = ev.target.closest('[data-togli]');
+  if (via){
+    const campo = via.closest('[data-lista]').dataset.lista;
+    const p = profilo(profModificato);
+    salvaProfilo({ [campo]: (p[campo] || []).filter(x => x !== via.dataset.togli) }, 'Tolto.');
+    return;
+  }
+
+  // aggiungi una voce
+  const piu = ev.target.closest('[data-aggiungi]');
+  if (piu){
+    const campo = piu.dataset.aggiungi;
+    const inp = $(`#profForm [data-nuovo="${campo}"]`);
+    const v = inp.value.trim();
+    if (!v){ inp.focus(); return; }
+    const p = profilo(profModificato);
+    const gia = (p[campo] || []).some(x => senzaAccenti(x) === senzaAccenti(v));
+    if (gia){ toast('C’è già.'); inp.value = ''; return; }
+    salvaProfilo({ [campo]: [...(p[campo] || []), v] }, 'Aggiunto.');
+  }
+});
+
+$('#profForm').addEventListener('keydown', ev => {
+  if (ev.key !== 'Enter') return;
+  const inp = ev.target.closest('[data-nuovo]');
+  if (!inp) return;
+  ev.preventDefault();
+  $(`#profForm [data-aggiungi="${inp.dataset.nuovo}"]`).click();
+});
+
+/* ============================================================
    BLOCCO 3 — DIARIO DEI PASTI
    Un registro, non una pagella: niente punteggi, niente streak,
    niente grafici di aderenza.
@@ -1635,6 +1881,7 @@ $$('nav.tabs button').forEach(b => {
   b.onclick = () => {
     S.tab = b.dataset.tab;
     $$('nav.tabs button').forEach(x => x.setAttribute('aria-selected', String(x === b)));
+    $('#tab-profilo').hidden = true;   // se ero nel Profilo, esco
     ['piano','dispensa','ricette','cucino','spesa'].forEach(t => { $('#tab-' + t).hidden = (t !== S.tab); });
     window.scrollTo(0, 0);
     if (S.tab === 'piano') renderPlan();

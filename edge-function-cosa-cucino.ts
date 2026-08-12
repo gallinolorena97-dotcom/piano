@@ -147,10 +147,32 @@ Due pasti liberi a settimana fanno parte del metodo. Non proporre mai "versioni 
 o sostituzioni virtuose di piatti che l'utente ama. Non usare mai un tono che tratta
 un cibo come sgarro, premio o colpa. Nessun ingrediente è proibito.
 
-## 7. LA COMMENSALE "X"
-Quando è presente, il piatto è lo stesso ma le sue porzioni sono normali, non proteiche.
-Riempi "ingredienti_x" con le quantità per lei. Quando mangia da sola l'utente,
-lascia "ingredienti_x" come lista vuota.
+## 7. CHI MANGIA — è il vincolo che viene prima di tutto
+Ti vengono dati i profili delle persone. Rispettali alla lettera.
+
+**Solo la persona con obiettivo proteico** → target pieno (55-70 g nel pasto),
+piatto semplice e veloce. La ripetizione è ammessa se il suo profilo dice così:
+non forzare la varietà.
+
+**Solo l'altra persona** → nessun target proteico, pasto normale ed equilibrato,
+molte verdure, poca carne, ingredienti pochi e riconoscibili. Porzione singola.
+Se il suo profilo prevede un tocco dolce finale, mettilo sempre.
+
+**Tutti e due insieme** → è il caso difficile. Risolvilo così, in quest'ordine:
+1. I **divieti** di ciascuno non si negoziano mai, e vale anche la regola dei
+   pochi ingredienti se è nel profilo.
+2. Le porzioni sono diverse: proteiche per chi ha l'obiettivo, normali per l'altra.
+3. **La fonte proteica può essere diversa per i due**: stessa base e stesso contorno,
+   ma per esempio pollo per l'una e uova o formaggio per l'altra, se è più sensato.
+   Quando lo fai, **dichiaralo** nel campo "perche".
+4. Se un piatto unico non riesce a soddisfare entrambe, **proponi due piatti distinti**
+   che condividano il contorno o il tempo di cottura, invece di inventare compromessi
+   che non piaceranno a nessuna delle due. Scrivilo chiaramente nel nome della proposta.
+5. Il tocco dolce finale, se previsto dal profilo, va sempre incluso: è parte del pasto,
+   non un extra da concedere.
+
+Riempi "ingredienti_x" SOLO quando mangiano in due. Quando mangia una persona sola,
+"ingredienti_x" resta una lista vuota e "ingredienti_io" contiene il suo pasto.
 
 ## 8. TEMPO
 Rispetta il tempo dichiarato. Sotto i 15 minuti significa davvero niente forno
@@ -165,10 +187,13 @@ Un piatto può richiedere qualcosa che non è in dispensa, ma con regole strette
 - ALMENO UNA delle 3 proposte deve essere completamente fattibile con quello che c'è:
   la sua lista "manca" deve essere vuota.
 
-## 10. NON RIPETERTI
+## 10. NON RIPETERTI — ma solo per chi ci tiene
 Ti viene dato l'elenco di quello che è stato mangiato negli ultimi giorni.
-- La stessa fonte proteica principale non va proposta più di 2 volte in 3 giorni.
-- Lo stesso piatto non va riproposto se è stato mangiato negli ultimi 2 giorni.
+**La regola della varietà si applica per persona**, non in generale:
+- profilo con ripetizione **bassa** → mai la stessa cosa ravvicinata: la stessa fonte
+  proteica non più di 2 volte in 3 giorni, e mai lo stesso piatto entro 2 giorni;
+- profilo con ripetizione **alta** → la ripetizione non è un problema: non forzare la
+  varietà, se il piatto migliore è lo stesso di ieri va benissimo riproporlo.
 - Dichiara sempre la fonte proteica in "proteina_principale", in una parola minuscola
   e generica: pollo, tacchino, tonno, uova, manzo, pesce, legumi, formaggio, maiale.
   Serve proprio a far funzionare questa regola nei giorni successivi.
@@ -262,7 +287,8 @@ Deno.serve(async (req) => {
   }
 
   const pasto  = body.pasto === 'cena' ? 'cena' : 'pranzo';
-  const chi    = body.chi === 'io_e_x' ? 'io_e_x' : 'io';
+  const chi    = ['io', 'io_e_x', 'solo_x'].includes(String(body.chi)) ? String(body.chi) : 'io';
+  const ioSlug = String(body.io_slug ?? 'lorena').slice(0, 40);
   const minuti = [15, 30, 60].includes(Number(body.minuti)) ? Number(body.minuti) : 30;
   const quante = Number(body.quante) === 1 ? 1 : 3;
   const giaMangiato  = String(body.gia_mangiato ?? '').slice(0, 600);
@@ -298,6 +324,13 @@ Deno.serve(async (req) => {
     return errore('Non riesco a leggere la dispensa. Riprova fra poco.', 500);
   }
 
+  // I profili delle due persone. Li legge la function, non il telefono.
+  let profili: Array<{
+    slug: string; nome: string; prot_target: number | null; kcal_target: number | null;
+    ripetizione: string; non_mangia: string[]; evita: string[]; ama: string[]; note: string | null;
+  }> = [];
+  try { profili = await leggi('profiles', '*'); } catch { /* v6 non ancora installata */ }
+
   // Gli ultimi 5 giorni di pasti, per non ripetere sempre le stesse cose.
   // Se la tabella non esiste ancora, si va avanti lo stesso.
   let recenti: Array<{ day: string; piatto: string; proteina: string | null }> = [];
@@ -313,6 +346,18 @@ Deno.serve(async (req) => {
   if (!inv.length) {
     return errore('La dispensa è vuota: aggiungi qualche ingrediente e riprova.', 400);
   }
+
+  const elenco = (v: string[] | null) => (v && v.length ? v.join(', ') : '—');
+  const descriviProfilo = (p: typeof profili[number]) => [
+    `### ${p.nome}${p.slug === ioSlug ? '  (è chi sta usando l\'app adesso)' : ''}`,
+    `- obiettivo proteine: ${p.prot_target ? p.prot_target + ' g al giorno' : 'nessuno'}`,
+    `- obiettivo calorie: ${p.kcal_target ? p.kcal_target + ' kcal al giorno' : 'nessuno'}`,
+    `- ripetizione dei piatti: ${p.ripetizione === 'bassa' ? 'BASSA — vuole varietà, non ripetere piatti simili ravvicinati' : 'ALTA — ripetere non è un problema, non forzare la varietà'}`,
+    `- NON MANGIA (vincolo assoluto, mai nel piatto): ${elenco(p.non_mangia)}`,
+    `- preferisce evitare: ${elenco(p.evita)}`,
+    `- ama: ${elenco(p.ama)}`,
+    p.note ? `- note: ${p.note}` : '',
+  ].filter(Boolean).join('\n');
 
   const perCat = (c: string) => {
     const righe = inv.filter((i) => i.cat === c);
@@ -339,6 +384,9 @@ Preferite (priorità): ${nomiPref('fav')}
 Vanno bene: ${nomiPref('ok')}
 DA NON RIPROPORRE MAI: ${nomiPref('no')}
 
+## LE PERSONE
+${profili.length ? profili.map(descriviProfilo).join('\n\n') : '- (profili non configurati: considera una sola persona con gli obiettivi qui sotto)'}
+
 ## MANGIATO NEGLI ULTIMI GIORNI (per non ripeterti)
 ${recenti.length
   ? recenti.map((m) => `- ${m.day}: ${m.piatto}${m.proteina ? ` [proteina: ${m.proteina}]` : ''}`).join('\n')
@@ -349,7 +397,14 @@ ${impostazioni.kcal_target ?? 2200} kcal · ${impostazioni.protein_target ?? 170
 
 ## LA RICHIESTA DI ADESSO
 Pasto: ${pasto}
-Chi mangia: ${chi === 'io_e_x' ? 'io e la commensale X' : 'solo io'}
+Chi mangia: ${(() => {
+  const mio = profili.find((p) => p.slug === ioSlug);
+  const altro = profili.find((p) => p.slug !== ioSlug);
+  if (!mio || !altro) return chi === 'io_e_x' ? 'due persone' : 'una persona sola';
+  if (chi === 'io_e_x') return `TUTTE E DUE: ${mio.nome} e ${altro.nome}`;
+  if (chi === 'solo_x') return `SOLO ${altro.nome}`;
+  return `SOLO ${mio.nome}`;
+})()}
 Tempo a disposizione: ${minuti === 60 ? "un'ora o più" : `${minuti} minuti al massimo`}
 ${giaMangiato ? `Già mangiato oggi: ${giaMangiato}\n(calcola quante proteine mancano e dimensiona il pasto di conseguenza)` : 'Già mangiato oggi: non dichiarato'}
 ${escludi.length ? `\nPIATTI DA NON RIPROPORRE IN QUESTA SESSIONE (già visti o scartati):\n${escludi.map((n) => `- ${n}`).join('\n')}` : ''}
