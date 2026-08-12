@@ -957,6 +957,14 @@ async function chiamaGeneratore(corpo, alRicevere){
     if (!riga.trim()) return;
     let ev;
     try { ev = JSON.parse(riga); } catch { return; }
+    // compatibilità: se sul database c'è ancora la funzione vecchia,
+    // arriva un unico blocco {proposte:[…]} invece del flusso riga per riga
+    if (Array.isArray(ev.proposte)){
+      ev.proposte.forEach(p => { raccolte.push(p); alRicevere?.({ tipo:'proposta', proposta:p }); });
+      return;
+    }
+    if (ev.errore){ problema = ev.errore; return; }
+
     if (ev.tipo === 'proposta'){
       raccolte.push(ev.proposta);
       alRicevere?.({ tipo:'proposta', proposta:ev.proposta });
