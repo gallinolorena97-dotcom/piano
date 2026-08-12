@@ -52,6 +52,8 @@ nuovo della vecchia `anon`.
 | `settings` | `key`, `value` — contiene `kcal_target` e `protein_target` |
 
 | `generator_usage` | `day` (date, PK), `count` — contatore del generatore, **senza policy**: invisibile all'app |
+| `shopping_list` | `id`, `name`, `done`, `created_at` — la lista della spesa |
+| `meals_log` | `id`, `day`, `pasto`, `piatto`, `prot`, `kcal`, `chi`, `proteina` — il diario dei pasti |
 
 Queste sono **tutte** le tabelle. `allowed_writers` e la funzione `is_writer()` sono
 state cancellate dal database il 12/08/2026: non esistono più.
@@ -151,6 +153,32 @@ Le 8 regole (proteine dominanti, kcal, deperibili, cucina-doppio, scongelamento,
 pasti liberi, commensale X, tempo) stanno nella costante `REGOLE` dentro
 `edge-function-cosa-cucino.ts`. **Se il metodo cambia, si cambia lì**, non nel
 frontend.
+
+### Le estensioni v4 (12/08/2026)
+
+Le cinque tab sono: Piano · Dispensa · Ricette · Cucino · Spesa.
+Dentro **Cucino** c'è un interruttore **Proposte / Diario**.
+
+**Blocco 1 — «Ho cucinato questo»** (al posto di «Scelgo questa»)
+Riepilogo modificabile, poi scalo della dispensa. Le regole di scalo stanno in
+`calcolaRiga()` e sono volutamente prudenti: **si calcola solo quando il calcolo è
+sicuro**. Quantità come `~1 kg`, `sì`, `2×100 g`, `? da verificare` non vengono mai
+stimate: si chiede il valore. `leggiQta()` conserva la **coda** del testo (`110 g ·
+scad. 29/8` → `30 g · scad. 29/8`): le scadenze non devono sparire scalando.
+Ogni conferma lascia un **annulla** che ripristina dispensa, ricetta e diario.
+
+**Blocco 2 — spesa e «ti manca»**
+La function può proporre piatti con **max 2 ingredienti mancanti**, mai la fonte
+proteica, e **almeno una delle 3 proposte dev'essere fattibile** con quello che c'è.
+Dal riquadro «ti manca» si aggiunge tutto alla lista con un tocco.
+
+**Blocco 3 — diario**
+`meals_log` si popola da «Ho cucinato questo» e a mano. La function **rilegge da sé**
+gli ultimi 5 giorni e non ripete la stessa `proteina_principale` più di 2 volte in
+3 giorni, né lo stesso piatto entro 2 giorni. Vista a 14 giorni, copia a 7 giorni.
+**Niente punteggi, streak o grafici**: è un registro, non una pagella.
+
+Blocchi 4-8 del brief (`PROMPT-GENERATORE-V4.md`) non ancora fatti.
 
 ### Cosa NON fare qui
 

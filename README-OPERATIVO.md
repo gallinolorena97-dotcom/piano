@@ -94,6 +94,46 @@ Parte dalla tua dispensa vera e propone piatti che rispettano il metodo.
 Quando accetti di scalare, ti mostro riga per riga cosa resta: **i numeri li ho già
 calcolati io dove ho potuto**, tu correggi quello che non torna e confermi.
 
+### «Ho cucinato questo»
+
+È il pulsante verde sulla scheda. Serve a tenere la dispensa aggiornata **senza
+doverci pensare**.
+
+1. Lo premi → si apre l'elenco degli ingredienti con le quantità.
+2. **Correggi quello che hai usato davvero** (280 g di pollo, non 250).
+3. Sotto ogni riga ti dico cosa succede: *«Resta 100 g»*, oppure *«Finisce»*,
+   oppure *«Non faccio i conti»* con il motivo.
+4. Confermi → scalo la dispensa, salvo la ricetta col ♥, segno il pasto nel diario.
+5. Compare **Annulla**: se hai sbagliato, torna tutto com'era.
+
+**Quando non faccio i conti da sola** — e va bene così: se in dispensa c'è scritto
+`~1 kg`, `sì`, `2×100 g` o `? da verificare`, non invento un risultato. Ti chiedo il
+valore nuovo, oppure metti «?» e te ne ricordi dopo.
+
+Se una voce **finisce**, scegli tu: segnarla con «?» oppure eliminarla.
+
+Le scadenze non si perdono: `110 g · scad. 29/8` meno 80 g diventa
+`30 g · scad. 29/8`.
+
+### La lista della spesa (tab Spesa)
+
+Ci finiscono le cose che aggiungi a mano e quelle che prendi dal riquadro
+**«ti manca»** di una proposta. Tocca una voce per spuntarla, «Togli le spuntate»
+per ripulire dopo la spesa, «Copia la lista» per mandarla su WhatsApp.
+
+Il generatore può proporre un piatto che richiede **al massimo 2 cose che non hai**,
+mai la fonte proteica, e **almeno una delle tre proposte è sempre fattibile** con
+quello che c'è in casa.
+
+### Il diario (tab Cucino → Diario)
+
+Si riempie da solo quando premi «Ho cucinato questo». Puoi aggiungere a mano i pasti
+fuori casa. Mostra gli ultimi 14 giorni: giorno, piatti, proteine totali. Nient'altro
+— **nessun punteggio, nessuna striscia di giorni, nessun grafico**.
+
+Serve anche al generatore: legge gli ultimi 5 giorni e non ti ripropone la stessa
+proteina più di due volte in tre giorni, né lo stesso piatto a due giorni di distanza.
+
 ### Quanto costa e perché c'è un tetto
 
 Ogni generazione costa circa **2 centesimi** di credito Anthropic. Siccome l'app non
