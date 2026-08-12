@@ -890,11 +890,22 @@ function apriPersonalizza(card, i){
    registrazione nel diario e possibilità di annullare tutto.
    ============================================================ */
 
-/** "250 g" -> {n:250,u:'g'} · "1,5 kg" -> {n:1.5,u:'kg'} · "2" -> {n:2,u:''} */
+/**
+ * "250 g"                  -> {n:250, u:'g',  coda:''}
+ * "110 g · scad. 29/8"     -> {n:110, u:'g',  coda:' · scad. 29/8'}
+ * "2"                      -> {n:2,   u:'',   coda:''}
+ * La "coda" è tutto ciò che viene dopo la quantità (scadenze, note):
+ * va conservata, altrimenti scalando si perderebbero le date.
+ */
 function leggiQta(testo){
-  const m = String(testo ?? '').trim().match(/^([\d]+(?:[.,]\d+)?)\s*([^\d\s]*)/);
+  const s = String(testo ?? '').trim();
+  const m = s.match(/^([\d]+(?:[.,]\d+)?)\s*([^\d\s]*)/);
   if (!m) return null;
-  return { n: parseFloat(m[1].replace(',', '.')), u: (m[2] || '').toLowerCase() };
+  return {
+    n: parseFloat(m[1].replace(',', '.')),
+    u: (m[2] || '').toLowerCase(),
+    coda: s.slice(m[0].length),
+  };
 }
 
 /** Riscrive un numero all'italiana, con l'unità attaccata. */
@@ -954,7 +965,8 @@ function calcolaRiga(r){
     return { stato:'testuale', motivo:`unità diverse (${ora.u || 'senza unità'} e ${usa.u || 'senza unità'})` };
   const resta = Math.round((ora.n - usa.n) * 100) / 100;
   if (resta <= 0) return { stato:'esaurito' };
-  return { stato:'ok', testo: scriviQta(resta, ora.u) };
+  // riattacco la coda: scadenze e note non devono sparire
+  return { stato:'ok', testo: scriviQta(resta, ora.u) + (ora.coda || '') };
 }
 
 /** Il pannello: riepilogo modificabile di cosa hai usato davvero. */
