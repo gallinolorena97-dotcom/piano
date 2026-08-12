@@ -50,6 +50,9 @@
   --menta-soft:#E4F6EE;
   --viola:#6B5BD2;           /* azioni primarie e numeri chiave */
   --viola-scuro:#5546B4;
+  /* Il viola pieno su lavanda chiaro dà 4.43: sotto la soglia AA.
+     Questo è il viola da usare quando il TESTO sta su --lavanda-soft. */
+  --viola-testo:#5F4FC9;
 
   /* segnali */
   --pesca:#F5C89A;
@@ -173,7 +176,7 @@ nav.tabs button{
   border-radius:var(--r-s);transition:color var(--t),background var(--t);
 }
 nav.tabs button svg{width:23px;height:23px;stroke-width:1.8}
-nav.tabs button[aria-selected="true"]{color:var(--viola);background:var(--lavanda-soft)}
+nav.tabs button[aria-selected="true"]{color:var(--viola-testo);background:var(--lavanda-soft)}
 nav.tabs button:active{background:var(--surface-2)}
 
 main{padding:16px 14px 0;max-width:860px;margin:0 auto}
@@ -292,7 +295,7 @@ select.field{appearance:none;-webkit-appearance:none;
 }
 .chips button:hover{border-color:var(--lavanda)}
 .chips button[aria-pressed="true"]{
-  background:var(--lavanda-soft);border-color:var(--viola);color:var(--viola);
+  background:var(--lavanda-soft);border-color:var(--viola);color:var(--viola-testo);
 }
 
 /* ============================================================
@@ -401,7 +404,7 @@ select.field{appearance:none;-webkit-appearance:none;
 .prop-num b{color:var(--viola);font-size:17px;font-weight:700}
 .prop-body{padding:14px 16px}
 .ing-head{
-  font-size:10.5px;font-weight:700;letter-spacing:1px;color:var(--viola);
+  font-size:10.5px;font-weight:700;letter-spacing:1px;color:var(--viola-testo);
   text-transform:uppercase;margin:14px 0 6px;
   background:var(--lavanda-soft);display:inline-block;padding:4px 10px;border-radius:99px;
 }
