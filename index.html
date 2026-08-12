@@ -572,6 +572,9 @@ function renderTargets(){
   $('#targets').textContent = (k || pr)
     ? `${k ? k + ' kcal' : ''}${k && pr ? '  ·  ' : ''}${pr ? pr + ' g proteine' : ''}`
     : ' ';
+  // qui la testata cambia altezza davvero (su schermi stretti la riga va a
+  // capo): rimisuro subito, senza dipendere solo dall'osservatore
+  misuraTestata();
 }
 
 /* ============================================================
@@ -1652,14 +1655,32 @@ function misuraTestata(){
   document.documentElement.style.setProperty('--h-alt',   h.offsetHeight + 'px');
   document.documentElement.style.setProperty('--nav-alt', n.offsetHeight + 'px');
 }
-misuraTestata();
-window.addEventListener('resize', misuraTestata);
-window.addEventListener('orientationchange', () => setTimeout(misuraTestata, 250));
-if (window.ResizeObserver){
-  const osserva = new ResizeObserver(misuraTestata);
-  osserva.observe(document.querySelector('header'));
-  osserva.observe(document.querySelector('nav.tabs'));
+
+// Il riferimento va tenuto qui fuori: un ResizeObserver senza riferimenti
+// può essere buttato via dal browser e smettere di funzionare in silenzio.
+let osservatoreTestata = null;
+
+function avviaMisureTestata(){
+  misuraTestata();
+  window.addEventListener('resize', misuraTestata);
+  window.addEventListener('orientationchange', () => setTimeout(misuraTestata, 250));
+  // quando torni sull'app dopo averla lasciata in background
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) misuraTestata();
+  });
+  // i font di sistema possono arrivare dopo: rimisuro quando sono pronti
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(misuraTestata);
+  // e comunque una seconda passata a pagina assestata
+  window.addEventListener('load', () => setTimeout(misuraTestata, 100));
+
+  if (window.ResizeObserver){
+    osservatoreTestata = new ResizeObserver(() => misuraTestata());
+    // border-box: così scatta anche se cambia il padding (notch, safe area)
+    osservatoreTestata.observe(document.querySelector('header'),  { box:'border-box' });
+    osservatoreTestata.observe(document.querySelector('nav.tabs'), { box:'border-box' });
+  }
 }
+avviaMisureTestata();
 
 window.addEventListener('online',  () => { banner(null); loadAll(); });
 window.addEventListener('offline', () => banner('Sei senza connessione: le modifiche non verranno salvate.'));
