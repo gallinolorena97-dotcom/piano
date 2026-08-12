@@ -218,6 +218,11 @@ section[hidden]{display:none}
   box-shadow:var(--ombra-1);
 }
 .empty b{color:var(--ink);font-family:'Fraunces',Georgia,serif;font-weight:600}
+/* stato vuoto illustrato */
+.vuoto-ill{padding:22px 20px 26px}
+.vuoto-ill svg{display:block;margin:0 auto 6px}
+.vuoto-ill b{display:block;font-size:18px;margin-bottom:6px}
+.vuoto-ill p{margin:0;font-size:14.5px;line-height:1.5;max-width:34ch;margin-inline:auto}
 .hint{font-size:13px;color:var(--muted);margin:8px 2px 0;line-height:1.45}
 
 /* scheletro luccicante: l'attesa deve sembrare progettata, non rotta */
@@ -593,6 +598,21 @@ select.field{appearance:none;-webkit-appearance:none;
     </g>
     <g id="i-scorta" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9">
       <path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M4 7l2-4h12l2 4M10 12h4"/>
+    </g>
+
+    <!-- Illustrazione dello stato vuoto: cesto della spesa.
+         Stesso stile dell'icona dell'app: forme piene, angoli morbidi,
+         tre colori soli (lavanda, menta, viola). -->
+    <g id="ill-spesa">
+      <ellipse cx="90" cy="104" rx="52" ry="7" fill="#EFEBFC"/>
+      <path d="M34 46h112l-9 52a12 12 0 0 1-11.8 10H54.8A12 12 0 0 1 43 98z" fill="#C7B9F2"/>
+      <path d="M34 46h112l-2.2 13H36.2z" fill="#6B5BD2"/>
+      <path d="M66 46V33a24 24 0 0 1 48 0v13" fill="none" stroke="#6B5BD2"
+            stroke-width="7" stroke-linecap="round"/>
+      <circle cx="90" cy="82" r="15" fill="#B8E8D4"/>
+      <g stroke="#3E9C77" stroke-width="4.6" stroke-linecap="round" fill="none">
+        <path d="M90 71v22"/><path d="M90 78l7-6"/><path d="M90 87l-7-6"/>
+      </g>
     </g>
   </defs>
 </svg>
@@ -2273,9 +2293,12 @@ function renderSpesa(){
   $('#spAzioni').hidden = !S.spesa.length;
 
   if (!S.spesa.length){
-    box.innerHTML = `<div class="empty"><b>La lista è vuota.</b><br>
-      Aggiungi qui sopra quello che ti serve, oppure prendilo
-      dal «ti manca» di una proposta nella tab Cucino.</div>`;
+    box.innerHTML = `<div class="empty vuoto-ill">
+      <svg viewBox="0 0 180 118" width="168" height="110" aria-hidden="true"><use href="#ill-spesa"/></svg>
+      <b>La lista è vuota.</b>
+      <p>Aggiungi qui sopra quello che ti serve, oppure prendilo
+         dal «ti manca» di una proposta nella tab Cucino.</p>
+    </div>`;
     return;
   }
   const daPrendere = S.spesa.filter(x => !x.done).length;
