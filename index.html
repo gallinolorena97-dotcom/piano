@@ -255,6 +255,19 @@ select.field{appearance:none;-webkit-appearance:none;
 .form-row{display:flex;gap:9px;margin-top:10px}
 .form-row .field{flex:1;min-width:0}
 
+/* campo con etichetta sempre visibile e unità di misura appoggiata dentro:
+   con i numeri inseriti si deve continuare a capire cos'è cosa */
+.campo{flex:1;min-width:0;position:relative;display:block}
+.campo-eti{
+  display:block;font-size:11.5px;font-weight:600;color:var(--muted);
+  margin:0 0 5px 2px;letter-spacing:.3px;
+}
+.campo .field{padding-right:46px}
+.campo-unita{
+  position:absolute;right:14px;bottom:14px;font-size:13px;color:var(--muted);
+  pointer-events:none;
+}
+
 .btn{
   background:var(--viola);color:#fff;border-radius:var(--r-m);
   padding:13px 18px;min-height:48px;font-size:15.5px;font-weight:600;white-space:nowrap;
@@ -584,8 +597,16 @@ select.field{appearance:none;-webkit-appearance:none;
 
   <div class="menu-sez">I miei obiettivi del giorno</div>
   <div class="form-row" style="margin-top:0">
-    <input class="field" id="menuProt" type="number" inputmode="numeric" placeholder="proteine g">
-    <input class="field" id="menuKcal" type="number" inputmode="numeric" placeholder="kcal">
+    <label class="campo">
+      <span class="campo-eti">Proteine</span>
+      <input class="field" id="menuProt" type="number" inputmode="numeric" placeholder="—">
+      <span class="campo-unita">g</span>
+    </label>
+    <label class="campo">
+      <span class="campo-eti">Calorie</span>
+      <input class="field" id="menuKcal" type="number" inputmode="numeric" placeholder="—">
+      <span class="campo-unita">kcal</span>
+    </label>
   </div>
   <p class="hint">Lascia vuoto se non hai obiettivi.</p>
 
