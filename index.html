@@ -183,21 +183,6 @@ section[hidden]{display:none}
 #toast span{flex:1}
 #toast button{color:#F6E7CD;font-weight:700;font-size:14px;padding:4px}
 
-/* ---------- login ---------- */
-#loginWrap{
-  position:fixed;inset:0;z-index:70;background:rgba(39,36,28,.55);
-  display:flex;align-items:flex-end;justify-content:center;padding:0;
-}
-#loginWrap[hidden]{display:none}
-#loginCard{
-  background:var(--cream);width:100%;max-width:480px;
-  border-radius:18px 18px 0 0;padding:18px 16px calc(20px + var(--safe-b));
-}
-#loginCard h2{margin:0 0 4px;font-size:18px;color:var(--green)}
-#loginCard p{margin:0 0 12px;font-size:14px;color:var(--ink-soft)}
-.login-msg{font-size:13.5px;margin-top:10px}
-.login-msg.err{color:#A33}
-.login-msg.ok{color:var(--green)}
 .hint{font-size:13px;color:var(--ink-soft);margin:8px 4px 0}
 </style>
 </head>
@@ -207,7 +192,6 @@ section[hidden]{display:none}
   <div class="h-top">
     <h1 class="h-title">Piano &amp; Dispensa</h1>
     <button class="h-btn" id="copyBtn">Copia per Claude</button>
-    <button class="h-btn" id="authBtn">Accedi</button>
   </div>
   <div class="h-targets" id="targets">&nbsp;</div>
 </header>
@@ -228,7 +212,7 @@ section[hidden]{display:none}
 
   <!-- ============ DISPENSA ============ -->
   <section id="tab-dispensa" hidden>
-    <div class="panel" id="invForm" hidden>
+    <div class="panel" id="invForm">
       <input class="field" id="invName" placeholder="Nome (es. Yogurt greco)" autocomplete="off">
       <div class="form-row">
         <input class="field" id="invQty" placeholder="Quantità (es. 250 g)" autocomplete="off">
@@ -249,7 +233,7 @@ section[hidden]{display:none}
 
   <!-- ============ RICETTE ============ -->
   <section id="tab-ricette" hidden>
-    <div class="panel" id="recForm" hidden>
+    <div class="panel" id="recForm">
       <div class="form-row" style="margin-top:0">
         <input class="field" id="recName" placeholder="Nome della ricetta" autocomplete="off">
         <button class="btn" id="recAdd">+</button>
@@ -261,40 +245,6 @@ section[hidden]{display:none}
 
 <div id="toast" hidden><span id="toastText"></span><button id="toastAction">Annulla</button></div>
 
-<!-- ============ LOGIN ============ -->
-<div id="loginWrap" hidden>
-  <div id="loginCard">
-    <h2>Accedi per modificare</h2>
-    <p>Per <b>leggere</b> non serve il login. Serve solo per aggiungere o modificare.</p>
-
-    <div id="step1">
-      <input class="field" id="loginEmail" type="email" inputmode="email"
-             autocomplete="email" placeholder="La tua email">
-      <div class="form-row">
-        <button class="btn" id="sendCode" style="flex:1">Inviami il codice</button>
-        <button class="btn ghost" id="loginClose">Chiudi</button>
-      </div>
-    </div>
-
-    <div id="step2" hidden>
-      <p id="sentTo" style="margin:0 0 10px"></p>
-      <input class="field" id="loginCode" type="text" inputmode="numeric" maxlength="6"
-             autocomplete="one-time-code"
-             style="font-size:26px;letter-spacing:8px;text-align:center;font-weight:700"
-             placeholder="000000">
-      <div class="form-row">
-        <button class="btn" id="verifyCode" style="flex:1">Entra</button>
-        <button class="btn ghost" id="backStep">Indietro</button>
-      </div>
-      <p class="hint" style="text-align:center">
-        Non è arrivata? <a href="#" id="resendCode" style="color:var(--green);font-weight:600">Rimanda il codice</a>
-      </p>
-    </div>
-
-    <div class="login-msg" id="loginMsg"></div>
-  </div>
-</div>
-
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -302,21 +252,20 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
    CONFIGURAZIONE
    Qui vanno SOLO l'indirizzo del progetto e la chiave pubblica.
    La chiave segreta non deve mai comparire in questo file.
+
+   NOTA: questa app non ha login. Chiunque apra l'indirizzo può
+   leggere E modificare. È una scelta voluta, presa per tenere
+   l'uso quotidiano il più semplice possibile.
    ============================================================ */
 const SUPABASE_URL = 'https://bixdbnhructlsxuvkmic.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_7Awm1XgdbMqUfNRPfqtTug_9qHVBc4E';
 
-const sb = createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    persistSession:     true,   // la sessione resta salvata sul telefono
-    autoRefreshToken:   true,   // si rinnova da sola: niente login a ogni apertura
-    detectSessionInUrl: false,  // non usiamo i link nelle email: solo il codice
-    storageKey: 'piano-auth',
-  }
-});
+// persistSession:false = spegne del tutto la parte "utenti" della libreria:
+// niente sessioni da salvare, niente rinnovi in background. Non c'è login.
+const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth:{ persistSession:false } });
 
 /* ---------- stato dell'app ---------- */
-const S = { plan:[], inv:[], rec:[], settings:{}, session:null, canWrite:false, tab:'piano' };
+const S = { plan:[], inv:[], rec:[], settings:{}, tab:'piano' };
 
 /* ---------- scorciatoie ---------- */
 const $  = (s) => document.querySelector(s);
@@ -359,10 +308,7 @@ function spiegaErrore(e){
   if (/Failed to fetch|NetworkError/i.test(m))
     return 'Non riesco a raggiungere il database. Controlla la connessione e riprova.';
   if (/row-level security|violates row-level/i.test(m))
-    return 'Questa email non è autorizzata a modificare i dati. Puoi solo consultarli.';
-  if (/JWT|token|expired/i.test(m))     return 'La sessione è scaduta: rifai il login.';
-  if (/Invalid login|invalid.*otp|Token has expired/i.test(m))
-    return 'Codice sbagliato o scaduto. Chiedine uno nuovo.';
+    return 'Il database non accetta le modifiche. Probabilmente manca un passaggio nella configurazione: vedi README-OPERATIVO.md.';
   if (/rate limit|too many/i.test(m))   return 'Troppi tentativi ravvicinati. Aspetta un minuto e riprova.';
   return 'Qualcosa è andato storto: ' + m;
 }
@@ -490,7 +436,7 @@ function renderInv(){
 
   if (!S.inv.length){
     box.innerHTML = `<div class="empty" style="margin-top:12px"><b>Inventario vuoto.</b><br>
-      ${S.canWrite ? 'Usa il modulo qui sopra per aggiungere la prima voce.' : 'Accedi per aggiungere le voci.'}</div>`;
+      Usa il modulo qui sopra per aggiungere la prima voce.</div>`;
     return;
   }
   if (!items.length){
@@ -511,8 +457,8 @@ function rigaInv(i){
   return `<div class="item ${v ? 'verifica' : ''}" data-id="${i.id}">
     <div class="item-name">${esc(i.name)}</div>
     ${v ? '<span class="tag-verifica">VERIFICA</span>' : ''}
-    <div class="item-qty ${S.canWrite ? 'editable' : ''}" data-act="qty">${esc(i.qty)}</div>
-    ${S.canWrite ? '<button class="icon-btn" data-act="del" aria-label="Elimina">×</button>' : ''}
+    <div class="item-qty editable" data-act="qty">${esc(i.qty)}</div>
+    <button class="icon-btn" data-act="del" aria-label="Elimina">×</button>
   </div>`;
 }
 
@@ -536,7 +482,7 @@ $('#invAdd').onclick = async () => {
 
 $('#invBody').addEventListener('click', async (ev) => {
   const btn  = ev.target.closest('[data-act]');
-  if (!btn || !S.canWrite) return;
+  if (!btn) return;
   const id   = btn.closest('.item').dataset.id;
   const item = S.inv.find(x => x.id === id);
   if (!item) return;
@@ -598,18 +544,17 @@ function renderRec(){
   const box = $('#recBody');
   if (!S.rec.length){
     box.innerHTML = `<div class="empty"><b>Nessuna ricetta.</b><br>
-      ${S.canWrite ? 'Aggiungine una col modulo qui sopra.' : 'Accedi per aggiungerne.'}</div>`;
+      Aggiungine una col modulo qui sopra.</div>`;
     return;
   }
   box.innerHTML = `<div class="list">${S.rec.map(r => `
     <div class="item" data-id="${r.id}">
       <div class="item-name">${esc(r.name)}</div>
-      ${S.canWrite ? `<div class="pref">
+      <div class="pref">
         ${['fav','ok','no'].map(p =>
           `<button data-p="${p}" aria-pressed="${r.pref === p}">${PREF_LABEL[p]}</button>`).join('')}
       </div>
-      <button class="icon-btn" data-act="del" aria-label="Elimina">×</button>`
-      : `<div class="pref"><button aria-pressed="${!!r.pref}" data-p="${r.pref || ''}" disabled>${r.pref ? PREF_LABEL[r.pref] : '—'}</button></div>`}
+      <button class="icon-btn" data-act="del" aria-label="Elimina">×</button>
     </div>`).join('')}</div>`;
 }
 
@@ -627,7 +572,6 @@ $('#recAdd').onclick = async () => {
 };
 
 $('#recBody').addEventListener('click', async (ev) => {
-  if (!S.canWrite) return;
   const row = ev.target.closest('.item');
   if (!row) return;
   const rec = S.rec.find(x => x.id === row.dataset.id);
@@ -723,110 +667,6 @@ $('#copyBtn').onclick = async () => {
 };
 
 /* ============================================================
-   LOGIN (codice via email)
-   ============================================================ */
-const loginMsg = (t, tipo='') => {
-  const el = $('#loginMsg'); el.textContent = t; el.className = 'login-msg ' + tipo;
-};
-
-$('#authBtn').onclick = async () => {
-  if (S.session){
-    if (!confirm('Vuoi uscire? Potrai ancora leggere tutto, ma non modificare.')) return;
-    await sb.auth.signOut();
-    return;                                  // ci pensa onAuthStateChange ad aggiornare
-  }
-  $('#loginWrap').hidden = false;
-  $('#step1').hidden = false; $('#step2').hidden = true;
-  loginMsg('');
-  $('#loginEmail').focus();
-};
-$('#loginClose').onclick = () => { $('#loginWrap').hidden = true; };
-$('#backStep').onclick   = () => { $('#step1').hidden = false; $('#step2').hidden = true; loginMsg(''); };
-
-let emailInCorso = '';
-
-async function chiediCodice(email){
-  loginMsg('Invio in corso…');
-  // Niente emailRedirectTo: non vogliamo nessun link, solo il codice.
-  const { error } = await sb.auth.signInWithOtp({ email, options:{ shouldCreateUser:true } });
-  if (error) throw error;
-  emailInCorso = email;
-  $('#sentTo').innerHTML = `Ho mandato un codice a <b>${esc(email)}</b>. Scrivilo qui sotto.`;
-  $('#step1').hidden = true; $('#step2').hidden = false;
-  $('#loginCode').value = '';
-  $('#loginCode').focus();
-}
-
-$('#sendCode').onclick = async () => {
-  const email = $('#loginEmail').value.trim();
-  if (!email.includes('@')) { loginMsg('Scrivi un indirizzo email valido.', 'err'); return; }
-  try{ await chiediCodice(email); loginMsg(''); }
-  catch(e){ loginMsg(spiegaErrore(e), 'err'); }
-};
-
-$('#resendCode').onclick = async (ev) => {
-  ev.preventDefault();
-  try{ await chiediCodice(emailInCorso); loginMsg('Nuovo codice inviato.', 'ok'); }
-  catch(e){ loginMsg(spiegaErrore(e), 'err'); }
-};
-
-let verificaInCorso = false;
-async function entra(){
-  if (verificaInCorso) return;                 // evita il doppio invio
-  const token = $('#loginCode').value.replace(/\D/g, '');
-  if (token.length < 6) { loginMsg('Il codice è di 6 cifre.', 'err'); return; }
-  verificaInCorso = true;
-  loginMsg('Controllo…');
-  try{
-    const { error } = await sb.auth.verifyOtp({ email:emailInCorso, token, type:'email' });
-    if (error) throw error;
-    $('#loginWrap').hidden = true;
-    $('#loginCode').value = '';
-    loginMsg('');
-    toast('Sei entrata. Resterai collegata anche chiudendo l\'app.');
-  }catch(e){
-    loginMsg(spiegaErrore(e), 'err');
-    $('#loginCode').value = '';              // svuota, così puoi riscrivere subito
-    $('#loginCode').focus();
-  }finally{ verificaInCorso = false; }
-}
-
-$('#verifyCode').onclick = entra;
-
-// Appena scrivi (o incolli) la sesta cifra parte da solo: un tocco in meno.
-$('#loginCode').addEventListener('input', () => {
-  if ($('#loginCode').value.replace(/\D/g,'').length === 6) entra();
-});
-$('#loginCode').addEventListener('keydown', e => { if (e.key === 'Enter') entra(); });
-$('#loginEmail').addEventListener('keydown', e => { if (e.key === 'Enter') $('#sendCode').click(); });
-
-async function aggiornaSessione(session){
-  S.session = session || null;
-
-  if (!S.session){
-    S.canWrite = false;
-    $('#authBtn').textContent = 'Accedi';
-  } else {
-    $('#authBtn').textContent = 'Esci';
-    try{
-      const { data, error } = await sb.rpc('is_writer');
-      S.canWrite = !error && data === true;
-    }catch{ S.canWrite = false; }
-
-    if (!S.canWrite)
-      banner('Sei entrata, ma questa email non è nell\'elenco di chi può modificare. Puoi consultare tutto.');
-    else
-      banner(null);
-  }
-
-  $('#invForm').hidden = !S.canWrite;
-  $('#recForm').hidden = !S.canWrite;
-  renderInv(); renderRec();
-}
-
-sb.auth.onAuthStateChange((_evt, session) => { aggiornaSessione(session); });
-
-/* ============================================================
    TAB e AVVIO
    ============================================================ */
 $$('nav.tabs button').forEach(b => {
@@ -842,11 +682,7 @@ $$('nav.tabs button').forEach(b => {
 window.addEventListener('online',  () => { banner(null); loadAll(); });
 window.addEventListener('offline', () => banner('Sei senza connessione: le modifiche non verranno salvate.'));
 
-(async function avvio(){
-  const { data } = await sb.auth.getSession();
-  await aggiornaSessione(data?.session || null);
-  await loadAll();
-})();
+loadAll();
 </script>
 </body>
 </html>
