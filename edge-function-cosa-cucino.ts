@@ -158,6 +158,20 @@ non forzare la varietà.
 molte verdure, poca carne, ingredienti pochi e riconoscibili. Porzione singola.
 Se il suo profilo prevede un tocco dolce finale, mettilo sempre.
 
+### COME SI LEGGONO I DIVIETI — attenzione, è delicato
+Un divieto vale per **tutta la famiglia dell'alimento**, non solo per la parola scritta.
+"pomodoro" comprende pomodorini, datterini, ciliegini, pachino, passata, pelati.
+"cetrioli" comprende i sottaceti di cetriolo.
+
+Quando il divieto ha una precisazione — per esempio "pomodoro **crudo**" — hai due
+sole possibilità:
+- **non usare affatto** quell'alimento, oppure
+- usarlo nella forma consentita **dicendolo esplicitamente**, sia nel nome del piatto
+  sia negli ingredienti (es. "datterini saltati in padella", non "datterini").
+
+Non lasciare mai l'ambiguità: se dagli ingredienti non si capisce che l'alimento è
+nella forma consentita, per chi legge è un divieto violato. Nel dubbio, non usarlo.
+
 **Tutti e due insieme** → è il caso difficile. Risolvilo così, in quest'ordine:
 1. I **divieti** di ciascuno non si negoziano mai, e vale anche la regola dei
    pochi ingredienti se è nel profilo.
