@@ -185,9 +185,9 @@ ha login, chiunque abbia l'indirizzo potrebbe premere Genera: per questo c'è un
 **tetto di 30 generazioni al giorno**, controllato dal server e non aggirabile
 dall'app. Nel caso peggiore la spesa si ferma a circa 60 centesimi al giorno.
 
-Una **settimana intera** ne consuma **3**, perché il piano si costruisce in tre pezzi.
-Se il margine di oggi non basta per tutti e tre, l'app te lo dice **prima** di
-cominciare: non ti lascia a metà.
+Una **settimana intera** ne consuma **4**, perché il piano si costruisce due giorni per
+volta. Se il margine di oggi non basta, l'app te lo dice **prima** di cominciare: non ti
+lascia a metà. Restano comunque sette settimane al giorno.
 
 Se un giorno le finisci per sbaglio, in Supabase → SQL Editor:
 
@@ -204,7 +204,7 @@ I messaggi sono già scritti in italiano semplice. I due più probabili:
 | Messaggio | Cosa fare |
 |---|---|
 | «Per oggi hai già usato tutte le 30 generazioni» | aspetta domani, o azzera il contatore col comando qui sopra |
-| «Per generare la settimana servono 3 generazioni… e ne restano 1» | il margine di oggi non basta per una settimana intera: stessa cura di sopra |
+| «Per generare la settimana servono 4 generazioni… e ne restano 1» | il margine di oggi non basta per una settimana intera: stessa cura di sopra |
 | «Il credito del generatore è esaurito» | ricarica il credito su console.anthropic.com |
 
 ---

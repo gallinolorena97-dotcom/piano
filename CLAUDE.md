@@ -299,12 +299,12 @@ in fila, `PS.fase` dice quale.
    Il chip «di solito a tavola ci sono» imposta tutti e quattordici i pasti insieme.
    Ogni tocco ridisegna **solo quel pasto** (`ridisegnaPasto`), altrimenti il testo
    della nota che stai scrivendo sparirebbe.
-2. **La generazione.** Tre blocchi: giorni 1-3, 4-5, 6-7. Ogni blocco è una chiamata
-   alla Edge Function con `modo:'settimana'`, e riceve `gia_pianificato` (i pasti già
-   decisi, ingredienti compresi) e `resta_prima` (cosa resta in dispensa secondo il
-   blocco precedente). **È questo che tiene in piedi la coerenza di magazzino.**
-   Fuori e liberi non si generano: si mandano come contorno informativo
-   (`fuori_e_liberi`), perché dicono chi non c'è.
+2. **La generazione.** Quattro blocchi da **due giorni** (1-2, 3-4, 5-6, 7). Ogni
+   blocco è una chiamata alla Edge Function con `modo:'settimana'`, e riceve
+   `gia_pianificato` (i pasti già decisi, ingredienti compresi) e `resta_prima` (cosa
+   resta in dispensa secondo il blocco precedente). **È questo che tiene in piedi la
+   coerenza di magazzino.** Fuori e liberi non si generano: si mandano come contorno
+   informativo (`fuori_e_liberi`), perché dicono chi non c'è.
 3. **Il riepilogo.** Mostra le righe **esatte** che finiranno in `plan_meals`
    (`righeDaSalvare()`), i totali di Ciprian giorno per giorno riusando
    `totaleGiorno()`, cosa manca e cosa resta. Solo qui si scrive nel database.
@@ -314,13 +314,41 @@ finiscono nella lista della spesa esistente (`aggiungiAllaSpesa(nomi, silenzioso
 pasti che li aspettano hanno `dipende_da_spesa = true`. Il campo data ha `min = oggi`:
 **il passato non si riscrive mai.**
 
-⚠️ **Il tetto: una settimana costa 3 tacche, non 1.** Il brief chiedeva che contasse
-come una sola generazione, ma i blocchi sono tre chiamate vere: contarne una lascerebbe
-le altre due senza freno, e il freno è l'unica cosa fra l'indirizzo pubblico e la carta
-di credito. Con 30/giorno restano 10 settimane al giorno e **il tetto di spesa non si
-muove** (~60 centesimi al giorno nel caso peggiore). Sul primo blocco la function
-controlla che il margine basti per tutti e tre: meglio fermarsi prima che a metà
-settimana (`generazioniUsateOggi()`).
+⚠️ **Il tetto: una settimana costa 4 tacche, non 1.** Il brief chiedeva che contasse
+come una sola generazione, ma i blocchi sono quattro chiamate vere: contarne una
+lascerebbe le altre senza freno, e il freno è l'unica cosa fra l'indirizzo pubblico e
+la carta di credito. Con 30/giorno restano 7 settimane al giorno e **il tetto di spesa
+non si muove** (~60 centesimi al giorno nel caso peggiore). Sul primo blocco la
+function controlla che il margine basti per tutti (`generazioniUsateOggi()`): meglio
+fermarsi prima che a metà settimana.
+
+### ⚠️ Il bug del 13/08/2026: `max_tokens` è pensiero + risposta
+
+Al primo collaudo vero «Genera la settimana» si è fermata dicendo «riprova con meno
+giorni». Causa: `MAX_TOKENS_SETTIMANA` era **12000**, e con il ragionamento adattivo
+quel numero è un tetto su **pensiero e risposta messi insieme**, non solo sulla
+risposta. Simulare il magazzino di sei pasti con divieti, target e avanzi fa ragionare
+a lungo: il modello finiva i token prima di scrivere il primo piatto, e `stop_reason`
+tornava `max_tokens` con zero pasti completi. Sonnet 5 usa anche un tokenizer nuovo
+(~30% di token in più a parità di testo), che stringe ancora.
+
+Tre correzioni, tutte e tre necessarie:
+
+1. **`MAX_TOKENS_SETTIMANA` da 12000 a 32000.** È un tetto, non una spesa: alzarlo non
+   costa di per sé. **Non riabbassarlo.** Il massimo di Sonnet 5 è 128000.
+2. **Blocchi da 2 giorni invece di 3** (4 chiamate invece di 3). Compito più piccolo,
+   e restano abbastanza per tenere nello stesso blocco la coppia «cena di oggi →
+   avanzo a pranzo domani».
+3. **Ripiego automatico**: se un blocco viene troncato lo stesso, la function lo dice
+   con `troncato:true` nel messaggio `fine` (**non** come errore) e il client rifà da
+   solo i pasti mancanti **un giorno alla volta** (`rigeneraGiornoPerGiorno()`). Non
+   si chiede niente all'utente: è un intoppo tecnico, non una decisione. Se anche un
+   singolo giorno non riesce, resta un buco e il riepilogo lo dichiara — la settimana
+   non si perde.
+
+⚠️ `troncato` non è un errore e non va trasformato in uno: se la function mandasse
+`{tipo:'errore'}`, la settimana si fermerebbe e il lavoro tornerebbe sulle spalle di
+chi guarda.
 
 ⚠️ **La Edge Function è stata riorganizzata**: le letture dal database, la chiamata ad
 Anthropic, il lettore del JSON incrementale e il flusso NDJSON sono ora scritti **una
@@ -358,9 +386,12 @@ numeri solo sui pasti di Ciprian, promemoria freezer sul giorno giusto) e
 `prova-piano-v5.sql` resta nella cartella per eventuali collaudi futuri.
 
 ⚠️ **In sospeso, un passaggio manuale**: `edge-function-cosa-cucino.ts` va **reincollato
-su Supabase** (Edge Functions → cosa-cucino → Deploy). Senza quello, «Genera la
-settimana» risponde come se il ramo nuovo non esistesse. Collaudo del Blocco 2:
-`COLLAUDO-V5-BLOCCO2.md`.
+su Supabase** (Edge Functions → cosa-cucino → Deploy) — la seconda volta il 13/08,
+per la correzione di `max_tokens`. Collaudo del Blocco 2: `COLLAUDO-V5-BLOCCO2.md`.
+
+⚠️ **Blocco 2 non ancora collaudato fino in fondo.** Il primo tentativo su giorni veri
+si è rotto per il tetto di token (vedi più sopra); la correzione è scritta ma non è
+ancora stata provata su una settimana intera.
 
 Per il resto tutti i file SQL sono stati eseguiti, e la Edge Function online è quella
 col campo «che voglia hai?».
@@ -385,6 +416,57 @@ duplicata. Nessuna streak, nessun punteggio, nessun rimprovero.
 
 `plan_days` resta dov'è, vuota e inutilizzata: non si cancella mentre se ne introduce
 un'altra. Il frontend non la legge più.
+
+#### 📌 Da fare col Blocco 4 — modifica a mano di un pasto (chiesto il 13/08/2026)
+
+Toccando un pasto di **oggi o futuro** compare **«Modifica a mano»**: si scrive il
+piatto da sé (nome, chi mangia, ingredienti facoltativi; per i pasti di Ciprian
+proteine e kcal facoltative), **senza passare dal generatore**. Tre regole:
+
+- **proteine/kcal vuote su un pasto di Ciprian** → il totale del giorno si dichiara
+  **parziale**, non si inventano numeri (`totaleGiorno()` ha già `senzaNumeri`: è lì
+  che va agganciato);
+- una modifica a mano **può rompere i giorni dopo**: vale lo stesso controllo della
+  rigenerazione del Blocco 4 — se le bozze successive contavano su ingredienti che il
+  piatto scritto a mano consuma, **avvisa e proponi di rigenerare la coda**;
+- un pasto scritto a mano è **`confermato`, mai bozza**, e **non si rigenera senza
+  chiedere**. Vale anche per la rigenerazione automatica: va saltato di default.
+
+#### 📌 Da fare col Blocco 4 — la passata non sa dire «questi giorni lasciali stare»
+
+Trovato collaudando il Blocco 2 il 13/08/2026. La passata fa **sempre sette giorni** e
+i modi sono solo tre (A casa / Fuori / Libero): **non c'è modo di segnare un giorno
+come "non ancora deciso"**. Chi vuole pianificare solo da qui a domenica è costretto a
+mettere Fuori o Libero sui giorni che non gli interessano, cioè a scrivere nel
+calendario una cosa falsa.
+
+Serve un quarto stato («non ancora») che **non produce nessuna riga** in `plan_meals`,
+oppure la scelta di quanti giorni fare. Il primo è meglio: tiene la griglia sempre di
+sette giorni, e `righeDaSalvare()` salta quei pasti come già fa quando il generatore
+non scrive niente.
+
+#### 📌 Da fare DOPO i Blocchi 3 e 4 (chiesto il 13/08/2026)
+
+**A · Ripulire il menu.** Via **«Copia per Claude»**: serviva quando l'inventario si
+portava a mano in chat, ma ormai vive nel database e la Edge Function se lo rilegge da
+sola. Resta il **copia-riepilogo del Diario**, che serve ancora. Al suo posto nel menu
+entrano la voce **Costi** (punto B) e un **export completo dei dati** come backup —
+scaricabile, non da incollare.
+
+**B · I costi dentro l'app.** La Edge Function registra i **token di ogni chiamata**
+nella tabella del tetto (`generator_usage`, che oggi ha solo `day` e `count`: servono
+due colonne in più), e il menu mostra la **stima di spesa del mese**.
+⚠️ Va scritto **stima**, e va detto che il conto vero sta nella Console di Anthropic:
+i prezzi cambiano e il conteggio dei token lato nostro non include tutto.
+⚠️ **Da fare al prossimo intervento sulla function, non con un deploy dedicato**: ogni
+deploy è un passaggio manuale sul pannello Supabase e vanno raggruppati.
+
+**C · Più precisione sui numeri, senza database alimenti.** Sulle voci di dispensa due
+campi **facoltativi**: `kcal_100g` e `prot_100g`. Il generatore li usa quando ci sono,
+altrimenti stima come fa adesso **e lo dichiara**.
+Non contraddice la regola «niente database alimenti» qui sotto: non si importa nessun
+archivio, non c'è nessuno scanner di codici a barre, e i campi restano vuoti finché
+non li scrive l'utente sulle voci che le interessano.
 
 #### Rimasto indietro, minore
 

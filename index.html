@@ -1700,7 +1700,7 @@ $('#planBody').addEventListener('click', ev => {
      1. LA PASSATA   sette giorni, pranzo e cena, a bottoni.
                      Parte tutta compilata: si tocca solo cio' che
                      cambia, cosi' ci vuole meno di un minuto.
-     2. LA GENERAZIONE  a blocchi di 2-3 giorni. Ogni blocco vede i
+     2. LA GENERAZIONE  a blocchi di due giorni. Ogni blocco vede i
                      pasti gia' decisi prima: e' quello che tiene in
                      piedi la coerenza di magazzino (un pollo usato
                      lunedi' non esiste piu' martedi').
@@ -1925,9 +1925,15 @@ function anteprimaPasto(m){
   </div>`;
 }
 
-/* I blocchi: 3 giorni, poi 2, poi 2. Piu' corti verso la fine perche'
-   la dispensa si e' svuotata e i conti si fanno piu' delicati. */
-const PS_BLOCCHI = [[0,1,2],[3,4],[5,6]];
+/* I blocchi sono di DUE giorni, non tre.
+   Il 13/08/2026 la generazione si rompeva con blocchi da tre: il modello
+   ragionava cosi' a lungo sul magazzino di sei pasti da finire i token
+   prima di scrivere il primo piatto. Due giorni per volta sono un compito
+   piu' piccolo, e restano abbastanza per far stare dentro lo stesso blocco
+   la coppia "cena di oggi → avanzo a pranzo domani".
+   Se anche cosi' un blocco viene troncato, l'app lo rifa' da sola un giorno
+   alla volta: vedi rigeneraGiornoPerGiorno() qui sotto. */
+const PS_BLOCCHI = [[0,1],[2,3],[4,5],[6]];
 
 async function avviaGenerazione(){
   // Solo i pasti "a casa" si chiedono al generatore: fuori e liberi
@@ -1960,11 +1966,21 @@ async function avviaGenerazione(){
       PS.blocco = b;
       PS.stato = `Pianifico ${elencaGiorni(blocchi[b].map(g => g.day))}…`;
       renderWizard();
-      const resta = await generaBlocco(blocchi[b], b === 0, blocchi.length - b);
-      if (resta) PS.resta = resta;
+      const esito = await generaBlocco(blocchi[b], b === 0, blocchi.length - b);
+      if (esito.resta) PS.resta = esito.resta;
+
+      // Il blocco si è interrotto a metà: lo rifaccio da solo, un giorno alla
+      // volta. Non chiedo niente a chi sta guardando: è un intoppo tecnico,
+      // non una decisione.
+      if (esito.troncato && blocchi[b].length > 1) await rigeneraGiornoPerGiorno(blocchi[b]);
     }
     PS.blocco = blocchi.length;
-    PS.fase = 'riepilogo';
+
+    if (!PS.pasti.length){
+      PS.errore = 'Il generatore non è riuscito a scrivere nessun pasto. Riprova fra poco.';
+    }else{
+      PS.fase = 'riepilogo';
+    }
   }catch(e){
     // i messaggi della Edge Function sono già in italiano semplice e vanno
     // mostrati com'è; solo i guasti di rete vanno tradotti
@@ -1977,13 +1993,37 @@ async function avviaGenerazione(){
   }
 }
 
-/** Un blocco di 2-3 giorni. Restituisce cosa resta in dispensa dopo. */
+/** Il ripiego automatico: rifà i pasti che mancano di un blocco troncato,
+    un giorno alla volta. Un giorno solo è un compito abbastanza piccolo da
+    entrare comodamente nei token anche nei casi peggiori.
+    Se anche così un giorno non riesce, resta un buco: il riepilogo lo dice,
+    e il resto della settimana non ne risente. */
+async function rigeneraGiornoPerGiorno(giorni){
+  for (const g of giorni){
+    const mancanti = g.pasti.filter(p =>
+      !PS.pasti.some(x => x.day === g.day && x.pasto === p.pasto));
+    if (!mancanti.length) continue;
+
+    PS.stato = `Il blocco era troppo grosso: rifaccio ${dowNome(g.day)} da solo…`;
+    renderWizard();
+    try{
+      const esito = await generaBlocco([{ day:g.day, pasti:mancanti }], false, 1);
+      if (esito.resta) PS.resta = esito.resta;
+    }catch(e){
+      // un giorno perso non deve buttare via la settimana: si va avanti
+      console.warn('ripiego fallito su', g.day, e);
+    }
+  }
+}
+
+/** Un blocco di giorni. Restituisce cosa resta in dispensa e se è stato
+    troncato a metà (nel qual caso chi chiama rifà i pasti mancanti). */
 async function generaBlocco(giorni, primo, restanti){
   // quali (giorno, pasto) ho chiesto: tutto il resto lo butto via
   const chiesti = new Set();
   giorni.forEach(g => g.pasti.forEach(p => chiesti.add(`${g.day}|${p.pasto}`)));
 
-  let resta = '', problema = null;
+  let resta = '', problema = null, troncato = false;
 
   await flussoNdjson({
     modo:'settimana',
@@ -2009,6 +2049,7 @@ async function generaBlocco(giorni, primo, restanti){
       renderWizard();
     }else if (ev.tipo === 'fine'){
       resta = String(ev.resta || '');
+      troncato = ev.troncato === true;
     }else if (ev.errore){
       problema = ev.errore;
     }
@@ -2017,7 +2058,7 @@ async function generaBlocco(giorni, primo, restanti){
   // Se si rompe a metà, quello che è già arrivato resta: il riepilogo
   // lo mostra lo stesso e si decide lì se salvarlo o buttarlo.
   if (problema) throw new Error(problema);
-  return resta;
+  return { resta, troncato };
 }
 
 const chiDelPasto = (day, pasto) => {

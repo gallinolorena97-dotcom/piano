@@ -30,15 +30,25 @@ const MODELLO       = 'claude-sonnet-5';
 const MAX_TOKENS    = 8000;
 const IMPEGNO       = 'medium';    // low = più veloce/economico · high = più ragionato
 
-// La settimana e' fatta di 3 blocchi (3 giorni + 2 + 2), quindi 3 chiamate
-// vere al modello: pesa 3 tacche sul tetto qui sopra, non una.
+// La settimana si scrive a blocchi di 2 giorni: 4 chiamate vere al modello,
+// quindi 4 tacche sul tetto qui sopra, non una.
 //
-// ⚠️ E' voluto. Contarne una sola lascerebbe le altre due senza freno, e il
-// freno e' l'unica cosa fra l'indirizzo pubblico e la carta di credito.
-// Con 30/giorno restano 10 settimane al giorno e il tetto di spesa non si
-// muove di un centesimo rispetto a prima.
-const BLOCCHI_SETTIMANA    = 3;
-const MAX_TOKENS_SETTIMANA = 12000;   // fino a 6 pasti scritti per intero
+// ⚠️ E' voluto. Contarne una sola lascerebbe le altre senza freno, e il freno
+// e' l'unica cosa fra l'indirizzo pubblico e la carta di credito. Con 30 al
+// giorno restano 7 settimane al giorno e il tetto di spesa non si muove.
+//
+// Il numero qui sotto e' il MASSIMO che una settimana puo' costare: 4 blocchi
+// piu' i ripieghi giorno per giorno, quando un blocco viene troncato.
+const BLOCCHI_SETTIMANA = 8;
+
+// ⚠️ NON ABBASSARE QUESTO NUMERO. Il 13/08/2026 la generazione della settimana
+// si e' rotta proprio qui, con 12000: max_tokens e' un tetto su PENSIERO PIU'
+// RISPOSTA messi insieme, non solo sulla risposta. Simulare il magazzino di
+// piu' giorni con divieti, target e avanzi fa ragionare a lungo, e il modello
+// veniva tagliato prima di riuscire a scrivere il primo pasto.
+// max_tokens e' un tetto, non una spesa: alzarlo non costa niente di per se',
+// serve solo a lasciare spazio. Il massimo di Sonnet 5 e' 128000.
+const MAX_TOKENS_SETTIMANA = 32000;
 
 // ------------------------------------------------------------
 //  Segreti e indirizzi (li mette Supabase, non si scrivono a mano)
@@ -123,7 +133,7 @@ async function consumaUnaGenerazione(): Promise<number> {
 
 /**
  * Quante generazioni sono gia' state usate oggi, SENZA consumarne una.
- * Serve al piano settimanale: prima di cominciare un lavoro da 3 chiamate
+ * Serve al piano settimanale: prima di cominciare un lavoro da piu' chiamate
  * si controlla che il margine basti, cosi' non ci si ferma a meta' settimana.
  * La tabella e' invisibile all'app (nessuna policy): la legge solo il server.
  */
@@ -892,11 +902,15 @@ Alla fine compila "resta" con quello che rimarrà in dispensa dopo questi giorni
       resta = String(tutto?.resta ?? '');
     } catch { /* JSON incompleto: pazienza, i pasti li abbiamo già mandati */ }
 
-    if (!mandati) {
+    // "troncato" NON e' un errore: e' un'informazione operativa.
+    // L'app la usa per rifare da sola il blocco un giorno alla volta, senza
+    // chiedere niente a chi sta guardando. Se mandassimo un errore, la
+    // settimana si fermerebbe qui e il lavoro ricadrebbe sull'utente.
+    const troncato = motivoStop === 'max_tokens';
+
+    if (!mandati && !troncato) {
       if (motivoStop === 'refusal') {
         manda({ tipo: 'errore', errore: 'Il generatore non se la sente di rispondere a questa richiesta. Prova a riformularla.' });
-      } else if (motivoStop === 'max_tokens') {
-        manda({ tipo: 'errore', errore: 'La risposta si è interrotta a metà. Riprova con meno giorni per volta.' });
       } else {
         console.error('nessun pasto; testo grezzo:', lettore.testoIntero().slice(0, 500));
         manda({ tipo: 'errore', errore: 'Non riesco a costruire un piano con questa dispensa. Prova ad aggiungere qualche ingrediente.' });
@@ -904,7 +918,11 @@ Alla fine compila "resta" con quello che rimarrà in dispensa dopo questi giorni
       return;
     }
 
-    manda({ tipo: 'fine', quanti: mandati, resta });
+    if (troncato) {
+      console.error(`blocco troncato: ${mandati} pasti su ${quantiPasti}, max_tokens ${MAX_TOKENS_SETTIMANA}`);
+    }
+
+    manda({ tipo: 'fine', quanti: mandati, chiesti: quantiPasti, resta, troncato });
   });
 }
 
