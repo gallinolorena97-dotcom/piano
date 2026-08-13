@@ -487,6 +487,15 @@ select.field{appearance:none;-webkit-appearance:none;
 .badge-bozza{background:var(--lavanda-soft);color:var(--viola-testo);border:1px dashed var(--viola)}
 .badge-passato{background:var(--surface-2);color:var(--muted);border:1px solid var(--linea-forte)}
 
+/* Si cambia giorno strisciando col pollice: il giorno nuovo entra dal lato
+   da cui arriva, così si capisce di essersi spostati e in che direzione.
+   Sono 200 ms: si deve sentire, non aspettare. Chi ha chiesto meno
+   animazioni al sistema non le vede (regola in cima al foglio). */
+@keyframes entraDaDestra {from{opacity:0;transform:translateX(24px)} to{opacity:1;transform:none}}
+@keyframes entraDaSinistra{from{opacity:0;transform:translateX(-24px)}to{opacity:1;transform:none}}
+.entra-da-destra {animation:entraDaDestra  200ms cubic-bezier(.4,0,.2,1)}
+.entra-da-sinistra{animation:entraDaSinistra 200ms cubic-bezier(.4,0,.2,1)}
+
 .pasto{padding:13px 16px}
 .pasto + .pasto,.row + .pasto{border-top:1px solid var(--bg)}
 .pasto-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:6px}
@@ -575,6 +584,42 @@ select.field{appearance:none;-webkit-appearance:none;
 .ps-tacca.fatta{background:var(--menta)}
 .ps-tacca.ora{background:var(--lavanda);animation:pulsa 1.4s ease-in-out infinite}
 @keyframes pulsa{0%,100%{opacity:1}50%{opacity:.45}}
+
+/* ------------------------------------------------------------
+   8-quinquies · V5 · LA VERIFICA DEL GIORNO (Blocco 3)
+   Sta in cima alla tab Piano, sopra la striscia. Il fondo è menta
+   perche' e' una domanda cordiale, non un avviso: l'ambra e il
+   corallo qui darebbero l'idea di aver sbagliato qualcosa.
+   ------------------------------------------------------------ */
+.verifica{
+  background:var(--menta-soft);border:1px solid var(--menta);border-radius:var(--r-l);
+  padding:14px 15px 6px;margin-bottom:14px;box-shadow:var(--ombra-1);
+}
+.ver-testa{display:flex;align-items:flex-start;gap:10px;margin-bottom:4px}
+.ver-testa > div{flex:1}
+.ver-testa b{
+  display:block;font-family:'Fraunces',Georgia,serif;font-weight:600;
+  font-size:16.5px;color:var(--ink);line-height:1.3;
+}
+.ver-quando{display:block;font-size:13px;color:var(--muted);margin-top:2px}
+.ver-rinvia{
+  background:none;border:none;padding:2px 0;flex:0 0 auto;
+  color:var(--muted);font-size:13px;font-weight:600;text-decoration:underline;
+}
+.ver-pasto{border-top:1px solid var(--menta);padding:11px 0 13px;margin-top:9px}
+.ver-eti{
+  font-size:10px;font-weight:700;letter-spacing:.9px;color:var(--muted);
+  text-transform:uppercase;margin:9px 0 5px;
+}
+/* i bottoni della verifica stanno su superficie, non sul fondo menta,
+   altrimenti si confondono con lo sfondo del riquadro */
+.verifica .chips.mini button{background:var(--surface)}
+.ver-scelte{margin-top:9px}
+.ver-scelte button{font-weight:600;color:var(--ink)}
+.ver-scelte button[data-ris="si"]{border-color:var(--viola);color:var(--viola-testo)}
+.ver-altro{margin-top:10px}
+/* il pannello di "Ho cucinato questo" quando si apre dentro la verifica */
+.ver-pasto .cuc-box{margin-top:12px;background:var(--surface);border-radius:var(--r-m);padding:12px}
 
 /* ============================================================
    9 · CATEGORIE APPICCICOSE (Dispensa)
@@ -1463,7 +1508,8 @@ function renderPlan(){
     S.giornoSel = giorni.includes(oggiISO()) ? oggiISO() : giorni[0];
 
   box.innerHTML =
-    `<div class="settimana" id="pnStriscia" aria-label="I giorni del piano">
+    `<div id="pnVerifica"></div>
+     <div class="settimana" id="pnStriscia" aria-label="I giorni del piano">
        ${giorni.map(chipGiorno).join('')}
      </div>
      <div id="pnCard">${cardGiorno(S.giornoSel)}</div>
@@ -1471,8 +1517,230 @@ function renderPlan(){
        <button class="btn ghost" id="pnGenera" style="flex:1">↻ Genera un'altra settimana</button>
      </div>`;
 
+  renderVerifica();
+
   const sel = box.querySelector('.gg[aria-pressed="true"]');
   if (sel) setTimeout(() => sel.scrollIntoView({ inline:'center', block:'nearest' }), 60);
+}
+
+/* ============================================================
+   TAB 1-ter — V5 · Blocco 3 · LA VERIFICA DEL GIORNO
+
+   È il meccanismo che tiene piano e dispensa attaccati alla realtà:
+   alla prima apertura, «ieri hai mangiato questo?».
+
+   Per ogni pasto tre risposte — sì · no, altro · saltato — e la
+   correzione di chi c'era davvero.
+
+   Il «sì» NON ha un pannello suo: riusa quello di «Ho cucinato questo»
+   (apriCucinato → calcolaRiga → confermaCucinato), che sa già scalare
+   con prudenza, conservare le scadenze e lasciare un annulla.
+
+   ⚠️ Niente streak, niente punteggi, niente rimproveri. Un giorno
+   saltato è un fatto. Per questo si guarda indietro al massimo tre
+   giorni: oltre, non è più una verifica, è un debito da riscuotere.
+   ============================================================ */
+const CHIAVE_RINVIO = 'piano-verifica-rinviata';
+
+/** Un pasto è verificato quando nel diario c'è la sua riga. Sta nel
+    database, quindi vale per tutti e due i telefoni: chi risponde per
+    primo evita all'altro di scalare la dispensa una seconda volta. */
+const giaNelDiario = (day, pasto) => S.diario.some(m => m.day === day && m.pasto === pasto);
+
+/* ⚠️ Due vocabolari che si incontrano. plan_meals.chi usa i nomi veri
+   (ciprian/entrambi/lorena); meals_log.chi usa le voci relative a chi sta
+   usando l'app (io/io_e_x/solo_x), perché così le scrive la tab Cucino.
+   Finché è così, la traduzione sta qui e in nessun altro posto. */
+function chiPerDiario(chiPiano){
+  if (chiPiano === 'entrambi') return 'io_e_x';
+  return SLUG_DI_CHI[chiPiano] === S.io ? 'io' : 'solo_x';
+}
+
+/** Il giorno da verificare: il più recente, fra gli ultimi tre, che ha
+    ancora pasti pianificati senza risposta. */
+function giornoDaVerificare(){
+  let rinviata = null;
+  try { rinviata = localStorage.getItem(CHIAVE_RINVIO); } catch { /* modalità privata */ }
+  if (rinviata === oggiISO()) return null;
+
+  for (let n = 1; n <= 3; n++){
+    const iso = addGiorni(oggiISO(), -n);
+    const righe = pastiDi(iso)
+      .filter(r => (r.piatto || r.modo !== 'casa') && !giaNelDiario(iso, r.pasto))
+      .sort((a,b) => (PASTO_ORDINE[a.pasto] ?? 9) - (PASTO_ORDINE[b.pasto] ?? 9));
+    if (righe.length) return { day:iso, righe };
+  }
+  return null;
+}
+
+/** Un pasto del piano raccontato come una proposta del generatore, così
+    che apriCucinato() lo capisca senza modifiche.
+    Gli ingredienti del piano sono una lista sola col campo "per": vanno
+    tutti nello stesso elenco, perché dalla dispensa esce la somma. */
+function propostaDaPasto(r){
+  const lista = Array.isArray(r.ingredienti) ? r.ingredienti : [];
+  return {
+    nome: r.piatto || (r.modo === 'fuori' ? 'Fuori casa' : 'Pasto libero'),
+    ingredienti_io: lista.map(i => ({ nome:i.nome, quantita:i.qta })),
+    ingredienti_x: [],
+    proteine_g: r.prot,
+    kcal: r.kcal,
+    proteina_principale: null,
+  };
+}
+
+function renderVerifica(){
+  const box = $('#pnVerifica');
+  if (!box) return;
+  const v = giornoDaVerificare();
+  if (!v){ box.innerHTML = ''; return; }
+
+  box.innerHTML = `<section class="verifica" data-day="${esc(v.day)}">
+    <div class="ver-testa">
+      <div>
+        <b>${esc(quandoRelativo(v.day) === 'ieri' ? 'Ieri hai mangiato questo?' : 'Hai mangiato questo?')}</b>
+        <span class="ver-quando">${esc(labelData(v.day))}</span>
+      </div>
+      <button class="ver-rinvia" data-rinvia>Più tardi</button>
+    </div>
+    ${v.righe.map(r => verificaPasto(r, v.day)).join('')}
+  </section>`;
+}
+
+function verificaPasto(r, day){
+  const chiOra = r.chi;
+  return `<div class="ver-pasto" data-pasto="${esc(r.pasto)}">
+    <div class="pasto-top">
+      <span class="pasto-quale">${esc(r.pasto)}</span>
+      ${r.modo !== 'casa'
+        ? `<span class="pasto-chi">${esc(r.modo === 'fuori' ? 'era fuori' : 'era libero')}</span>` : ''}
+    </div>
+    <div class="pasto-piatto">${esc(r.piatto ||
+      (r.modo === 'fuori' ? 'Si mangiava fuori' : 'Pasto libero'))}</div>
+
+    <div class="ver-eti">Chi c'era davvero</div>
+    <div class="chips mini" data-campo="chi">
+      ${PS_CHI.map(c => `<button data-chi="${c}" aria-pressed="${chiOra === c}"
+        >${esc(nomeChiBreve(c))}</button>`).join('')}
+    </div>
+
+    <div class="chips mini ver-scelte">
+      <button data-ris="si">Sì</button>
+      <button data-ris="altro">No, altro</button>
+      <button data-ris="saltato">Saltato</button>
+    </div>
+  </div>`;
+}
+
+/** Il "chi" scelto adesso per quel pasto, che può essere diverso dal piano. */
+function chiSceltoPer(cella, r){
+  const b = cella.querySelector('.chips[data-campo="chi"] button[aria-pressed="true"]');
+  return b ? b.dataset.chi : r.chi;
+}
+
+/* --- le risposte --- */
+$('#planBody').addEventListener('click', async (ev) => {
+  const sezione = ev.target.closest('.verifica');
+  if (!sezione) return;
+  const day = sezione.dataset.day;
+
+  if (ev.target.closest('[data-rinvia]')){
+    try { localStorage.setItem(CHIAVE_RINVIO, oggiISO()); } catch { /* modalità privata */ }
+    renderVerifica();
+    return;
+  }
+
+  const cella = ev.target.closest('.ver-pasto');
+  if (!cella) return;
+  const r = pastiDi(day).find(x => x.pasto === cella.dataset.pasto);
+  if (!r) return;
+
+  // chi c'era davvero: cambia solo l'aspetto, si legge al momento di salvare
+  const chi = ev.target.closest('.chips[data-campo="chi"] button');
+  if (chi){
+    [...chi.parentElement.children].forEach(b =>
+      b.setAttribute('aria-pressed', String(b === chi)));
+    return;
+  }
+
+  const b = ev.target.closest('[data-ris]');
+  if (!b) return;
+  const quando = { day, pasto:r.pasto, chi: chiPerDiario(chiSceltoPer(cella, r)) };
+
+  if (b.dataset.ris === 'si')      rispondiSi(r, cella, quando);
+  if (b.dataset.ris === 'altro')   apriAltro(cella, quando);
+  if (b.dataset.ris === 'saltato') rispondiSaltato(cella, quando);
+});
+
+/** «Sì» — si riusa il pannello di "Ho cucinato questo". */
+function rispondiSi(r, cella, quando){
+  const p = propostaDaPasto(r);
+
+  // niente ingredienti da scalare (fuori, libero, o un piatto scritto senza
+  // elenco): non ha senso aprire il pannello delle quantità, si segna e basta
+  if (!p.ingredienti_io.length){ segnaNelDiario(p, quando, cella); return; }
+
+  cella.querySelectorAll('.ver-scelte button').forEach(x => x.disabled = true);
+  apriCucinato(p, cella, {
+    quando,
+    titolo: `Hai mangiato: ${p.nome}`,
+    conRicetta: false,   // confermare non vuol dire mettere il cuore
+    dopo: () => renderPlan(),
+  });
+}
+
+/** «No, altro» — si registra quello che è stato mangiato davvero,
+    senza toccare la dispensa: non so con che cosa è stato fatto. */
+function apriAltro(cella, quando){
+  if (cella.querySelector('.ver-altro')) return;
+  const box = document.createElement('div');
+  box.className = 'ver-altro';
+  box.innerHTML = `
+    <input class="field mini" placeholder="Cosa hai mangiato" autocomplete="off">
+    <div class="form-row">
+      <button class="btn small" data-ok style="flex:1">Segna nel diario</button>
+      <button class="btn small ghost" data-no>Annulla</button>
+    </div>
+    <p class="hint" style="margin-top:6px">La dispensa non la tocco: non so
+      con che cosa l'hai fatto. Se serve, correggila dalla tab Dispensa.</p>`;
+  cella.appendChild(box);
+  const inp = box.querySelector('input');
+  inp.focus();
+
+  const conferma = () => {
+    const t = inp.value.trim();
+    if (!t){ inp.focus(); return; }
+    box.remove();
+    segnaNelDiario({ nome:t, proteine_g:null, kcal:null }, quando, cella);
+  };
+  box.querySelector('[data-ok]').onclick = conferma;
+  box.querySelector('[data-no]').onclick = () => box.remove();
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); conferma(); } });
+}
+
+/** «Saltato» — è un fatto, e nel diario ci va come tutti gli altri. */
+function rispondiSaltato(cella, quando){
+  segnaNelDiario({ nome:'Saltato', proteine_g:null, kcal:null }, quando, cella);
+}
+
+/** Scrive una riga di diario e basta: nessuna dispensa, nessuna ricetta. */
+async function segnaNelDiario(p, quando, cella){
+  cella.querySelectorAll('button').forEach(x => x.disabled = true);
+  const id = await registraPasto(p, quando);
+  if (!id){
+    toast('Non riesco a scrivere nel diario. Riprova fra poco.', null, 'errore');
+    cella.querySelectorAll('button').forEach(x => x.disabled = false);
+    return;
+  }
+  await caricaDiario();
+  renderDiario();
+  renderPlan();
+  toast(`Segnato: ${p.nome}`, async () => {
+    await sb.from('meals_log').delete().eq('id', id);
+    await caricaDiario();
+    renderDiario(); renderPlan();
+    toast('Tolto dal diario.');
+  });
 }
 
 function chipGiorno(iso){
@@ -1683,13 +1951,76 @@ function corpoPassato(iso, righe){
 /* --- i tocchi: cambio giorno e bottone dello stato vuoto --- */
 $('#planBody').addEventListener('click', ev => {
   const g = ev.target.closest('[data-gg]');
-  if (g){
-    S.giornoSel = g.dataset.gg;
-    $$('#pnStriscia .gg').forEach(b => b.setAttribute('aria-pressed', String(b === g)));
-    $('#pnCard').innerHTML = cardGiorno(S.giornoSel);
-    return;
-  }
+  if (g){ vaiAlGiorno(g.dataset.gg, 0); return; }
   if (ev.target.closest('#pnGenera')) apriPassata();
+});
+
+/** Apre un giorno. "verso" serve solo all'animazione: 1 = sono andato
+    avanti, -1 = indietro, 0 = ci sono arrivato con un tocco sulla striscia. */
+function vaiAlGiorno(iso, verso){
+  S.giornoSel = iso;
+  $$('#pnStriscia .gg').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.gg === iso)));
+
+  const card = $('#pnCard');
+  if (!card) return;
+  card.innerHTML = cardGiorno(iso);
+  const dentro = card.firstElementChild;
+  if (verso && dentro) dentro.classList.add(verso > 0 ? 'entra-da-destra' : 'entra-da-sinistra');
+
+  // la striscia segue il giorno aperto, così il chip attivo resta in vista
+  $(`#pnStriscia .gg[data-gg="${iso}"]`)
+    ?.scrollIntoView({ inline:'center', block:'nearest', behavior:'smooth' });
+}
+
+/** Sposta di un giorno. Ai due estremi della striscia non si va oltre:
+    meglio fermarsi che far comparire un giorno senza contesto. */
+function cambiaGiorno(passo){
+  if (S.pianoErr || !S.piano.length) return;
+  const giorni = giorniStriscia();
+  const i = giorni.indexOf(S.giornoSel);
+  const j = i + passo;
+  if (i < 0 || j < 0 || j >= giorni.length) return;
+  vaiAlGiorno(giorni[j], passo);
+}
+
+/* --- scorrere col pollice per cambiare giorno ---
+   Il gesto si ascolta solo sulla scheda, non sulla striscia dei giorni:
+   quella scorre già per conto suo e i due movimenti si darebbero fastidio.
+   Si accetta solo un gesto chiaramente orizzontale, altrimenti si
+   rovinerebbe lo scorrimento normale della pagina. */
+let toccoPiano = null;
+
+$('#planBody').addEventListener('touchstart', (ev) => {
+  toccoPiano = null;
+  if (ev.touches.length !== 1) return;
+  // la striscia scorre per conto suo, e nella verifica si tocca e si scrive:
+  // in tutti e due i posti una strisciata non deve cambiare giorno
+  if (ev.target.closest('#pnStriscia') || ev.target.closest('.verifica')) return;
+  toccoPiano = { x: ev.touches[0].clientX, y: ev.touches[0].clientY };
+}, { passive:true });
+
+$('#planBody').addEventListener('touchend', (ev) => {
+  const t0 = toccoPiano;
+  toccoPiano = null;
+  if (!t0 || !ev.changedTouches.length) return;
+
+  const dx = ev.changedTouches[0].clientX - t0.x;
+  const dy = ev.changedTouches[0].clientY - t0.y;
+  // 55 px per non scambiare un tocco per una strisciata,
+  // e 1.6 volte il movimento verticale per non rubare lo scorrimento
+  if (Math.abs(dx) < 55 || Math.abs(dx) < Math.abs(dy) * 1.6) return;
+
+  // si striscia verso sinistra per andare avanti, come si sfoglia
+  cambiaGiorno(dx < 0 ? 1 : -1);
+}, { passive:true });
+
+/* Sul computer le stesse frecce della tastiera: mobile e PC alla pari. */
+document.addEventListener('keydown', (ev) => {
+  if (S.tab !== 'piano') return;
+  if (!$('#pnWizard').hidden || !$('#tab-profilo').hidden) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(ev.target.tagName || '')) return;
+  if (ev.key === 'ArrowLeft')  { cambiaGiorno(-1); ev.preventDefault(); }
+  if (ev.key === 'ArrowRight') { cambiaGiorno(1);  ev.preventDefault(); }
 });
 
 /* ============================================================
@@ -1969,10 +2300,14 @@ async function avviaGenerazione(){
       const esito = await generaBlocco(blocchi[b], b === 0, blocchi.length - b);
       if (esito.resta) PS.resta = esito.resta;
 
-      // Il blocco si è interrotto a metà: lo rifaccio da solo, un giorno alla
-      // volta. Non chiedo niente a chi sta guardando: è un intoppo tecnico,
-      // non una decisione.
-      if (esito.troncato && blocchi[b].length > 1) await rigeneraGiornoPerGiorno(blocchi[b]);
+      // ⚠️ NON chiedersi PERCHE' manca: chiedersi SE manca.
+      // Il 13/08/2026 un blocco intero (2 giorni, 4 pasti) è sparito dal piano
+      // perché il ripiego era agganciato al solo "troncato": quel blocco invece
+      // era tornato dicendo di aver finito, senza aver scritto quei pasti.
+      // Adesso si guarda il risultato, non il motivo: se un pasto chiesto non
+      // è arrivato — troncatura, salto, data sbagliata, qualunque cosa — si
+      // rifà. Quando non manca niente questa riga non costa nulla.
+      await completaMancanti(blocchi[b]);
     }
     PS.blocco = blocchi.length;
 
@@ -1993,21 +2328,29 @@ async function avviaGenerazione(){
   }
 }
 
-/** Il ripiego automatico: rifà i pasti che mancano di un blocco troncato,
-    un giorno alla volta. Un giorno solo è un compito abbastanza piccolo da
-    entrare comodamente nei token anche nei casi peggiori.
-    Se anche così un giorno non riesce, resta un buco: il riepilogo lo dice,
-    e il resto della settimana non ne risente. */
-async function rigeneraGiornoPerGiorno(giorni){
-  for (const g of giorni){
-    const mancanti = g.pasti.filter(p =>
-      !PS.pasti.some(x => x.day === g.day && x.pasto === p.pasto));
-    if (!mancanti.length) continue;
+/** I pasti di un blocco che sono stati chiesti ma non sono arrivati. */
+const pastiMancanti = (giorni) => giorni
+  .map(g => ({
+    day: g.day,
+    pasti: g.pasti.filter(p => !PS.pasti.some(x => x.day === g.day && x.pasto === p.pasto)),
+  }))
+  .filter(g => g.pasti.length);
 
-    PS.stato = `Il blocco era troppo grosso: rifaccio ${dowNome(g.day)} da solo…`;
+/** Il ripiego automatico: rifà i pasti che mancano, UN GIORNO ALLA VOLTA.
+    Un giorno solo è un compito abbastanza piccolo da riuscire anche quando
+    il blocco intero non ce l'ha fatta.
+    Si prova una volta sola: se un giorno non viene neanche così, resta un
+    buco, il riepilogo lo dichiara e il resto della settimana non ne risente.
+    Meglio un buco dichiarato che una rincorsa che non finisce mai. */
+async function completaMancanti(giorni){
+  const buchi = pastiMancanti(giorni);
+  if (!buchi.length) return;
+
+  for (const g of buchi){
+    PS.stato = `Manca ancora ${dowNome(g.day)}: lo rifaccio da solo…`;
     renderWizard();
     try{
-      const esito = await generaBlocco([{ day:g.day, pasti:mancanti }], false, 1);
+      const esito = await generaBlocco([g], false, 1);
       if (esito.resta) PS.resta = esito.resta;
     }catch(e){
       // un giorno perso non deve buttare via la settimana: si va avanti
@@ -2038,8 +2381,10 @@ async function generaBlocco(giorni, primo, restanti){
       const m = ev.pasto || {};
       const k = `${m.day}|${m.pasto}`;
       // mai un pasto che non ho chiesto, mai due volte lo stesso:
-      // la tabella accetta un solo pranzo e una sola cena per giorno
-      if (!chiesti.has(k)) return;
+      // la tabella accetta un solo pranzo e una sola cena per giorno.
+      // Uno scarto qui non è più silenzioso: lo scrivo nella console e,
+      // soprattutto, completaMancanti() rifarà quel pasto.
+      if (!chiesti.has(k)){ console.warn('pasto scartato, non era stato chiesto:', k); return; }
       if (PS.pasti.some(x => `${x.day}|${x.pasto}` === k)) return;
       PS.pasti.push(m);
       PS.stato = 'Sto scrivendo…';
@@ -2925,15 +3270,26 @@ function calcolaRiga(r){
   return { stato:'ok', testo: scriviQta(resta, ora.u) + (ora.coda || '') };
 }
 
-/** Il pannello: riepilogo modificabile di cosa hai usato davvero. */
-function apriCucinato(p, card){
+/** Il pannello: riepilogo modificabile di cosa hai usato davvero.
+ *
+ * "opz" serve alla verifica del giorno (v5 Blocco 3), che riusa questo
+ * pannello invece di averne uno suo:
+ *   quando       {day, pasto, chi} — quale riga scrivere nel diario.
+ *                Senza, si intende oggi con le scelte della tab Cucino.
+ *   titolo       la riga in cima, se non è "Ho cucinato".
+ *   conRicetta   false = non salvare la ricetta col ♥. La verifica lo fa:
+ *                confermare di aver mangiato il piano non è dire che è
+ *                il tuo piatto preferito.
+ *   dopo         cosa fare dopo che è andato tutto bene.
+ */
+function apriCucinato(p, card, opz = {}){
   if (card.querySelector('.cuc-box')) return;
   const righe = righeDaProposta(p);
 
   const box = document.createElement('div');
   box.className = 'cuc-box';
   box.innerHTML = `
-    <div class="q-label" style="margin-top:0">Ho cucinato: ${esc(p.nome)}</div>
+    <div class="q-label" style="margin-top:0">${esc(opz.titolo || `Ho cucinato: ${p.nome}`)}</div>
     <p class="hint" style="margin:0 0 10px">Correggi le quantità che hai usato davvero,
       poi conferma. Ti mostro cosa resta prima di toccare la dispensa.</p>
     <div class="cuc-righe">${righe.map((r, k) => rigaCucinato(r, k)).join('')}</div>
@@ -2967,7 +3323,7 @@ function apriCucinato(p, card){
   });
 
   box.querySelector('[data-annulla]').onclick = () => box.remove();
-  box.querySelector('[data-conferma]').onclick = () => confermaCucinato(p, righe, box);
+  box.querySelector('[data-conferma]').onclick = () => confermaCucinato(p, righe, box, opz);
 }
 
 function rigaCucinato(r, k){
@@ -3012,7 +3368,7 @@ function esitoCucinato(r, k){
 }
 
 /** Applica tutto: dispensa, ricetta, diario. E lascia un annulla. */
-async function confermaCucinato(p, righe, box){
+async function confermaCucinato(p, righe, box, opz = {}){
   box.querySelectorAll('button, input').forEach(x => x.disabled = true);
 
   // 1. cosa cambio in dispensa
@@ -3057,15 +3413,18 @@ async function confermaCucinato(p, righe, box){
     //    è già a posto e disfare tutto sarebbe peggio. Si dice che cosa
     //    non è riuscito e si va avanti.
     const mancati = [];
-    try { ricetta = await salvaRicetta(p); }
-    catch { mancati.push('salvare la ricetta'); }
+    if (opz.conRicetta !== false){
+      try { ricetta = await salvaRicetta(p); }
+      catch { mancati.push('salvare la ricetta'); }
+    }
 
-    pasto = await registraPasto(p);        // già tollerante ai propri errori
+    pasto = await registraPasto(p, opz.quando);   // già tollerante ai propri errori
     if (pasto) await caricaDiario();
     else mancati.push('segnare il pasto nel diario');
 
     renderInv(); renderRec(); renderDiario();
     box.remove();
+    opz.dopo?.();
 
     const quante = fatte.length;
     const buono = quante
@@ -3143,16 +3502,19 @@ async function salvaRicetta(p){
   return { creata, id, prefPrima };
 }
 
-/** Scrive il pasto nel diario. Se la tabella non esiste ancora, tira dritto. */
-async function registraPasto(p){
+/** Scrive il pasto nel diario. Se la tabella non esiste ancora, tira dritto.
+    "quando" ({day, pasto, chi}) lo passa la verifica del giorno, che registra
+    ieri e non oggi. Senza, vale la tab Cucino: oggi, con le sue scelte. */
+async function registraPasto(p, quando){
+  const q = quando || { day: oggiISO(), pasto: CU.pasto, chi: CU.chi };
   try{
     const { data, error } = await sb.from('meals_log').insert({
-      day: oggiISO(),
-      pasto: CU.pasto,
+      day: q.day,
+      pasto: q.pasto,
       piatto: p.nome,
       prot: Number.isFinite(p.proteine_g) ? p.proteine_g : null,
       kcal: Number.isFinite(p.kcal) ? p.kcal : null,
-      chi: CU.chi,
+      chi: q.chi,
       proteina: p.proteina_principale || null,
     }).select('id').single();
     if (error) throw error;

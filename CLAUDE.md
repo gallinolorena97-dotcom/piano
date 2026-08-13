@@ -379,8 +379,9 @@ pannello in fondo. Sembrava che il pulsante non funzionasse.
 
 v4 (blocchi 1-3), v6 (blocchi 1-3), **v7 completa**, **v5 Blocco 1** (il calendario:
 collaudato dall'iPhone il 13/08 — tre stati distinguibili, dolce nel suo riquadro,
-numeri solo sui pasti di Ciprian, promemoria freezer sul giorno giusto) e
-**v5 Blocco 2** («Genera la settimana»).
+numeri solo sui pasti di Ciprian, promemoria freezer sul giorno giusto),
+**v5 Blocco 2** («Genera la settimana», collaudato) e **v5 Blocco 3** (la verifica del
+giorno, **da collaudare**). In più: si cambia giorno strisciando col pollice.
 
 `tabelle-piano-v5.sql` è stato eseguito e la settimana di prova è stata rimossa;
 `prova-piano-v5.sql` resta nella cartella per eventuali collaudi futuri.
@@ -389,9 +390,62 @@ numeri solo sui pasti di Ciprian, promemoria freezer sul giorno giusto) e
 su Supabase** (Edge Functions → cosa-cucino → Deploy) — la seconda volta il 13/08,
 per la correzione di `max_tokens`. Collaudo del Blocco 2: `COLLAUDO-V5-BLOCCO2.md`.
 
-⚠️ **Blocco 2 non ancora collaudato fino in fondo.** Il primo tentativo su giorni veri
-si è rotto per il tetto di token (vedi più sopra); la correzione è scritta ma non è
-ancora stata provata su una settimana intera.
+**Blocco 2 collaudato su giorni veri il 13/08** (settimana 16-22/08): la **coerenza di
+magazzino ha retto**, nessun ingrediente fantasma. Ma **un blocco intero (20 e 21) è
+sparito**, e il ripiego automatico non l'ha coperto — vedi qui sotto.
+
+### ⚠️ Il secondo bug del 13/08: il ripiego guardava il motivo, non il risultato
+
+Il ripiego era agganciato al solo `troncato`. Quel blocco però non era stato troncato:
+era tornato dicendo di aver finito **senza aver scritto quei pasti** (saltati, o con
+date che non corrispondevano a quelle chieste e quindi scartati dal client). `troncato`
+era falso, il ripiego non è partito, e `righeDaSalvare()` ha semplicemente saltato quei
+pasti — niente riga in `plan_meals`, quattro pasti spariti dal calendario.
+
+**La regola che ne esce, e vale ovunque**: non chiedersi **perché** manca qualcosa,
+chiedersi **se** manca. Ora dopo ogni blocco gira `completaMancanti()`, che confronta i
+pasti chiesti con quelli arrivati e rifà i mancanti un giorno alla volta, qualunque sia
+stata la causa. Quando non manca niente non costa nulla. Si prova **una volta sola**:
+un buco dichiarato è meglio di una rincorsa infinita.
+I pasti scartati perché non erano stati chiesti finiscono in `console.warn`.
+
+### La v5 — la verifica del giorno (13/08/2026, Blocco 3)
+
+In cima alla tab Piano, sopra la striscia: **«Ieri hai mangiato questo?»**, con i pasti
+previsti e tre risposte per pasto — **sì · no, altro · saltato** — più la correzione di
+**chi c'era davvero**.
+
+- **Un pasto è verificato quando nel diario c'è la sua riga** (`giaNelDiario`). Lo stato
+  sta nel database, non nel telefono: chi risponde per primo evita all'altro di scalare
+  la dispensa una seconda volta. Per questo anche **«saltato» scrive nel diario**.
+- Si guarda indietro **al massimo tre giorni**, e c'è un **«Più tardi»** che rinvia a
+  domani (`localStorage`, chiave `piano-verifica-rinviata`). Oltre i tre giorni non è
+  più una verifica, è un debito da riscuotere: e i giorni saltati non sono colpe.
+- **Il «sì» non ha un pannello suo**: riusa quello di «Ho cucinato questo».
+  `apriCucinato` ha ora un quarto argomento `opz` — `quando` (quale riga di diario
+  scrivere: la verifica registra *ieri*, non oggi), `titolo`, `conRicetta`, `dopo` —
+  e `registraPasto(p, quando)` con lo stesso scopo. Senza `opz` tutto si comporta
+  esattamente come prima: la tab Cucino non è stata toccata.
+- **`conRicetta:false` nella verifica**: confermare di aver mangiato quel che era
+  previsto non vuol dire mettere il cuore a quel piatto. Altrimenti i ♥ si riempirebbero
+  da soli e non vorrebbero più dire niente.
+- **«No, altro»** registra nel diario e **non tocca la dispensa** — non si sa con che
+  cosa sia stato fatto — e lo dice.
+- ⚠️ **Due vocabolari per `chi`**: `plan_meals.chi` usa i nomi veri, `meals_log.chi` usa
+  le voci relative a chi usa l'app (`io`/`io_e_x`/`solo_x`), perché così le scrive la tab
+  Cucino. La traduzione sta in `chiPerDiario()` **e in nessun altro posto**. Quando si
+  farà il blocco 5 della v6 (mostrare *chi* nel diario), conviene valutare se spostare
+  `meals_log.chi` sui nomi veri e togliere la traduzione.
+
+### Scorrere fra i giorni (13/08/2026)
+
+Si cambia giorno **strisciando col pollice** sulla scheda (verso sinistra = avanti,
+come si sfoglia) e con le **frecce ← →** sul computer. Il gesto si ascolta solo sulla
+scheda: sulla striscia dei giorni e dentro la verifica no, perché lì darebbe fastidio.
+Serve un movimento di almeno 55 px e chiaramente orizzontale (1,6 volte quello
+verticale), altrimenti si rovinerebbe lo scorrimento normale della pagina.
+Ai due estremi della striscia non si va oltre. Il giorno nuovo entra dal lato da cui
+arriva (`.entra-da-destra` / `.entra-da-sinistra`, 200 ms).
 
 Per il resto tutti i file SQL sono stati eseguiti, e la Edge Function online è quella
 col campo «che voglia hai?».
@@ -403,25 +457,31 @@ col campo «che voglia hai?».
 - **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.
 - **Stile: la passata ricca è approvata** nella versione attualmente online.
 
-#### ▶️ PROSSIMO PASSO — v5 Blocco 3, ma solo dopo il collaudo del Blocco 2
+#### ▶️ PROSSIMO PASSO — ⛔ il brief dice di FERMARSI QUI
 
-Brief: `PROMPT-V5-PIANO.md` (sostituisce il vecchio `…-SETTIMANALE.md`, eliminato).
-Si va **un blocco alla volta con push separati, e ci si ferma dopo il Blocco 3.**
+Brief: `PROMPT-V5-PIANO.md`. I blocchi 1, 2 e 3 sono scritti: **«FERMATI QUI. Collaudo
+insieme, poi si decide se proseguire.»** Non cominciare il Blocco 4 senza che l'utente
+lo chieda: prima si collauda la verifica del giorno su giorni veri.
 
-Il Blocco 3 è **la verifica del giorno**: alla prima apertura, «Ieri hai mangiato
-questo?» con i pasti previsti e tre risposte per pasto (sì · no, altro · saltato), più
-la correzione di chi c'era davvero. Il «sì» deve **riusare la meccanica esistente di
-"Ho cucinato questo"** (`apriCucinato`, `calcolaRiga`, `confermaCucinato`): zero logica
-duplicata. Nessuna streak, nessun punteggio, nessun rimprovero.
+Quando si riparte, il Blocco 4 è **la rigenerazione della coda** — più la **modifica a
+mano**, che l'utente ha chiesto tre volte e va fatta per prima (memo qui sopra).
 
 `plan_days` resta dov'è, vuota e inutilizzata: non si cancella mentre se ne introduce
 un'altra. Il frontend non la legge più.
 
 #### 📌 Da fare col Blocco 4 — modifica a mano di un pasto (chiesto il 13/08/2026)
 
-Toccando un pasto di **oggi o futuro** compare **«Modifica a mano»**: si scrive il
-piatto da sé (nome, chi mangia, ingredienti facoltativi; per i pasti di Ciprian
-proteine e kcal facoltative), **senza passare dal generatore**. Tre regole:
+Chiesto **tre volte** il 13/08/2026: è la cosa che l'utente vuole di più dopo i
+blocchi del brief. **Due modi di arrivarci, tutti e due richiesti:**
+
+- **toccando un pasto** di oggi o futuro si sceglie **«Modifica a mano»**;
+- e un **tasto «Modifica» visibile su ogni giorno**, che non si debba cercare.
+
+Serve a riempire i buchi che il generatore lascia e a scrivere un piatto deciso da sé.
+Si scrive il piatto (nome, chi mangia, ingredienti facoltativi; proteine e kcal
+facoltative), **senza passare dal generatore**. Vale per i pasti di **oggi o futuri**;
+sui giorni passati no, quelli mostrano il diario.
+Tre regole:
 
 - **proteine/kcal vuote su un pasto di Ciprian** → il totale del giorno si dichiara
   **parziale**, non si inventano numeri (`totaleGiorno()` ha già `senzaNumeri`: è lì

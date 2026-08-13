@@ -71,6 +71,30 @@ Nessun rimprovero: è un fatto, non una colpa.
 Un pasto segnato **«dipende dalla spesa»** aspetta qualcosa che non hai ancora: lo trovi
 nella tab Spesa.
 
+**Per cambiare giorno** puoi toccare un giorno nella striscia, oppure **strisciare col
+pollice** sulla scheda: verso sinistra vai avanti, verso destra torni indietro. Sul
+computer funzionano le frecce ← e →.
+
+### «Ieri hai mangiato questo?»
+
+Alla prima apertura, se ieri c'erano pasti in programma, in cima alla tab Piano trovi la
+domanda con i pasti previsti. Per ognuno tre risposte:
+
+- **Sì** — si apre l'elenco degli ingredienti con le quantità, come in «Ho cucinato
+  questo»: correggi quello che hai usato davvero, confermi, e la dispensa si aggiorna.
+  Resta l'**Annulla** per 8 secondi.
+- **No, altro** — scrivi cosa hai mangiato davvero. Finisce nel diario, e **la dispensa
+  non viene toccata**: non so con che cosa l'hai fatto. Se serve, la correggi a mano.
+- **Saltato** — finisce nel diario così com'è. Nessun rimprovero: è un fatto.
+
+Puoi anche correggere **chi c'era davvero**, se era diverso dal previsto.
+
+Se non hai voglia, **Più tardi** la rimanda a domani. La domanda guarda indietro al
+massimo tre giorni: più in là non te la richiede.
+
+Se rispondi tu dal tuo telefono, l'altro non se la ritrova: la risposta è salvata nel
+database, non sul telefono. Così la dispensa non viene scalata due volte.
+
 **Dispensa** — aggiungi con nome, quantità e categoria; tocca la quantità per correggerla;
 la **×** elimina, e per 8 secondi hai il tasto **Annulla**.
 Se in una quantità scrivi un `?` (per esempio `? da contare`) la voce si colora di ambra
