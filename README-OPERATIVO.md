@@ -195,9 +195,27 @@ quello che c'è in casa.
 
 ### Il diario (tab Cucino → Diario)
 
-Si riempie da solo quando premi «Ho cucinato questo». Puoi aggiungere a mano i pasti
-fuori casa. Mostra gli ultimi 14 giorni: giorno, piatti, proteine totali. Nient'altro
-— **nessun punteggio, nessuna striscia di giorni, nessun grafico**.
+Si riempie da solo quando premi «Ho cucinato questo» e quando rispondi alla verifica del
+mattino. Puoi aggiungere a mano qualsiasi pasto — **colazione, spuntino, pranzo, cena** —
+con testo libero; proteine e kcal sono facoltative, e vale per tutti e due.
+
+Mostra gli ultimi 14 giorni: giorno, piatti, proteine totali. Nient'altro — **nessun
+punteggio, nessuna striscia di giorni, nessun grafico**.
+
+### «Finora oggi»
+
+Sul giorno di oggi, nel calendario e nel diario, compare una riga lilla: **finora oggi
+X g proteine · Y kcal**. È quello che hai messo insieme **davvero**, non quello che era
+previsto.
+
+Compare solo per chi si è dato un **obiettivo** nel profilo. Se un giorno vuoi contare
+anche tu, compila proteine o calorie nel tuo profilo e la riga comparirà da sola.
+
+**Colazione e yogurt non vengono contati due volte.** Per Ciprian sono dati per scontati
+ogni giorno (20 g · 290 kcal e 17 g · 100 kcal). Ma se quel giorno segni nel diario una
+colazione vera, quella **sostituisce** quella di sempre invece di aggiungersi. Sotto il
+totale c'è sempre scritto quale delle due sta usando, così il numero non arriva mai dal
+nulla. E se la registri senza numeri, il totale si dichiara **parziale**.
 
 Serve anche al generatore: legge gli ultimi 5 giorni e non ti ripropone la stessa
 proteina più di due volte in tre giorni, né lo stesso piatto a due giorni di distanza.

@@ -437,6 +437,47 @@ previsti e tre risposte per pasto — **sì · no, altro · saltato** — più l
   farà il blocco 5 della v6 (mostrare *chi* nel diario), conviene valutare se spostare
   `meals_log.chi` sui nomi veri e togliere la traduzione.
 
+### La v5 — i numeri del giorno (13/08/2026, estensione del Blocco 3)
+
+**Tipi di pasto.** Il diario accetta **colazione · spuntino · pranzo · cena**, in
+quest'ordine anche nel menù a tendina (prima erano in ordine sparso). L'aggiunta a mano
+resta com'era: testo libero, proteine e kcal **facoltative**, per tutti e due i profili.
+
+⚠️ **La regola contro il doppio conteggio.** Le voci fisse di Ciprian — colazione
+20 g · 290 kcal e yogurt 17 g · 100 kcal — sono date per scontate ogni giorno. Se però
+per quel giorno **una colazione o uno spuntino vero finisce nel diario**, la voce data
+per scontata viene **SOSTITUITA, mai sommata**: altrimenti la colazione varrebbe
+doppio. Sta tutto in `fisseDelGiorno()`, e `notaFisse()` scrive sotto il totale quale
+delle due si sta usando («colazione dal diario (25 g · 310 kcal)» oppure «colazione di
+sempre (20 g · 290 kcal)»). Un numero non deve mai arrivare dal nulla.
+Se la registrazione vera è senza numeri, entra come 0 e **il totale si dichiara
+parziale**: non si inventa niente.
+
+**«Finora oggi».** Nel giorno di oggi del calendario e in cima al giorno di oggi nel
+diario: `finora oggi X g · Y kcal`, cioè quanto è stato messo insieme **davvero**
+(voci fisse sostituite + tutto il resto del diario di quel giorno), non quanto era
+previsto. Fondo lavanda per non confonderlo col totale del piano, che è menta.
+
+⚠️ **Non è più legato a una persona: è legato all'obiettivo.** La riga compare per i
+profili con `prot_target` o `kcal_target` compilati (`haObiettivo()`), chiunque siano.
+Per chi non ha obiettivi non compare nessun numero, qui come ovunque. Se un giorno
+Lorena vorrà contare, le basterà compilare l'obiettivo nel suo profilo.
+Le **voci fisse restano di Ciprian** (`fisseDi()`): sono la sua colazione e il suo
+yogurt, un altro profilo non le eredita — sarebbero numeri arrivati dal nulla.
+
+⚠️ **Limite noto**: «finora oggi» somma tutte le righe di diario del giorno senza
+distinguere chi ha mangiato, perché `meals_log.chi` è relativo a chi sta usando l'app
+(vedi `chiPerDiario()`) e da un altro telefono vuol dire l'opposto. Finché conta una
+persona sola va bene; se anche Lorena si desse un obiettivo, andrebbe prima spostato
+`meals_log.chi` sui nomi veri.
+
+#### ⛔ Fuori per scelta, deciso il 13/08/2026 — non riproporlo
+
+**Database alimenti · codici a barre · streak.** I numeri restano **dichiarati o
+stimati**. La precisione, quando servirà, arriverà dai campi facoltativi `kcal_100g` e
+`prot_100g` sulle voci di dispensa (punto C del blocco «dopo i Blocchi 3 e 4»), non da
+un archivio esterno né da uno scanner.
+
 ### Scorrere fra i giorni (13/08/2026)
 
 Si cambia giorno **strisciando col pollice** sulla scheda (verso sinistra = avanti,
@@ -452,6 +493,9 @@ col campo «che voglia hai?».
 
 #### ⛔ Decisioni chiuse — non riaprirle
 
+- **Database alimenti, codici a barre, streak: fuori.** Deciso il 13/08/2026.
+  I numeri sono dichiarati o stimati; la precisione arriverà dai campi `kcal_100g` e
+  `prot_100g` sulle voci di dispensa.
 - **Mascotte: cancellata.** Provata (un pancake) e scartata. Gli stati vuoti e
   l'attesa usano **oggetti**, mai personaggi. Non riproporla.
 - **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.

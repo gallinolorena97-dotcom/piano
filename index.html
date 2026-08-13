@@ -431,6 +431,22 @@ select.field{appearance:none;-webkit-appearance:none;
   display:block;margin-top:4px;font-size:12px;font-weight:500;color:var(--muted);
 }
 
+/* «Finora oggi»: quanto e' stato messo insieme davvero, non quanto era
+   previsto. Fondo lavanda per distinguerlo dal totale del piano (menta):
+   sono due numeri diversi e non devono sembrare lo stesso. */
+.day-finora{
+  background:var(--lavanda-soft);border-top:1px solid var(--linea);
+  padding:11px 16px;text-align:right;font-size:13.5px;color:var(--ink);
+  font-variant-numeric:tabular-nums;
+}
+.day-finora b{font-weight:700;color:var(--viola-testo);margin-right:4px}
+.day-finora .finora-obi{color:var(--muted);font-size:12.5px}
+.day-finora .tot-nota{
+  display:block;margin-top:4px;font-size:12px;font-weight:500;color:var(--muted);
+}
+/* nel diario la stessa riga, ma appoggiata sotto l'intestazione del giorno */
+.dg-giorno .day-finora{text-align:left;border-top:none;border-bottom:1px solid var(--linea)}
+
 /* ------------------------------------------------------------
    8-bis · V5 · LA STRISCIA DEI 7 GIORNI
    Si appiccica sotto la testata come le intestazioni della
@@ -1133,15 +1149,18 @@ select.field{appearance:none;-webkit-appearance:none;
         <span class="stelline" style="right:12px;bottom:10px" aria-hidden="true"></span>
         <div class="q-label" style="margin-top:0">Aggiungi un pasto a mano</div>
         <p class="hint" style="margin:0 0 8px">Per quando mangi fuori o cucini
-          senza passare dal generatore.</p>
+          senza passare dal generatore. Vale per tutti e due: proteine e kcal
+          sono facoltative.</p>
         <input class="field" id="dgPiatto" placeholder="Cosa hai mangiato" autocomplete="off">
         <div class="form-row">
           <input class="field" id="dgGiorno" type="date" style="flex:1.2">
+          <!-- nell'ordine della giornata, non a caso: colazione · spuntino ·
+               pranzo · cena. È lo stesso ordine con cui il diario li elenca. -->
           <select class="field" id="dgPasto" style="flex:1">
-            <option value="pranzo">Pranzo</option>
-            <option value="cena">Cena</option>
             <option value="colazione">Colazione</option>
             <option value="spuntino">Spuntino</option>
+            <option value="pranzo" selected>Pranzo</option>
+            <option value="cena">Cena</option>
           </select>
         </div>
         <div class="form-row">
@@ -1430,11 +1449,57 @@ function quandoRelativo(iso){
 }
 
 /* Le voci fisse della giornata di Ciprian. Entrano nel totale, ma
-   restano scritte sotto: un numero non deve mai arrivare dal nulla. */
+   restano scritte sotto: un numero non deve mai arrivare dal nulla.
+   Il campo "pasto" è quello che le lega al diario: se per quel giorno
+   c'è una colazione vera registrata, quella SOSTITUISCE la voce fissa. */
 const FISSE_CIPRIAN = [
-  { nome:'colazione',    prot:20, kcal:290 },
-  { nome:'yogurt greco', prot:17, kcal:100 },
+  { nome:'colazione',    pasto:'colazione', prot:20, kcal:290 },
+  { nome:'yogurt greco', pasto:'spuntino',  prot:17, kcal:100 },
 ];
+
+/* ⚠️ Le voci fisse sono di CIPRIAN: la SUA colazione e il SUO yogurt.
+   Un altro profilo che si desse un obiettivo non le eredita — sarebbero
+   numeri arrivati dal nulla, ed è esattamente ciò che l'app non fa. */
+const fisseDi = (slug) => slug === SLUG_DI_CHI.ciprian ? FISSE_CIPRIAN : [];
+
+/** Un profilo conta i numeri solo se si è dato un obiettivo. Chi non ne
+    ha non vede nessun numero, qui come in tutto il resto dell'app. */
+const haObiettivo = (p) => !!p && !!(p.prot_target || p.kcal_target);
+
+const sommaProt = (righe) => righe.reduce((s,m) => s + (Number(m.prot) || 0), 0);
+const sommaKcal = (righe) => righe.reduce((s,m) => s + (Number(m.kcal) || 0), 0);
+
+/**
+ * Le voci fisse di un giorno, ognuna sostituita dalla registrazione vera
+ * se nel diario ce n'è una.
+ *
+ * ⚠️ REGOLA CONTRO IL DOPPIO CONTEGGIO. La colazione e lo yogurt sono
+ * dati per scontati ogni giorno. Se però quel giorno una colazione vera
+ * finisce nel diario, la voce data per scontata va SOSTITUITA, mai
+ * sommata: altrimenti la colazione verrebbe contata due volte.
+ * Il totale poi dichiara quale delle due sta usando — vedi notaFisse().
+ */
+function fisseDelGiorno(iso, slug){
+  return fisseDi(slug).map(f => {
+    const vere = S.diario.filter(m => m.day === iso && m.pasto === f.pasto);
+    if (!vere.length) return { ...f, reale:false, senzaNumeri:false };
+    return {
+      nome: vere.map(m => m.piatto).join(' + '),
+      pasto: f.pasto,
+      prot: sommaProt(vere),
+      kcal: sommaKcal(vere),
+      reale: true,
+      // registrata senza numeri: entra come 0 e il totale lo deve dire
+      senzaNumeri: vere.every(m => m.prot == null && m.kcal == null),
+    };
+  });
+}
+
+/** Dice, voce per voce, se il totale sta usando quella di sempre o
+    quella registrata davvero. Un numero non deve mai arrivare dal nulla. */
+const notaFisse = (fisse) => fisse.map(f => f.reale
+  ? `${f.pasto} dal diario${f.senzaNumeri ? ' (senza numeri)' : ` (${f.prot} g · ${f.kcal} kcal)`}`
+  : `${f.nome} di sempre (${f.prot} g · ${f.kcal} kcal)`);
 
 /* ⚠️ Gli slug della tabella profiles NON sono i nomi delle persone
    (vedi CLAUDE.md): lo slug 'lorena' contiene il profilo di Ciprian e
@@ -1775,7 +1840,8 @@ function cardGiorno(iso){
     <div class="day-rows">
       ${st === 'passato' ? corpoPassato(iso, righe) : corpoPiano(iso, righe)}
     </div>
-    ${st === 'passato' ? '' : totaliHtml(righe)}
+    ${st === 'passato' ? '' : totaliHtml(righe, iso)}
+    ${isToday ? finoraHtml(iso, S.io) : ''}
   </article>`;
 }
 
@@ -1881,7 +1947,7 @@ function ingredientiHtml(r){
     Restituisce null se in quel giorno lui non mangia niente a casa.
     Lo usa anche il riepilogo di "Genera la settimana": i conti si fanno
     in un posto solo. */
-function totaleGiorno(righe){
+function totaleGiorno(righe, iso){
   const suoi = righe.filter(r => r.modo === 'casa' && mangiaCiprian(r));
   if (!suoi.length) return null;
 
@@ -1891,15 +1957,20 @@ function totaleGiorno(righe){
     prot += Number(r.prot) || 0;
     kcal += Number(r.kcal) || 0;
   }
-  const fP = FISSE_CIPRIAN.reduce((s,f) => s + f.prot, 0);
-  const fK = FISSE_CIPRIAN.reduce((s,f) => s + f.kcal, 0);
-  return { prot: prot + fP, kcal: kcal + fK, fP, fK, senzaNumeri };
+  // le fisse, già sostituite dalle registrazioni vere dove ce ne sono
+  const fisse = fisseDelGiorno(iso || righe[0]?.day, SLUG_DI_CHI.ciprian);
+  senzaNumeri += fisse.filter(f => f.senzaNumeri).length;
+  return {
+    prot: prot + sommaProt(fisse),
+    kcal: kcal + sommaKcal(fisse),
+    fisse, senzaNumeri,
+  };
 }
 
-function totaliHtml(righe){
-  const t = totaleGiorno(righe);
+function totaliHtml(righe, iso){
+  const t = totaleGiorno(righe, iso);
   if (!t) return '';
-  const { prot, kcal, fP, fK, senzaNumeri } = t;
+  const { prot, kcal, fisse, senzaNumeri } = t;
 
   // Nei giorni con un pasto fuori o libero il totale scende, e va bene
   // cosi': non si compensa nei giorni vicini. Lo diciamo, non lo nascondiamo.
@@ -1908,13 +1979,64 @@ function totaliHtml(righe){
     ? `${r.pasto} fuori casa`
     : (r.pasto === 'cena' ? 'cena libera' : 'pranzo libero');
   const note = [
-    `${FISSE_CIPRIAN.map(f => f.nome).join(' e ')} compresi (${fP} g · ${fK} kcal)`,
+    ...notaFisse(fisse),
     fuori.length ? `${fuori.map(comeSiChiama).join(' e ')} non nel totale` : '',
-    senzaNumeri  ? 'su qualche pasto mancano i numeri' : '',
+    senzaNumeri  ? 'su qualche pasto mancano i numeri: totale parziale' : '',
   ].filter(Boolean).join(' · ');
 
   return `<div class="day-tot">TOT ${esc(nomeDiChi('ciprian'))} ${prot} g proteine · ${kcal} kcal
     <span class="tot-nota">${esc(note)}</span></div>`;
+}
+
+/**
+ * «Finora oggi»: quanto è stato davvero messo insieme, non quanto era
+ * previsto. Somma le voci fisse (già sostituite dalle registrazioni vere
+ * dove ci sono) e tutto il resto del diario di quel giorno.
+ *
+ * Restituisce null per i profili SENZA obiettivo: chi non conta non deve
+ * vedere numeri, qui come ovunque. Se un giorno vorrà contare, gli basterà
+ * compilare l'obiettivo nel profilo e questa riga comparirà da sola.
+ */
+function totaleFinora(iso, slug){
+  const p = profilo(slug);
+  if (!haObiettivo(p)) return null;
+
+  const fisse = fisseDelGiorno(iso, slug);
+  const gestiti = new Set(fisse.map(f => f.pasto));
+  // tutto il diario del giorno tranne i pasti già coperti dalle fisse,
+  // che li hanno già assorbiti: contarli di nuovo sarebbe il doppio conteggio
+  const resto = S.diario.filter(m => m.day === iso && !gestiti.has(m.pasto));
+
+  const senzaNumeri = fisse.filter(f => f.senzaNumeri).length
+                    + resto.filter(m => m.prot == null && m.kcal == null).length;
+
+  return {
+    prot: sommaProt(fisse) + sommaProt(resto),
+    kcal: sommaKcal(fisse) + sommaKcal(resto),
+    quanti: fisse.length + resto.length,
+    fisse, senzaNumeri, profilo: p,
+  };
+}
+
+/** La riga «finora oggi», se c'è qualcosa da dire. */
+function finoraHtml(iso, slug){
+  const f = totaleFinora(iso, slug);
+  if (!f || !f.quanti) return '';
+
+  const obiettivo = [
+    f.profilo.prot_target ? `su ${f.profilo.prot_target} g` : '',
+    f.profilo.kcal_target ? `su ${f.profilo.kcal_target} kcal` : '',
+  ].filter(Boolean).join(' e ');
+
+  const note = [
+    ...notaFisse(f.fisse),
+    f.senzaNumeri ? 'qualcosa è segnato senza numeri: è un parziale' : '',
+  ].filter(Boolean).join(' · ');
+
+  return `<div class="day-finora">
+    <b>Finora oggi</b> ${f.prot} g proteine · ${f.kcal} kcal${obiettivo ? ` <span class="finora-obi">${esc(obiettivo)}</span>` : ''}
+    ${note ? `<span class="tot-nota">${esc(note)}</span>` : ''}
+  </div>`;
 }
 
 /** Un giorno passato mostra il diario: cosa si è mangiato davvero.
@@ -2501,7 +2623,7 @@ function vistaRiepilogo(){
 
   const perGiorno = PS.giorni.map(g => {
     const sue = righe.filter(r => r.day === g.day);
-    const t   = totaleGiorno(sue);
+    const t   = totaleGiorno(sue, g.day);
     const testo = PS_PASTI.map(q => {
       const r = sue.find(x => x.pasto === q);
       if (!r) return `${q}: —`;
@@ -3813,12 +3935,13 @@ function renderDiario(){
 
   box.innerHTML = [...perGiorno.entries()].map(([giorno, pasti]) => {
     pasti.sort((a,b) => (PASTO_ORDINE[a.pasto] ?? 9) - (PASTO_ORDINE[b.pasto] ?? 9));
-    const tot = pasti.reduce((s,m) => s + (Number(m.prot) || 0), 0);
+    const tot = sommaProt(pasti);
     return `<article class="dg-giorno">
       <div class="dg-band">
         <span class="dg-data">${esc(labelData(giorno))}</span>
         ${tot ? `<span class="dg-tot">${tot} g proteine</span>` : ''}
       </div>
+      ${giorno === oggiISO() ? finoraHtml(giorno, S.io) : ''}
       ${pasti.map(m => `<div class="dg-riga" data-id="${m.id}">
         <div class="dg-quale">${esc(m.pasto)}</div>
         <div class="dg-piatto">${esc(m.piatto)}</div>
