@@ -523,6 +523,32 @@ segnate «?» non producono avvisi — meglio tacere che gridare al lupo.
 «Non ora» lo nasconde **fino a ricaricare** (`S.avvisoVia`, non `localStorage`): il
 problema è vero e non va dimenticato.
 
+#### ⚠️ `cercaInDispensa()` non riconosce i plurali — e non va allargata
+
+Trovato provando il Blocco 2 sui dati veri: alla prima accensione l'avviso segnalava
+quattro cose mancanti, **tutte e quattro false**.
+
+| L'ingrediente | In dispensa c'era | Perché non lo trovava |
+|---|---|---|
+| mozzarella | **Mozzarelle** | singolare contro plurale |
+| panino per burger | **Panini burger** | nome di più parole, nessuno contiene l'altro |
+| polpo | **Polpi** | singolare contro plurale |
+| grana | **Base sempre in casa** — grana · burro · … | è nominato nella *quantità*, non nel nome |
+
+`cercaInDispensa()` cerca per contenimento sul solo **nome**, ed è **giusto che resti
+severa**: è la stessa funzione che scala la dispensa, e un abbinamento sbagliato lì
+scalerebbe l'ingrediente sbagliato. **Non allargarla.**
+
+La soluzione è un secondo controllo, `forseInCasa()`, usato **solo per NON dare un
+falso allarme**: il rischio è rovesciato — un abbinamento largo può soltanto far tacere
+un avviso, mai toccare niente. Prende la parola più lunga del nome, ne toglie la vocale
+finale («mozzarella» → `mozzarell`, «polpo» → `polp`) e la cerca dentro nome **e**
+quantità di ogni voce. Più `inListaSpesa()`: quello che è già sulla lista non è una
+notizia.
+Effetto collaterale accettato: `polp` trova anche «polpa di pomodoro». Sbagliare verso
+il silenzio va bene, verso il rumore no — un avviso che grida sempre smette di essere
+letto.
+
 **Rigenerazione.** Non c'è un motore nuovo: si **riapre la stessa passata**
 (`apriPassata({dal, quanti, daPiano, titolo})`) precompilata da `S.piano`, e i blocchi
 si calcolano su misura (`blocchiDa(n)`, sempre due giorni per volta). Tre ingressi:

@@ -2368,12 +2368,48 @@ async function salvaPastoAMano(iso, quale, box){
 
 /* ---------- 2 · LE BOZZE NON TORNANO PIÙ ---------- */
 
+/* Parole troppo corte o di servizio non dicono niente su cosa sia una cosa. */
+const PAROLE_VUOTE = new Set(['per','di','da','con','del','della','dei','delle',
+                              'il','lo','la','le','gli','un','uno','una','al','alla','in','e','o']);
+
+/**
+ * Un controllo LARGO, che serve solo a NON dare un falso allarme.
+ *
+ * ⚠️ Non usarlo per scalare la dispensa: per quello c'è cercaInDispensa(),
+ * che cerca il nome esatto ed è giusto che sia severa — un abbinamento
+ * sbagliato lì scalerebbe l'ingrediente sbagliato. Qui il rischio è
+ * rovesciato: un abbinamento largo può solo far tacere un avviso, mai
+ * toccare niente. Per questo si può permettere di essere generoso.
+ *
+ * Riconosce quello che cercaInDispensa() si perde:
+ *   «mozzarella» → «Mozzarelle»          (singolare e plurale)
+ *   «panino per burger» → «Panini burger» (nomi di più parole)
+ *   «grana» → «Base sempre in casa — grana · burro · …»
+ *             (le voci-contenitore, che nominano le cose nella quantità)
+ */
+function forseInCasa(nome){
+  const parole = senzaAccenti(nome).split(/[^a-z0-9]+/)
+    .filter(p => p.length >= 4 && !PAROLE_VUOTE.has(p));
+  if (!parole.length) return false;
+
+  // la parola più lunga è la più specifica: è quella che deve trovarsi
+  const chiave = parole.reduce((a,b) => b.length >= a.length ? b : a);
+  const radice = chiave.length >= 5 ? chiave.replace(/[aeio]$/, '') : chiave;
+
+  return S.inv.some(v => senzaAccenti(`${v.name} ${v.qty}`).includes(radice));
+}
+
+/** Già segnato sulla lista della spesa: lo sai già, non è una novità. */
+const inListaSpesa = (nome) => S.spesa.some(v =>
+  !v.done && senzaAccenti(v.name).includes(senzaAccenti(nome).slice(0, 12)));
+
 /**
  * Che cosa il piano dà per scontato di avere e non c'è (più).
  *
  * ⚠️ Prudenza come in «Ho cucinato questo»: si allarma solo quando il
  * conto è sicuro. Quantità non numeriche, unità diverse, voci segnate
  * «?» non producono avvisi — meglio tacere che gridare al lupo.
+ * Un avviso che grida sempre smette di essere letto.
  */
 function scorteMancanti(){
   const futuri = S.piano.filter(r => r.day > oggiISO() && r.modo === 'casa');
@@ -2398,7 +2434,13 @@ function scorteMancanti(){
 
   const guai = [];
   for (const s of serve.values()){
-    if (!s.voce){ guai.push({ ...s, tipo:'assente' }); continue; }
+    if (!s.voce){
+      // prima di gridare che manca: forse c'è con un altro nome, o è già
+      // sulla lista della spesa e quindi non è una notizia
+      if (forseInCasa(s.nome) || inListaSpesa(s.nome)) continue;
+      guai.push({ ...s, tipo:'assente' });
+      continue;
+    }
     if (!s.sicuro) continue;
     const qty = String(s.voce.qty);
     if (qty.includes('?')) continue;
