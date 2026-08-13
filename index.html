@@ -517,6 +517,65 @@ select.field{appearance:none;-webkit-appearance:none;
 .nota.dolce{background:var(--lavanda-soft);color:var(--viola-testo)}
 .row-per{color:inherit;opacity:.85;font-size:13.5px}
 
+/* ------------------------------------------------------------
+   8-quater · V5 · LA PASSATA DEI 7 GIORNI (Blocco 2)
+   Quattordici pasti da impostare in meno di un minuto: tutto
+   parte gia' compilato e si tocca solo cio' che cambia. Per
+   questo i bottoni qui sono piccoli e in fila, non a tutta
+   larghezza come nelle domande del generatore.
+   ------------------------------------------------------------ */
+.ps-gg{
+  background:var(--surface);border:1px solid var(--linea);border-radius:var(--r-m);
+  margin-bottom:10px;overflow:hidden;box-shadow:var(--ombra-1);
+}
+.ps-gg-testa{
+  background:var(--surface-2);padding:8px 13px;border-bottom:1px solid var(--linea);
+  display:flex;align-items:center;gap:8px;
+  font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:14.5px;color:var(--ink);
+}
+.ps-pasto{padding:9px 13px 11px}
+.ps-pasto + .ps-pasto{border-top:1px solid var(--bg)}
+.ps-quale{
+  font-size:10px;font-weight:700;letter-spacing:.9px;color:var(--muted);
+  text-transform:uppercase;margin-bottom:6px;
+}
+.ps-scelte{display:flex;flex-direction:column;gap:5px}
+/* i tre modi e le tre persone: sempre una riga sola, mai a capo */
+.chips.mini{gap:5px;flex-wrap:nowrap}
+.chips.mini button{
+  flex:1 1 0;min-width:0;min-height:36px;padding:7px 3px;
+  font-size:12.5px;border-radius:var(--r-s);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* Fuori e Libero non si cucinano: le persone restano scelte, ma
+   il pasto si spegne un po' per dire che non produrra' un piatto. */
+.ps-pasto.non-casa .chips[data-campo="chi"]{opacity:.72}
+.ps-nota{
+  margin-top:7px;background:none;border:none;padding:2px 0;
+  color:var(--viola-testo);font-size:12.5px;font-weight:600;
+}
+.field.mini{margin-top:6px;padding:9px 12px;font-size:15px}
+
+/* il riepilogo prima di salvare */
+.ps-riga{display:flex;gap:10px;align-items:baseline;padding:8px 0;font-size:14.5px}
+.ps-riga + .ps-riga{border-top:1px solid var(--bg)}
+.ps-riga-gg{font-weight:600;min-width:74px;color:var(--ink)}
+.ps-riga-txt{flex:1;color:var(--muted);line-height:1.4}
+.ps-riga-num{
+  color:var(--viola);font-size:12.5px;font-weight:700;white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
+.ps-avviso{
+  background:var(--pesca-soft);color:var(--pesca-ink);border-radius:var(--r-m);
+  padding:11px 13px;font-size:14px;line-height:1.45;margin-top:12px;
+}
+/* l'avanzamento: quanti blocchi sono fatti, senza percentuali finte */
+.ps-avanza{display:flex;gap:6px;justify-content:center;margin:0 0 12px}
+.ps-tacca{height:5px;flex:1 1 0;border-radius:99px;background:var(--linea)}
+.ps-tacca.fatta{background:var(--menta)}
+.ps-tacca.ora{background:var(--lavanda);animation:pulsa 1.4s ease-in-out infinite}
+@keyframes pulsa{0%,100%{opacity:1}50%{opacity:.45}}
+
 /* ============================================================
    9 · CATEGORIE APPICCICOSE (Dispensa)
    Ogni categoria è una sezione a sé: è ciò che vincola
@@ -941,6 +1000,9 @@ select.field{appearance:none;-webkit-appearance:none;
   <!-- ============ PIANO ============ -->
   <section id="tab-piano">
     <div id="planBody"><div class="loading">Carico il piano…</div></div>
+    <!-- "Genera la settimana": la passata, l'attesa e il riepilogo.
+         Prende il posto del calendario finché è aperto. -->
+    <div id="pnWizard" hidden></div>
   </section>
 
   <!-- ============ DISPENSA ============ -->
@@ -1404,7 +1466,10 @@ function renderPlan(){
     `<div class="settimana" id="pnStriscia" aria-label="I giorni del piano">
        ${giorni.map(chipGiorno).join('')}
      </div>
-     <div id="pnCard">${cardGiorno(S.giornoSel)}</div>`;
+     <div id="pnCard">${cardGiorno(S.giornoSel)}</div>
+     <div class="form-row">
+       <button class="btn ghost" id="pnGenera" style="flex:1">↻ Genera un'altra settimana</button>
+     </div>`;
 
   const sel = box.querySelector('.gg[aria-pressed="true"]');
   if (sel) setTimeout(() => sel.scrollIntoView({ inline:'center', block:'nearest' }), 60);
@@ -1544,10 +1609,13 @@ function ingredientiHtml(r){
   }).join('');
 }
 
-/** Il totale della giornata e' SOLO di Ciprian: Lorena non ha obiettivi. */
-function totaliHtml(righe){
+/** Il totale della giornata e' SOLO di Ciprian: Lorena non ha obiettivi.
+    Restituisce null se in quel giorno lui non mangia niente a casa.
+    Lo usa anche il riepilogo di "Genera la settimana": i conti si fanno
+    in un posto solo. */
+function totaleGiorno(righe){
   const suoi = righe.filter(r => r.modo === 'casa' && mangiaCiprian(r));
-  if (!suoi.length) return '';
+  if (!suoi.length) return null;
 
   let prot = 0, kcal = 0, senzaNumeri = 0;
   for (const r of suoi){
@@ -1557,7 +1625,13 @@ function totaliHtml(righe){
   }
   const fP = FISSE_CIPRIAN.reduce((s,f) => s + f.prot, 0);
   const fK = FISSE_CIPRIAN.reduce((s,f) => s + f.kcal, 0);
-  prot += fP; kcal += fK;
+  return { prot: prot + fP, kcal: kcal + fK, fP, fK, senzaNumeri };
+}
+
+function totaliHtml(righe){
+  const t = totaleGiorno(righe);
+  if (!t) return '';
+  const { prot, kcal, fP, fK, senzaNumeri } = t;
 
   // Nei giorni con un pasto fuori o libero il totale scende, e va bene
   // cosi': non si compensa nei giorni vicini. Lo diciamo, non lo nascondiamo.
@@ -1615,8 +1689,576 @@ $('#planBody').addEventListener('click', ev => {
     $('#pnCard').innerHTML = cardGiorno(S.giornoSel);
     return;
   }
-  if (ev.target.closest('#pnGenera')){
-    toast('Il generatore della settimana non è ancora pronto: arriva col prossimo aggiornamento.');
+  if (ev.target.closest('#pnGenera')) apriPassata();
+});
+
+/* ============================================================
+   TAB 1-bis — V5 · Blocco 2 · GENERA LA SETTIMANA
+
+   Tre schermate, una dietro l'altra, al posto del calendario:
+
+     1. LA PASSATA   sette giorni, pranzo e cena, a bottoni.
+                     Parte tutta compilata: si tocca solo cio' che
+                     cambia, cosi' ci vuole meno di un minuto.
+     2. LA GENERAZIONE  a blocchi di 2-3 giorni. Ogni blocco vede i
+                     pasti gia' decisi prima: e' quello che tiene in
+                     piedi la coerenza di magazzino (un pollo usato
+                     lunedi' non esiste piu' martedi').
+     3. IL RIEPILOGO  cosa esce, quanto fa per Ciprian, cosa manca,
+                     cosa resta in dispensa. Si salva solo dopo.
+
+   Niente si scrive nel database prima della conferma finale.
+   ============================================================ */
+const PS = {
+  aperto:false,
+  fase:'passata',        // 'passata' · 'generazione' · 'riepilogo'
+  dal:null,
+  giorni:[],             // [{ day, pranzo:{modo,chi,nota}, cena:{…} }]
+  pasti:[],              // i pasti scritti dal generatore
+  resta:'',              // cosa rimarra' in dispensa, a parole
+  stato:'',              // l'avanzamento da mostrare
+  blocco:0, blocchiTot:1,
+  errore:null,
+  inCorso:false,
+};
+
+const PS_MODI = [['casa','A casa'],['fuori','Fuori'],['libero','Libero']];
+const PS_CHI  = ['ciprian','entrambi','lorena'];
+
+/* "Ciprian e Lorena" non ci sta in un bottone da un terzo di schermo:
+   nei chip piccoli le due persone insieme diventano "Tutti e due". */
+const nomeChiBreve = (c) => c === 'entrambi' ? 'Tutti e due' : nomeDiChi(c);
+
+const dowNome = (iso) => {
+  const [y,m,d] = iso.split('-').map(Number);
+  return GIORNI[new Date(y, m-1, d).getDay()].toLowerCase();
+};
+
+/** "lunedì, martedì e mercoledì" — l'avanzamento parla come una persona. */
+function elencaGiorni(isos){
+  const n = isos.map(dowNome);
+  if (n.length <= 1) return n[0] || '';
+  return `${n.slice(0,-1).join(', ')} e ${n[n.length-1]}`;
+}
+
+const PS_PASTI = ['pranzo','cena'];
+
+/* Oggi e domani nascono confermati, il resto nasce bozza: e' la
+   stessa regola che il calendario applica gia' quando legge. */
+const statoPerGiorno = (iso) => iso <= addGiorni(oggiISO(), 1) ? 'confermato' : 'bozza';
+
+function nuovaPassata(dal){
+  return Array.from({ length:7 }, (_, i) => ({
+    day: addGiorni(dal, i),
+    pranzo:{ modo:'casa', chi:'entrambi', nota:'' },
+    cena:  { modo:'casa', chi:'entrambi', nota:'' },
+  }));
+}
+
+function apriPassata(){
+  PS.aperto = true;
+  PS.fase = 'passata';
+  PS.dal = oggiISO();
+  PS.giorni = nuovaPassata(PS.dal);
+  PS.pasti = []; PS.resta = ''; PS.errore = null; PS.stato = '';
+  PS.blocco = 0; PS.blocchiTot = 1;
+  $('#planBody').hidden = true;
+  $('#pnWizard').hidden = false;
+  renderWizard();
+  window.scrollTo(0, 0);
+}
+
+function chiudiPassata(){
+  if (PS.inCorso) return;
+  PS.aperto = false;
+  $('#pnWizard').hidden = true;
+  $('#pnWizard').innerHTML = '';
+  $('#planBody').hidden = false;
+  renderPlan();
+  window.scrollTo(0, 0);
+}
+
+function renderWizard(){
+  const box = $('#pnWizard');
+  if (PS.fase === 'passata')     box.innerHTML = vistaPassata();
+  if (PS.fase === 'generazione') box.innerHTML = vistaGenerazione();
+  if (PS.fase === 'riepilogo')   box.innerHTML = vistaRiepilogo();
+}
+
+/* ---------- 1 · LA PASSATA ---------- */
+function vistaPassata(){
+  const conti = contaPassata();
+  return `<div class="panel decorato">
+      <span class="stelline" style="right:14px;bottom:12px" aria-hidden="true"></span>
+      <div class="q-label" style="margin-top:0">Da quale giorno parto</div>
+      <input class="field" type="date" id="psDal" value="${esc(PS.dal)}" min="${esc(oggiISO())}">
+      <div class="q-label">Di solito a tavola ci sono</div>
+      <div class="chips" id="psTutti">
+        ${PS_CHI.map(c => `<button data-tutti="${c}">${esc(nomeChi(c))}</button>`).join('')}
+      </div>
+      <p class="hint">Imposta tutti e quattordici i pasti in un colpo solo.
+        Poi qui sotto correggi quelli diversi.</p>
+    </div>
+
+    <div id="psLista">${PS.giorni.map(psGiorno).join('')}</div>
+
+    <div class="panel">
+      <div style="font-size:14.5px;color:var(--muted);line-height:1.5">
+        ${esc(riassuntoPassata(conti))}
+      </div>
+      <div class="form-row">
+        <button class="btn" id="psVai" style="flex:1">Genera il piano ›</button>
+      </div>
+      <div class="form-row">
+        <button class="btn ghost" id="psAnnulla" style="flex:1">‹ Torna al calendario</button>
+      </div>
+      <p class="hint">Ci vogliono un paio di minuti. Niente viene salvato
+        finché non guardi il riepilogo e confermi.</p>
+    </div>`;
+}
+
+function contaPassata(){
+  let casa = 0, fuori = 0, libero = 0;
+  for (const g of PS.giorni) for (const q of PS_PASTI){
+    if (g[q].modo === 'casa') casa++; else if (g[q].modo === 'fuori') fuori++; else libero++;
+  }
+  return { casa, fuori, libero };
+}
+
+function riassuntoPassata({ casa, fuori, libero }){
+  const pezzi = [`${casa} ${casa === 1 ? 'pasto da cucinare' : 'pasti da cucinare'}`];
+  if (fuori)  pezzi.push(`${fuori} fuori casa`);
+  if (libero) pezzi.push(`${libero} ${libero === 1 ? 'libero' : 'liberi'}`);
+  return pezzi.join(' · ');
+}
+
+function psGiorno(g, i){
+  return `<div class="ps-gg" data-i="${i}">
+    <div class="ps-gg-testa">
+      <span style="flex:1">${esc(labelData(g.day))}</span>
+      ${g.day === oggiISO() ? '<span class="badge-oggi">OGGI</span>' : ''}
+    </div>
+    ${PS_PASTI.map(q => psPasto(g, q, i)).join('')}
+  </div>`;
+}
+
+function psPasto(g, quale, i){
+  const p = g[quale];
+  const chip = (campo, valore, testo) =>
+    `<button data-v="${esc(valore)}" aria-pressed="${p[campo] === valore}">${esc(testo)}</button>`;
+
+  return `<div class="ps-pasto ${p.modo === 'casa' ? '' : 'non-casa'}" data-i="${i}" data-p="${quale}">
+    <div class="ps-quale">${quale}</div>
+    <div class="ps-scelte">
+      <div class="chips mini" data-campo="modo">
+        ${PS_MODI.map(([v,t]) => chip('modo', v, t)).join('')}
+      </div>
+      <div class="chips mini" data-campo="chi">
+        ${PS_CHI.map(v => chip('chi', v, nomeChiBreve(v))).join('')}
+      </div>
+    </div>
+    ${p.aperta || p.nota
+      ? `<input class="field mini" data-nota autocomplete="off"
+           placeholder="una nota per questo pasto" value="${esc(p.nota)}">`
+      : `<button class="ps-nota" data-nota-apri>+ aggiungi una nota</button>`}
+  </div>`;
+}
+
+function ridisegnaPasto(i, quale){
+  const el = $(`#psLista .ps-pasto[data-i="${i}"][data-p="${quale}"]`);
+  if (el) el.outerHTML = psPasto(PS.giorni[i], quale, i);
+  aggiornaRiassunto();
+}
+
+function ridisegnaLista(){
+  const l = $('#psLista');
+  if (l) l.innerHTML = PS.giorni.map(psGiorno).join('');
+  aggiornaRiassunto();
+}
+
+function aggiornaRiassunto(){
+  const box = $('#psVai')?.closest('.panel')?.querySelector('div');
+  if (box) box.textContent = riassuntoPassata(contaPassata());
+}
+
+/* ---------- 2 · LA GENERAZIONE ---------- */
+function vistaGenerazione(){
+  const tacche = Array.from({ length:PS.blocchiTot }, (_, b) =>
+    `<span class="ps-tacca ${b < PS.blocco ? 'fatta' : b === PS.blocco ? 'ora' : ''}"></span>`).join('');
+
+  if (PS.errore){
+    return `<div class="empty">
+        <b>${esc(PS.errore)}</b>
+        <p style="margin:10px 0 0">${PS.pasti.length
+          ? 'I pasti già scritti sono qui sotto: puoi salvarli lo stesso, oppure rifare tutto.'
+          : 'Non è stato salvato niente.'}</p>
+      </div>
+      <div class="form-row">
+        ${PS.pasti.length ? '<button class="btn" id="psVaiRiepilogo" style="flex:1">Guarda cosa è uscito ›</button>' : ''}
+        <button class="btn ghost" id="psAnnulla" style="flex:1">‹ Torna al calendario</button>
+      </div>`;
+  }
+
+  return `<div class="panel">
+      <div class="ps-avanza">${tacche}</div>
+      <div class="loading" style="padding:6px 10px 14px" role="status">
+        <svg class="attesa-pentola" viewBox="0 0 180 136" width="112" height="85" aria-hidden="true">
+          <use href="#ill-pentola"/></svg>
+        ${esc(PS.stato || 'Ci sono quasi…')}<br>
+        <span style="font-size:13px">Non ricaricare la pagina.</span>
+      </div>
+    </div>
+    ${PS.pasti.length ? `<div id="psFatti">${PS.pasti.map(anteprimaPasto).join('')}</div>` : scheletro()}`;
+}
+
+/** Un pasto appena scritto, in due righe: si legge mentre gli altri arrivano. */
+function anteprimaPasto(m){
+  return `<div class="ps-gg">
+    <div class="ps-gg-testa">
+      <span style="flex:1">${esc(labelData(m.day))}</span>
+      <span class="ps-quale" style="margin:0">${esc(m.pasto)}</span>
+    </div>
+    <div class="ps-pasto">
+      <div class="pasto-piatto">${esc(m.piatto || '—')}</div>
+      ${m.perche ? `<div class="nota perche">${esc(m.perche)}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+/* I blocchi: 3 giorni, poi 2, poi 2. Piu' corti verso la fine perche'
+   la dispensa si e' svuotata e i conti si fanno piu' delicati. */
+const PS_BLOCCHI = [[0,1,2],[3,4],[5,6]];
+
+async function avviaGenerazione(){
+  // Solo i pasti "a casa" si chiedono al generatore: fuori e liberi
+  // sono gia' decisi e vengono scritti dall'app.
+  const blocchi = PS_BLOCCHI
+    .map(idx => idx
+      .map(i => PS.giorni[i])
+      .map(g => ({
+        day: g.day,
+        pasti: PS_PASTI.filter(q => g[q].modo === 'casa')
+          .map(q => ({ pasto:q, chi:g[q].chi, nota:g[q].nota })),
+      }))
+      .filter(g => g.pasti.length))
+    .filter(gg => gg.length);
+
+  if (!blocchi.length){
+    toast('In questa settimana non si cucina niente: non c’è nulla da generare.');
+    return;
+  }
+
+  PS.fase = 'generazione';
+  PS.pasti = []; PS.resta = ''; PS.errore = null;
+  PS.blocco = 0; PS.blocchiTot = blocchi.length;
+  PS.inCorso = true;
+  PS.stato = 'Sto leggendo la dispensa…';
+  renderWizard();
+
+  try{
+    for (let b = 0; b < blocchi.length; b++){
+      PS.blocco = b;
+      PS.stato = `Pianifico ${elencaGiorni(blocchi[b].map(g => g.day))}…`;
+      renderWizard();
+      const resta = await generaBlocco(blocchi[b], b === 0, blocchi.length - b);
+      if (resta) PS.resta = resta;
+    }
+    PS.blocco = blocchi.length;
+    PS.fase = 'riepilogo';
+  }catch(e){
+    // i messaggi della Edge Function sono già in italiano semplice e vanno
+    // mostrati com'è; solo i guasti di rete vanno tradotti
+    const m = String(e?.message || e || '');
+    PS.errore = (!navigator.onLine || /Failed to fetch|NetworkError/i.test(m))
+      ? spiegaErrore(e) : m;
+  }finally{
+    PS.inCorso = false;
+    renderWizard();
+  }
+}
+
+/** Un blocco di 2-3 giorni. Restituisce cosa resta in dispensa dopo. */
+async function generaBlocco(giorni, primo, restanti){
+  // quali (giorno, pasto) ho chiesto: tutto il resto lo butto via
+  const chiesti = new Set();
+  giorni.forEach(g => g.pasti.forEach(p => chiesti.add(`${g.day}|${p.pasto}`)));
+
+  let resta = '', problema = null;
+
+  await flussoNdjson({
+    modo:'settimana',
+    primo, restanti,
+    io_slug: S.io,
+    giorni,
+    gia_pianificato: PS.pasti.map(compattaPasto),
+    fuori_e_liberi: fuoriELiberi(),
+    resta_prima: PS.resta,
+  }, (ev) => {
+    if (ev.tipo === 'pasto'){
+      const m = ev.pasto || {};
+      const k = `${m.day}|${m.pasto}`;
+      // mai un pasto che non ho chiesto, mai due volte lo stesso:
+      // la tabella accetta un solo pranzo e una sola cena per giorno
+      if (!chiesti.has(k)) return;
+      if (PS.pasti.some(x => `${x.day}|${x.pasto}` === k)) return;
+      PS.pasti.push(m);
+      PS.stato = 'Sto scrivendo…';
+      renderWizard();
+    }else if (ev.tipo === 'stato'){
+      PS.stato = ev.testo;
+      renderWizard();
+    }else if (ev.tipo === 'fine'){
+      resta = String(ev.resta || '');
+    }else if (ev.errore){
+      problema = ev.errore;
+    }
+  });
+
+  // Se si rompe a metà, quello che è già arrivato resta: il riepilogo
+  // lo mostra lo stesso e si decide lì se salvarlo o buttarlo.
+  if (problema) throw new Error(problema);
+  return resta;
+}
+
+const chiDelPasto = (day, pasto) => {
+  const g = PS.giorni.find(x => x.day === day);
+  return g ? g[pasto].chi : 'entrambi';
+};
+
+/** Un pasto già deciso, raccontato al blocco successivo in una riga:
+    serve a non spendere due volte lo stesso ingrediente. */
+function compattaPasto(m){
+  const ing = (m.ingredienti || []).map(i => `${i.nome} ${i.qta}`).join(', ');
+  return `${m.day} ${m.pasto} (mangia: ${chiDelPasto(m.day, m.pasto)}): ${m.piatto}` +
+    (ing ? ` — usa: ${ing}` : '');
+}
+
+/** I pasti in cui non si cucina: dicono al generatore chi non c'è. */
+function fuoriELiberi(){
+  const out = [];
+  for (const g of PS.giorni) for (const q of PS_PASTI){
+    if (g[q].modo === 'casa') continue;
+    out.push(`${g.day} ${q}: ${g[q].modo === 'fuori' ? 'si mangia fuori' : 'pasto libero'}` +
+      ` (${chiDelPasto(g.day, q)})${g[q].nota ? ` — ${g[q].nota}` : ''}`);
+  }
+  return out;
+}
+
+/* ---------- 3 · IL RIEPILOGO ---------- */
+
+/** Le righe esatte che finiranno in plan_meals. Il riepilogo mostra
+    QUESTE, non un'altra versione: cosi' quello che leggi è quello che salvi. */
+function righeDaSalvare(){
+  const righe = [];
+  for (const g of PS.giorni){
+    for (const quale of PS_PASTI){
+      const p = g[quale];
+      const base = {
+        day:g.day, pasto:quale, modo:p.modo, chi:p.chi, stato:statoPerGiorno(g.day),
+        nota: p.nota.trim() || null,
+      };
+
+      if (p.modo !== 'casa'){
+        righe.push({ ...base, piatto:null, perche:null, ingredienti:[], dolce:null,
+          tempo:null, prot:null, kcal:null, scongelamento:null, scongelare_il:null,
+          avanzo_per:null, dipende_da_spesa:false });
+        continue;
+      }
+
+      const m = PS.pasti.find(x => x.day === g.day && x.pasto === quale);
+      if (!m) continue;   // non scritto dal generatore: meglio un buco che un piatto finto
+
+      // I numeri sono di Ciprian: nei pasti di sola Lorena non esistono.
+      const suoi = p.chi !== 'lorena';
+      const num = (v) => { const n = Number(v); return suoi && n > 0 ? Math.round(n) : null; };
+
+      righe.push({
+        ...base,
+        piatto: (m.piatto || '').trim() || null,
+        perche: (m.perche || '').trim() || null,
+        ingredienti: (m.ingredienti || []).map(i => ({
+          nome: String(i.nome ?? '').trim(),
+          qta:  String(i.qta  ?? '').trim(),
+          per:  ['tutti','ciprian','lorena'].includes(i.per) ? i.per : 'tutti',
+        })).filter(i => i.nome),
+        dolce: (m.dolce || '').trim() || null,
+        tempo: Number(m.tempo) > 0 ? Math.round(Number(m.tempo)) : null,
+        prot: num(m.prot),
+        kcal: num(m.kcal),
+        scongelamento: (m.scongelamento || '').trim() || null,
+        // il promemoria si mostra sul giorno in cui va fatto: se la data
+        // non è scritta bene, meglio nessun promemoria che uno sbagliato
+        scongelare_il: /^\d{4}-\d{2}-\d{2}$/.test(String(m.scongelare_il || ''))
+          ? m.scongelare_il : null,
+        avanzo_per: (m.avanzo_per || '').trim() || null,
+        dipende_da_spesa: (m.manca || []).length > 0,
+      });
+    }
+  }
+  return righe;
+}
+
+const mancantiTutti = () => [...new Set(
+  PS.pasti.flatMap(m => (m.manca || []).map(x => String(x).trim())).filter(Boolean)
+)];
+
+function vistaRiepilogo(){
+  const righe   = righeDaSalvare();
+  const manca   = mancantiTutti();
+  const cucinati = righe.filter(r => r.modo === 'casa').length;
+  const attesi   = contaPassata().casa;
+  const buchi    = attesi - cucinati;
+
+  // i giorni già pianificati che verranno sostituiti
+  const nostri = new Set(PS.giorni.map(g => g.day));
+  const sovrascritti = [...new Set(S.piano.filter(r => nostri.has(r.day)).map(r => r.day))];
+
+  const perGiorno = PS.giorni.map(g => {
+    const sue = righe.filter(r => r.day === g.day);
+    const t   = totaleGiorno(sue);
+    const testo = PS_PASTI.map(q => {
+      const r = sue.find(x => x.pasto === q);
+      if (!r) return `${q}: —`;
+      if (r.modo !== 'casa') return `${q}: ${r.modo === 'fuori' ? 'fuori' : 'libero'}`;
+      return `${q}: ${r.piatto || '—'}`;
+    }).join(' · ');
+
+    return `<div class="ps-riga">
+      <div class="ps-riga-gg">${esc(labelData(g.day).split(' ')[0].slice(0,3))} ${esc(g.day.slice(8))}</div>
+      <div class="ps-riga-txt">${esc(testo)}</div>
+      ${t ? `<div class="ps-riga-num">${t.prot} g · ${t.kcal}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  return `<div class="panel decorato">
+      <span class="stelline" style="right:14px;bottom:12px" aria-hidden="true"></span>
+      <div class="q-label" style="margin-top:0">Il piano è pronto</div>
+      ${perGiorno}
+      <p class="hint">I numeri sono di ${esc(nomeDiChi('ciprian'))}, colazione e yogurt compresi
+        (${FISSE_CIPRIAN.reduce((s,f) => s+f.prot, 0)} g · ${FISSE_CIPRIAN.reduce((s,f) => s+f.kcal, 0)} kcal).
+        Nei giorni con un pasto fuori o libero il totale scende, ed è giusto così.</p>
+    </div>
+
+    ${PS.resta ? `<div class="panel">
+      <div class="q-label" style="margin-top:0">Cosa resta in dispensa</div>
+      <div style="font-size:14.5px;line-height:1.5">${esc(PS.resta)}</div>
+    </div>` : ''}
+
+    ${manca.length ? `<div class="panel">
+      <div class="q-label" style="margin-top:0">Cosa ti manca</div>
+      <div style="font-size:14.5px;line-height:1.5">${esc(manca.join(' · '))}</div>
+      <p class="hint">Finiscono nella lista della spesa quando salvi. I pasti che
+        li aspettano sono segnati «dipende dalla spesa».</p>
+    </div>` : ''}
+
+    ${buchi > 0 ? `<div class="ps-avviso">Per ${buchi} ${buchi === 1 ? 'pasto' : 'pasti'}
+      il generatore non ha scritto niente: ${buchi === 1 ? 'quello resta' : 'quelli restano'}
+      vuoto nel calendario. Puoi rigenerare la settimana o riempirlo a mano più avanti.</div>` : ''}
+
+    ${sovrascritti.length ? `<div class="ps-avviso">Attenzione: ${sovrascritti.length}
+      ${sovrascritti.length === 1 ? 'giorno è già pianificato e verrà sostituito' : 'giorni sono già pianificati e verranno sostituiti'}
+      (${esc(sovrascritti.map(d => labelData(d)).join(', '))}).</div>` : ''}
+
+    <div class="form-row">
+      <button class="btn" id="psSalva" style="flex:1">${sovrascritti.length ? 'Sostituisci e salva' : 'Salva nel calendario'}</button>
+    </div>
+    <div class="form-row">
+      <button class="btn ghost" id="psRifai" style="flex:1">‹ Rifai la passata</button>
+      <button class="btn ghost" id="psAnnulla" style="flex:1">Butta via</button>
+    </div>`;
+}
+
+async function salvaSettimana(btn){
+  const righe = righeDaSalvare();
+  if (!righe.length){ toast('Non c’è niente da salvare.'); return; }
+
+  btn.disabled = true;
+  const giorni = PS.giorni.map(g => g.day);
+  try{
+    // I giorni della passata partono da oggi in avanti (il campo data non
+    // scende sotto): lo storico passato non viene mai toccato.
+    const { error: e1 } = await sb.from('plan_meals').delete().in('day', giorni);
+    if (e1) throw e1;
+    const { error: e2 } = await sb.from('plan_meals').insert(righe);
+    if (e2) throw e2;
+
+    // La spesa è un'operazione accessoria: se fallisce, il piano resta salvato.
+    let messi = 0;
+    try { messi = await aggiungiAllaSpesa(mancantiTutti(), true); } catch { /* lo diciamo sotto */ }
+
+    const quanti = giorni.length;
+    PS.inCorso = false;
+    chiudiPassata();
+    await loadAll();
+    // il calendario si apre sul primo giorno del piano appena salvato
+    S.giornoSel = giorni[0];
+    renderPlan();
+    toast(`Piano salvato: ${quanti} giorni.` + (messi ? ` ${messi} cose messe nella lista della spesa.` : ''));
+  }catch(e){
+    esitoErrore(e);
+    btn.disabled = false;
+  }
+}
+
+/* --- i tocchi del wizard --- */
+$('#pnWizard').addEventListener('click', (ev) => {
+  if (ev.target.closest('#psAnnulla')){ chiudiPassata(); return; }
+  if (ev.target.closest('#psVai')){ avviaGenerazione(); return; }
+  if (ev.target.closest('#psVaiRiepilogo')){ PS.errore = null; PS.fase = 'riepilogo'; renderWizard(); return; }
+  if (ev.target.closest('#psRifai')){ PS.fase = 'passata'; renderWizard(); window.scrollTo(0,0); return; }
+
+  const salva = ev.target.closest('#psSalva');
+  if (salva){ salvaSettimana(salva); return; }
+
+  // "di solito a tavola ci sono": imposta tutti e quattordici i pasti
+  const tutti = ev.target.closest('[data-tutti]');
+  if (tutti){
+    for (const g of PS.giorni) for (const q of PS_PASTI) g[q].chi = tutti.dataset.tutti;
+    $$('#psTutti button').forEach(b => b.setAttribute('aria-pressed', String(b === tutti)));
+    ridisegnaLista();
+    return;
+  }
+
+  const apri = ev.target.closest('[data-nota-apri]');
+  if (apri){
+    const cella = apri.closest('.ps-pasto');
+    const i = Number(cella.dataset.i), q = cella.dataset.p;
+    PS.giorni[i][q].aperta = true;
+    ridisegnaPasto(i, q);
+    $(`#psLista .ps-pasto[data-i="${i}"][data-p="${q}"] [data-nota]`)?.focus();
+    return;
+  }
+
+  const chip = ev.target.closest('.ps-scelte .chips button');
+  if (chip){
+    const cella = chip.closest('.ps-pasto');
+    const i = Number(cella.dataset.i), q = cella.dataset.p;
+    const campo = chip.closest('.chips').dataset.campo;
+    PS.giorni[i][q][campo] = chip.dataset.v;
+    ridisegnaPasto(i, q);
+  }
+});
+
+$('#pnWizard').addEventListener('input', (ev) => {
+  const nota = ev.target.closest('[data-nota]');
+  if (nota){
+    const cella = nota.closest('.ps-pasto');
+    PS.giorni[Number(cella.dataset.i)][cella.dataset.p].nota = nota.value;
+    return;
+  }
+  const dal = ev.target.closest('#psDal');
+  if (dal){
+    const nuovo = dal.value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(nuovo)) return;
+    if (nuovo < oggiISO()){
+      toast('Il piano parte da oggi in avanti: il passato non si riscrive.');
+      dal.value = PS.dal;
+      return;
+    }
+    // le scelte già fatte restano attaccate al loro posto nella settimana
+    PS.dal = nuovo;
+    PS.giorni = PS.giorni.map((g, i) => ({ ...g, day: addGiorni(nuovo, i) }));
+    ridisegnaLista();
   }
 });
 
@@ -1901,11 +2543,13 @@ function aggiornaChiMangia(){
     `<button data-v="${v}" aria-pressed="${CU.chi === v}">${esc(testo)}</button>`).join('');
 }
 
-/* --- la chiamata al generatore, in streaming ---
-   La funzione manda una riga JSON per volta: uno stato di avanzamento,
-   poi una proposta appena è pronta. Così la prima compare mentre le
-   altre si stanno ancora scrivendo. */
-async function chiamaGeneratore(corpo, alRicevere){
+/* --- il collegamento con la Edge Function, in streaming ---
+   La function manda una riga JSON per volta: uno stato di avanzamento,
+   poi una proposta (o un pasto del piano) appena è pronto. Così il primo
+   compare mentre gli altri si stanno ancora scrivendo.
+   La usano tutte e due le cose che chiamano il generatore: le proposte
+   del giorno e "Genera la settimana". */
+async function flussoNdjson(corpo, alRicevere){
   const r = await fetch(`${SUPABASE_URL}/functions/v1/cosa-cucino`, {
     method: 'POST',
     headers: {
@@ -1922,29 +2566,11 @@ async function chiamaGeneratore(corpo, alRicevere){
     throw new Error(msg || 'Il generatore non risponde. Riprova fra un minuto.');
   }
 
-  const raccolte = [];
-  let problema = null;
-
   const leggiRiga = (riga) => {
     if (!riga.trim()) return;
     let ev;
     try { ev = JSON.parse(riga); } catch { return; }
-    // compatibilità: se sul database c'è ancora la funzione vecchia,
-    // arriva un unico blocco {proposte:[…]} invece del flusso riga per riga
-    if (Array.isArray(ev.proposte)){
-      ev.proposte.forEach(p => { raccolte.push(p); alRicevere?.({ tipo:'proposta', proposta:p }); });
-      return;
-    }
-    if (ev.errore){ problema = ev.errore; return; }
-
-    if (ev.tipo === 'proposta'){
-      raccolte.push(ev.proposta);
-      alRicevere?.({ tipo:'proposta', proposta:ev.proposta });
-    } else if (ev.tipo === 'stato'){
-      alRicevere?.(ev);
-    } else if (ev.tipo === 'errore'){
-      problema = ev.errore;
-    }
+    alRicevere(ev);
   };
 
   if (r.body && r.body.getReader){
@@ -1964,6 +2590,29 @@ async function chiamaGeneratore(corpo, alRicevere){
     // browser senza streaming: leggiamo tutto in fondo, funziona lo stesso
     (await r.text()).split('\n').forEach(leggiRiga);
   }
+}
+
+/** Le proposte del giorno: raccoglie le schede man mano che arrivano. */
+async function chiamaGeneratore(corpo, alRicevere){
+  const raccolte = [];
+  let problema = null;
+
+  await flussoNdjson(corpo, (ev) => {
+    // compatibilità: se sul database c'è ancora la funzione vecchia,
+    // arriva un unico blocco {proposte:[…]} invece del flusso riga per riga
+    if (Array.isArray(ev.proposte)){
+      ev.proposte.forEach(p => { raccolte.push(p); alRicevere?.({ tipo:'proposta', proposta:p }); });
+      return;
+    }
+    if (ev.errore){ problema = ev.errore; return; }
+
+    if (ev.tipo === 'proposta'){
+      raccolte.push(ev.proposta);
+      alRicevere?.({ tipo:'proposta', proposta:ev.proposta });
+    } else if (ev.tipo === 'stato'){
+      alRicevere?.(ev);
+    }
+  });
 
   if (!raccolte.length) throw new Error(problema || 'Il generatore non ha trovato nulla da proporre.');
   return raccolte;
@@ -2877,24 +3526,27 @@ function rigaSpesa(v){
   </div>`;
 }
 
-/** Aggiunge nomi alla lista, saltando i doppioni. Restituisce quanti ne ha messi. */
-async function aggiungiAllaSpesa(nomi){
+/** Aggiunge nomi alla lista, saltando i doppioni. Restituisce quanti ne ha messi.
+    Con "silenzioso" non dice niente: serve quando fa parte di un'azione più
+    grande che ha già il suo messaggio d'esito (il salvataggio del piano). */
+async function aggiungiAllaSpesa(nomi, silenzioso){
   const puliti = [...new Set(
     (Array.isArray(nomi) ? nomi : [nomi])
       .map(n => String(n || '').trim())
       .filter(Boolean)
       .filter(n => !S.spesa.some(v => senzaAccenti(v.name) === senzaAccenti(n)))
   )];
-  if (!puliti.length){ toast('Erano già tutti in lista.'); return 0; }
+  if (!puliti.length){ if (!silenzioso) toast('Erano già tutti in lista.'); return 0; }
   try{
     const { data, error } = await sb.from('shopping_list')
       .insert(puliti.map(name => ({ name }))).select();
     if (error) throw error;
     S.spesa.push(...data);
     renderSpesa();
-    toast(puliti.length === 1 ? `In lista: ${puliti[0]}` : `Aggiunti ${puliti.length} articoli.`);
+    if (!silenzioso)
+      toast(puliti.length === 1 ? `In lista: ${puliti[0]}` : `Aggiunti ${puliti.length} articoli.`);
     return puliti.length;
-  }catch(e){ esitoErrore(e); return 0; }
+  }catch(e){ if (!silenzioso) esitoErrore(e); return 0; }
 }
 
 $('#spAdd').onclick = async () => {

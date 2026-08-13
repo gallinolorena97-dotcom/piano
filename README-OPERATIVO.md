@@ -7,22 +7,39 @@ Accedi, nessuna email, nessun codice. Lo stesso vale per chiunque abbia l'indiri
 
 ---
 
-## ⭐ La routine settimanale (le 10 righe che servono davvero)
+## ⭐ La routine settimanale — ora si fa tutta dall'app
 
-> ⚠️ **Questa routine sta per cambiare.** La tab Piano è ora un calendario, e il tasto
-> **«Genera la settimana»** dentro l'app arriva col prossimo passo (v5 Blocco 2). Fino ad
-> allora il piano si carica ancora così, con `/piano-settimana`.
+**La domenica, dal telefono:**
 
-1. Apri la chat con Claude Code nella cartella `piano`.
-2. Scrivi `/piano-settimana` e subito sotto incolla il piano della settimana.
-3. Claude ti mostra un riepilogo: quali date copre, quanti pasti per giorno.
-4. Controlla che le date siano giuste e rispondi **sì** per confermare.
-5. Claude genera il file SQL e te lo dice.
-6. Apri Supabase → **SQL Editor** → incolla il file → **Run**.
-7. Apri l'app sull'iPhone e ricaricala: il piano nuovo è lì.
-8. Durante la settimana aggiorni Dispensa e Ricette direttamente dall'app.
-9. Quando vuoi consigli, premi **Copia per Claude** e incolla in chat.
-10. I piani vecchi restano come storico: non si cancella mai niente.
+1. Apri l'app, tab **Piano**, premi **Genera la settimana**.
+   (Se un piano c'è già, il tasto è in fondo: **↻ Genera un'altra settimana**.)
+2. **La passata dei sette giorni.** È già tutta compilata su «A casa · Tutti e due»:
+   tocchi solo quello che è diverso.
+   - **A casa / Fuori / Libero** per ogni pranzo e ogni cena.
+   - **Chi mangia**: Ciprian · Tutti e due · Lorena.
+   - Se una sera mangiate presto o avete voglia di qualcosa, scrivilo in **+ nota**.
+   - In cima c'è **«di solito a tavola ci sono»**: imposta tutti e quattordici i pasti
+     in un colpo, poi correggi le eccezioni.
+   Ci vuole meno di un minuto.
+3. Premi **Genera il piano** e aspetta un paio di minuti. I piatti compaiono uno alla
+   volta mentre vengono scritti. **Non ricaricare la pagina.**
+4. **Il riepilogo**: giorno per giorno cosa si mangia, i totali di Ciprian, cosa manca
+   e cosa resterà in dispensa. Qui non è ancora salvato niente.
+5. **Salva nel calendario** — oppure **Rifai la passata** se qualcosa non torna, o
+   **Butta via** se non ti convince.
+6. Le cose che mancano finiscono da sole nella lista della **Spesa**.
+
+**Durante la settimana:** aggiorni Dispensa e Ricette dall'app, e premi
+**✓ Ho cucinato questo** quando cucini, così la dispensa resta vera.
+
+I giorni passati non si cancellano mai: restano come storico.
+
+> **Il ripiego.** Se un piano ti arriva già scritto in chat, si carica ancora alla
+> vecchia maniera: `/piano-settimana` in Claude Code, poi il file SQL su Supabase.
+> Serve solo in quel caso.
+
+**Quanto costa una settimana:** 3 delle 30 generazioni giornaliere (sono tre chiamate
+vere, una per ogni blocco di giorni). Restano dieci settimane al giorno.
 
 ---
 
@@ -50,6 +67,9 @@ I tre modi in cui un giorno si presenta:
 
 Un giorno passato senza niente segnato dice solo «Niente segnato per questo giorno».
 Nessun rimprovero: è un fatto, non una colpa.
+
+Un pasto segnato **«dipende dalla spesa»** aspetta qualcosa che non hai ancora: lo trovi
+nella tab Spesa.
 
 **Dispensa** — aggiungi con nome, quantità e categoria; tocca la quantità per correggerla;
 la **×** elimina, e per 8 secondi hai il tasto **Annulla**.
@@ -165,6 +185,10 @@ ha login, chiunque abbia l'indirizzo potrebbe premere Genera: per questo c'è un
 **tetto di 30 generazioni al giorno**, controllato dal server e non aggirabile
 dall'app. Nel caso peggiore la spesa si ferma a circa 60 centesimi al giorno.
 
+Una **settimana intera** ne consuma **3**, perché il piano si costruisce in tre pezzi.
+Se il margine di oggi non basta per tutti e tre, l'app te lo dice **prima** di
+cominciare: non ti lascia a metà.
+
 Se un giorno le finisci per sbaglio, in Supabase → SQL Editor:
 
 ```sql
@@ -180,6 +204,7 @@ I messaggi sono già scritti in italiano semplice. I due più probabili:
 | Messaggio | Cosa fare |
 |---|---|
 | «Per oggi hai già usato tutte le 30 generazioni» | aspetta domani, o azzera il contatore col comando qui sopra |
+| «Per generare la settimana servono 3 generazioni… e ne restano 1» | il margine di oggi non basta per una settimana intera: stessa cura di sopra |
 | «Il credito del generatore è esaurito» | ricarica il credito su console.anthropic.com |
 
 ---

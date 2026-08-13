@@ -4,12 +4,19 @@
 //  QUESTO FILE NON VA SU GITHUB PAGES.
 //  Va incollato dentro Supabase → Edge Functions → cosa-cucino.
 //
-//  COSA FA
+//  COSA FA — due mestieri, un solo file
+//
+//  A) LE PROPOSTE DEL GIORNO (tab "Cucino")
 //    1. controlla di non aver superato il tetto di generazioni al giorno
 //    2. legge da sola inventario, ricette e obiettivi dal database
 //       (non si fida di quello che arriva dal telefono)
 //    3. chiede a Claude delle proposte che rispettano il metodo
 //    4. restituisce all'app un elenco pulito di piatti
+//
+//  B) IL PIANO DELLA SETTIMANA (tab "Piano" → "Genera la settimana")
+//    Arriva con "modo": "settimana". L'app chiama la function una volta
+//    per BLOCCO di 2-3 giorni: ogni blocco vede i pasti gia' decisi nei
+//    blocchi precedenti, cosi' la dispensa non viene spesa due volte.
 //
 //  LA CHIAVE API NON È SCRITTA QUI. Arriva dai Secrets di Supabase,
 //  con il nome ANTHROPIC_API_KEY.
@@ -22,6 +29,16 @@ const MAX_AL_GIORNO = 30;          // tetto di generazioni giornaliere (protegge
 const MODELLO       = 'claude-sonnet-5';
 const MAX_TOKENS    = 8000;
 const IMPEGNO       = 'medium';    // low = più veloce/economico · high = più ragionato
+
+// La settimana e' fatta di 3 blocchi (3 giorni + 2 + 2), quindi 3 chiamate
+// vere al modello: pesa 3 tacche sul tetto qui sopra, non una.
+//
+// ⚠️ E' voluto. Contarne una sola lascerebbe le altre due senza freno, e il
+// freno e' l'unica cosa fra l'indirizzo pubblico e la carta di credito.
+// Con 30/giorno restano 10 settimane al giorno e il tetto di spesa non si
+// muove di un centesimo rispetto a prima.
+const BLOCCHI_SETTIMANA    = 3;
+const MAX_TOKENS_SETTIMANA = 12000;   // fino a 6 pasti scritti per intero
 
 // ------------------------------------------------------------
 //  Segreti e indirizzi (li mette Supabase, non si scrivono a mano)
@@ -102,6 +119,123 @@ async function consumaUnaGenerazione(): Promise<number> {
   });
   if (!r.ok) throw new Error(`contatore: ${r.status}`);
   return Number(await r.json());
+}
+
+/**
+ * Quante generazioni sono gia' state usate oggi, SENZA consumarne una.
+ * Serve al piano settimanale: prima di cominciare un lavoro da 3 chiamate
+ * si controlla che il margine basti, cosi' non ci si ferma a meta' settimana.
+ * La tabella e' invisibile all'app (nessuna policy): la legge solo il server.
+ */
+async function generazioniUsateOggi(): Promise<number> {
+  const oggi = new Date().toISOString().slice(0, 10);   // come current_date del database
+  const r = await fetch(
+    `${SUPABASE_URL}/rest/v1/generator_usage?select=count&day=eq.${oggi}`,
+    { headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } },
+  );
+  if (!r.ok) throw new Error(`contatore: ${r.status}`);
+  const righe = await r.json();
+  return Array.isArray(righe) && righe.length ? Number(righe[0].count) || 0 : 0;
+}
+
+// ------------------------------------------------------------
+//  I DATI VERI — li legge il server, mai il telefono
+//  Li usano tutti e due i mestieri della function: le proposte del
+//  giorno e il piano della settimana. Scritti una volta sola.
+// ------------------------------------------------------------
+type Profilo = {
+  slug: string; nome: string; prot_target: number | null; kcal_target: number | null;
+  ripetizione: string; non_mangia: string[]; evita: string[]; ama: string[]; note: string | null;
+};
+type Contesto = {
+  inv: Array<{ name: string; qty: string; cat: string }>;
+  rec: Array<{ id: string; name: string; pref: string | null }>;
+  setRows: Array<{ key: string; value: string }>;
+  profili: Profilo[];
+  voti: Array<{ recipe_id: string; profile_slug: string; pref: string }>;
+  recenti: Array<{ day: string; piatto: string; proteina: string | null }>;
+};
+
+async function leggiContesto(): Promise<Contesto> {
+  const [inv, rec, setRows] = await Promise.all([
+    leggi('inventory_items', 'name,qty,cat'),
+    leggi('recipes', 'id,name,pref'),
+    leggi('settings', 'key,value'),
+  ]);
+
+  // I profili delle due persone. Li legge la function, non il telefono.
+  let profili: Profilo[] = [];
+  try { profili = await leggi('profiles', '*'); } catch { /* v6 non ancora installata */ }
+
+  // I voti sono per persona: il cuore di uno non è il cuore dell'altra.
+  let voti: Contesto['voti'] = [];
+  try { voti = await leggi('recipe_votes', 'recipe_id,profile_slug,pref'); } catch { /* niente voti */ }
+
+  // Gli ultimi 5 giorni di pasti, per non ripetere sempre le stesse cose.
+  // Se la tabella non esiste ancora, si va avanti lo stesso.
+  let recenti: Contesto['recenti'] = [];
+  try {
+    const da = new Date();
+    da.setDate(da.getDate() - 5);
+    recenti = await leggi(
+      'meals_log',
+      `day,piatto,proteina&day=gte.${da.toISOString().slice(0, 10)}&order=day.desc`,
+    );
+  } catch { /* niente diario: pazienza */ }
+
+  return { inv, rec, setRows, profili, voti, recenti };
+}
+
+/** La dispensa raccontata per categorie, come la vede il modello. */
+function descriviDispensa(inv: Contesto['inv']): string {
+  const perCat = (c: string) => {
+    const righe = inv.filter((i) => i.cat === c);
+    return righe.length ? righe.map((i) => `- ${i.name} — ${i.qty}`).join('\n') : '- (vuoto)';
+  };
+  return `FRIGO\n${perCat('frigo')}\n\nCONGELATORE\n${perCat('freezer')}\n\nDISPENSA\n${perCat('dispensa')}`;
+}
+
+const elencoVoci = (v: string[] | null) => (v && v.length ? v.join(', ') : '—');
+
+/** Il ritratto di una persona: obiettivi, divieti, gusti. */
+function descriviProfilo(p: Profilo, ioSlug?: string): string {
+  return [
+    `### ${p.nome}${ioSlug && p.slug === ioSlug ? '  (è chi sta usando l\'app adesso)' : ''}`,
+    `- obiettivo proteine: ${p.prot_target ? p.prot_target + ' g al giorno' : 'nessuno'}`,
+    `- obiettivo calorie: ${p.kcal_target ? p.kcal_target + ' kcal al giorno' : 'nessuno'}`,
+    `- ripetizione dei piatti: ${p.ripetizione === 'bassa' ? 'BASSA — vuole varietà, non ripetere piatti simili ravvicinati' : 'ALTA — ripetere non è un problema, non forzare la varietà'}`,
+    `- NON MANGIA (vincolo assoluto, mai nel piatto): ${elencoVoci(p.non_mangia)}`,
+    `- preferisce evitare: ${elencoVoci(p.evita)}`,
+    `- ama: ${elencoVoci(p.ama)}`,
+    p.note ? `- note: ${p.note}` : '',
+  ].filter(Boolean).join('\n');
+}
+
+/** I voti di una persona, per nome di ricetta. */
+function descriviVoti(c: Contesto): string {
+  const votiDi = (slug: string, pref: string) => {
+    const ids = new Set(c.voti.filter((v) => v.profile_slug === slug && v.pref === pref)
+                              .map((v) => v.recipe_id));
+    return c.rec.filter((r) => ids.has(r.id)).map((r) => r.name).join(' · ') || '(nessuna)';
+  };
+  const nomiPref = (p: string | null) =>
+    c.rec.filter((r) => r.pref === p).map((r) => r.name).join(' · ') || '(nessuna)';
+
+  return c.profili.length
+    ? c.profili.map((p) => [
+        `### secondo ${p.nome}`,
+        `- preferite: ${votiDi(p.slug, 'fav')}`,
+        `- vanno bene: ${votiDi(p.slug, 'ok')}`,
+        `- DA NON RIPROPORRE MAI: ${votiDi(p.slug, 'no')}`,
+      ].join('\n')).join('\n\n')
+    : `Preferite (priorità): ${nomiPref('fav')}\nVanno bene: ${nomiPref('ok')}\nDA NON RIPROPORRE MAI: ${nomiPref('no')}`;
+}
+
+/** Cosa si è mangiato negli ultimi giorni: serve alla regola della varietà. */
+function descriviRecenti(c: Contesto): string {
+  return c.recenti.length
+    ? c.recenti.map((m) => `- ${m.day}: ${m.piatto}${m.proteina ? ` [proteina: ${m.proteina}]` : ''}`).join('\n')
+    : '- (nessun pasto registrato)';
 }
 
 // ------------------------------------------------------------
@@ -288,6 +422,492 @@ const SCHEMA = {
   additionalProperties: false,
 };
 
+// ============================================================
+//  IL PIANO DELLA SETTIMANA (v5, Blocco 2)
+//
+//  Le nove regole qui sotto sono IN ORDINE DI PRIORITÀ: quando due
+//  si scontrano vince quella col numero più basso. La prima — la
+//  coerenza di magazzino — è quella che giustifica tutte le altre:
+//  un piano che spende due volte lo stesso pollo non è un piano.
+// ============================================================
+const REGOLE_SETTIMANA = `Sei l'aiuto cucina di una casa in cui vivono due persone diverse.
+Stai scrivendo il piano dei pasti di alcuni giorni, costruito sulla dispensa reale.
+
+Ti vengono chiesti solo i pasti che si cucinano a casa. I pasti fuori e i pasti liberi
+sono già segnati sul calendario e non devi produrli.
+
+# LE NOVE REGOLE, IN ORDINE DI PRIORITÀ
+
+## 1. COERENZA DI MAGAZZINO — la regola che comanda su tutte
+Simula i consumi giorno per giorno, come se stessi svuotando davvero la dispensa.
+- Un ingrediente usato lunedì non esiste più martedì. Se restano 300 g di pollo, o li
+  usi tutti in un pasto o li dividi fra due pasti: non puoi usarne 300 due volte.
+- Non superare mai le quantità disponibili. Non aumentare una quantità perché ti fa
+  comodo: quello che c'è scritto in dispensa è tutto quello che c'è.
+- Tieni conto anche dei pasti già decisi nei giorni precedenti, che ti vengono elencati:
+  quella roba è già spesa.
+- Le quantità non numeriche o con un "?" ("~1 kg", "sì", "? da verificare") sono
+  INCERTE: puoi usarle solo come contorno o insaporimento, MAI come fondamento di un
+  pasto e mai come fonte proteica.
+- Alla fine scrivi nel campo "resta" che cosa rimarrà in dispensa dopo questi giorni,
+  in una frase concreta (es. "restano ~150 g di riso, 2 uova, mezzo pacco di piselli").
+
+## 2. I DIVIETI DI CHI MANGIA — non si negoziano mai
+Ogni pasto dice chi lo mangia. Guarda i profili delle persone coinvolte in QUEL pasto.
+- Quello che una persona NON MANGIA non entra nel piatto, in nessuna forma.
+  Un divieto vale per tutta la famiglia dell'alimento: "pomodoro" comprende pomodorini,
+  datterini, ciliegini, pachino, passata, pelati; "cetrioli" comprende i sottaceti.
+- Se il divieto ha una precisazione — per esempio "pomodoro CRUDO" — hai due sole
+  possibilità: non usarlo affatto, oppure usarlo nella forma consentita DICENDOLO
+  esplicitamente nel nome del piatto e negli ingredienti ("datterini saltati in
+  padella", non "datterini"). Nel dubbio non usarlo.
+- Se il profilo chiede pochi ingredienti riconoscibili, il piatto ha pochi ingredienti.
+- Nello stesso pasto la FONTE PROTEICA PUÒ ESSERE DIVERSA fra le due persone: stessa
+  base e stesso contorno, ma per esempio pollo per uno e uova per l'altra. Quando lo
+  fai, dichiaralo in "perche" e usa il campo "per" degli ingredienti.
+- Se un piatto unico non funziona per entrambi, scrivi due piatti distinti nello stesso
+  pasto: mettili tutti e due nel campo "piatto" ("Pollo al limone per X · frittata di
+  zucchine per Y") e separa gli ingredienti con "per".
+- Il tocco dolce, se è nel profilo di chi mangia, fa parte del pasto: va nel campo
+  "dolce", pescato dalla dispensa, e NON fra gli ingredienti.
+
+## 3. DEPERIBILI E SCADENZE PRIMA DI TUTTO
+I freschi in scadenza e i deperibili già aperti si consumano nei primi giorni del piano.
+Le scatolette e la roba secca possono aspettare la fine.
+
+## 4. I TARGET DI CIPRIAN
+170 g di proteine al giorno (minimo accettabile 150), circa 2200 kcal.
+- Colazione fissa 20 g · 290 kcal e yogurt greco 17 g · 100 kcal sono GIÀ CONTATI a
+  parte dall'app: non metterli nel piano e non contarli nei campi "prot" e "kcal".
+- Restano circa 133 g fra pranzo e cena: ogni suo pasto principale sta fra 55 e 70 g
+  di proteine.
+- Porzioni di riferimento, sempre a crudo o sgocciolate: pollo/tacchino 250-300 g ->
+  55-70 g proteine · hamburger 300 g -> ~57 g · pesce fresco 300 g -> 50-60 g ·
+  tonno sgocciolato 100 g -> ~28 g · uovo -> 6-7 g · grana 20 g -> 7 g ·
+  polpo 100 g -> ~15 g (è "diluito": va SEMPRE abbinato a un'altra fonte proteica).
+- Nei giorni in cui Ciprian mangia fuori o ha un pasto libero il totale scende, ed è
+  giusto così: NON compensare mai nei giorni vicini caricando di proteine gli altri
+  pasti. Un pasto libero fa parte del metodo, non è uno sgarro da recuperare.
+- I campi "prot" e "kcal" sono SOLO di Ciprian. Nei pasti che mangia solo l'altra
+  persona scrivi 0 in tutti e due: l'app non mostrerà nessun numero.
+
+## 5. LA CATENA DELLE DOPPIE PORZIONI
+Dove ha senso, cucina doppio e manda l'avanzo al pasto dopo: scrivilo in "avanzo_per"
+sul pasto che cucina ("→ pranzo di mercoledì") e ripeti il piatto nel pasto che lo
+riceve, dicendo lì in "perche" che è l'avanzo del giorno prima.
+⚠️ L'avanzo deve rispettare i vincoli di CHI LO MANGERÀ DOMANI, non di chi cucina
+stasera: se domani a pranzo c'è una persona con divieti diversi, il piatto di stasera
+deve già andare bene per lei, altrimenti non fare la doppia porzione.
+
+## 6. VARIETÀ, PERSONA PER PERSONA
+- Profilo con ripetizione BASSA: mai piatti simili ravvicinati, mai la stessa fonte
+  proteica due giorni di fila.
+- Profilo con ripetizione ALTA: la ripetizione non è un problema, non forzare la
+  varietà. Riso e tonno due giorni di fila per lui vanno benissimo.
+Guarda anche l'elenco di quello che è stato mangiato negli ultimi giorni.
+
+## 7. I VOTI, PER PERSONA
+Un piatto votato NO da una qualsiasi delle persone che mangiano in QUEL pasto non si
+propone mai. Un piatto col cuore di tutte le persone di quel pasto ha la precedenza.
+I voti di chi in quel pasto non mangia non contano.
+
+## 8. SCONGELAMENTI
+Se un pasto usa qualcosa dal congelatore:
+- carne e polpo -> "scongelamento" dice cosa spostare in frigo, e "scongelare_il" è la
+  data del GIORNO PRIMA del pasto (formato AAAA-MM-GG);
+- hamburger, kebab, gamberi -> si cuociono da congelati: scrivilo in "scongelamento"
+  ("si cuoce da congelato", "gamberi in acqua fredda 20 minuti") e lascia
+  "scongelare_il" al giorno stesso del pasto.
+Non ometterlo mai: è il punto in cui i piani falliscono più spesso.
+
+## 9. GLI INGREDIENTI CHE MANCANO
+Non inventare mai un ingrediente che non c'è.
+- Un pasto può richiedere al massimo 2 cose che non sono in dispensa, e MAI la fonte
+  proteica principale: quella deve già esserci.
+- Le cose che mancano vanno SOLO nell'elenco "manca" del pasto, mai fra gli
+  ingredienti. I conti di proteine e kcal le considerano comunque presenti.
+- La maggior parte dei pasti deve essere fattibile con quello che c'è: se ogni giorno
+  dipende dalla spesa, il piano non serve a niente.
+
+# COME SI SCRIVE UN PASTO
+- "day" e "pasto" copiano esattamente quelli che ti sono stati chiesti. Non aggiungere
+  pasti che non ti sono stati chiesti e non saltarne nessuno.
+- "ingredienti": quantità PER PERSONA, come stringhe ("250 g", "2 uova"). Il campo
+  "per" vale "tutti" se la porzione è uguale per chi mangia, oppure "ciprian" / "lorena"
+  quando le porzioni o gli alimenti sono diversi. Se mangia una persona sola, usa "tutti".
+- "perche": UNA riga che spiega la scelta ("usa le zucchine, sono le ultime").
+- "tempo": minuti veri di preparazione.
+- "proteina_principale": una parola minuscola e generica (pollo, tonno, uova, manzo,
+  pesce, legumi, formaggio, maiale). Serve alla regola della varietà.
+- Campi che non servono: stringa vuota "" per i testi, 0 per i numeri, [] per le liste.
+
+Scrivi in italiano semplice e concreto. Niente tono da dieta, niente premi, niente colpe.`;
+
+const INGREDIENTE_PIANO = {
+  type: 'object',
+  properties: {
+    nome: { type: 'string' },
+    qta:  { type: 'string' },
+    // 'tutti' · 'ciprian' · 'lorena' — sono i NOMI VERI, non gli slug del database
+    per:  { type: 'string' },
+  },
+  required: ['nome', 'qta', 'per'],
+  additionalProperties: false,
+};
+
+const SCHEMA_SETTIMANA = {
+  type: 'object',
+  properties: {
+    pasti: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          day:                 { type: 'string' },   // AAAA-MM-GG
+          pasto:               { type: 'string' },   // pranzo · cena
+          piatto:              { type: 'string' },
+          perche:              { type: 'string' },
+          ingredienti:         { type: 'array', items: INGREDIENTE_PIANO },
+          dolce:               { type: 'string' },
+          tempo:               { type: 'integer' },
+          prot:                { type: 'integer' },  // solo Ciprian, 0 se non lo riguarda
+          kcal:                { type: 'integer' },  // idem
+          scongelamento:       { type: 'string' },
+          scongelare_il:       { type: 'string' },   // AAAA-MM-GG, di solito il giorno prima
+          avanzo_per:          { type: 'string' },
+          manca:               { type: 'array', items: { type: 'string' } },
+          proteina_principale: { type: 'string' },
+        },
+        required: ['day','pasto','piatto','perche','ingredienti','dolce','tempo','prot','kcal',
+                   'scongelamento','scongelare_il','avanzo_per','manca','proteina_principale'],
+        additionalProperties: false,
+      },
+    },
+    // cosa rimarrà in dispensa dopo questi giorni: entra nel prompt del blocco dopo
+    resta: { type: 'string' },
+  },
+  required: ['pasti', 'resta'],
+  additionalProperties: false,
+};
+
+// ------------------------------------------------------------
+//  LA CHIAMATA A CLAUDE — una sola, condivisa dai due mestieri
+// ------------------------------------------------------------
+
+/**
+ * Riconosce gli oggetti completi dentro un JSON che si sta ancora scrivendo.
+ * Tiene conto delle stringhe e delle virgolette scappate, così una graffa
+ * dentro un testo (es. "sugo {piccante}") non lo confonde.
+ * Guarda solo il PRIMO array che incontra: negli schemi qui sopra è sempre
+ * quello che conta (le proposte, i pasti).
+ */
+function creaLettore() {
+  let buf = '', i = 0;
+  let dentroArray = false, profondita = 0, inizio = -1, inStringa = false, scappato = false;
+  return {
+    aggiungi(pezzo: string): unknown[] {
+      buf += pezzo;
+      const complete: unknown[] = [];
+      for (; i < buf.length; i++) {
+        const c = buf[i];
+        if (inStringa) {
+          if (scappato) { scappato = false; continue; }
+          if (c === '\\') { scappato = true; continue; }
+          if (c === '"') inStringa = false;
+          continue;
+        }
+        if (c === '"') { inStringa = true; continue; }
+        if (!dentroArray) { if (c === '[') dentroArray = true; continue; }
+        if (c === '{') { if (profondita === 0) inizio = i; profondita++; continue; }
+        if (c === '}') {
+          profondita--;
+          if (profondita === 0 && inizio >= 0) {
+            try { complete.push(JSON.parse(buf.slice(inizio, i + 1))); } catch { /* non ancora valida */ }
+            inizio = -1;
+          }
+        }
+      }
+      return complete;
+    },
+    testoIntero: () => buf,
+  };
+}
+
+type EsitoChiamata =
+  | { ok: true;  corpo: ReadableStream<Uint8Array> }
+  | { ok: false; risposta: Response };
+
+/**
+ * Chiede a Claude, in streaming. Se qualcosa va storto restituisce già
+ * pronta la risposta d'errore in italiano semplice da rimandare all'app.
+ */
+async function chiamaAnthropic(
+  system: string, contesto: string, schema: unknown, maxTokens: number,
+): Promise<EsitoChiamata> {
+  let risposta: Response;
+  try {
+    risposta = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: MODELLO,
+        max_tokens: maxTokens,
+        system,
+        thinking: { type: 'adaptive' },
+        output_config: {
+          effort: IMPEGNO,
+          format: { type: 'json_schema', schema },
+        },
+        messages: [{ role: 'user', content: contesto }],
+        stream: true,
+      }),
+    });
+  } catch {
+    return { ok: false, risposta: errore('Il generatore non risponde. Riprova fra un minuto.', 502) };
+  }
+
+  if (!risposta.ok || !risposta.body) {
+    const dettaglio = await risposta.text().catch(() => '');
+    console.error('Anthropic', risposta.status, dettaglio);
+    if (risposta.status === 401)
+      return { ok: false, risposta: errore('La chiave del generatore non è valida. Va rifatta nei Secrets di Supabase.', 500) };
+    if (risposta.status === 429)
+      return { ok: false, risposta: errore('Il generatore è momentaneamente occupato. Riprova fra un minuto.', 503) };
+    if (risposta.status === 400 && /credit|balance/i.test(dettaglio))
+      return { ok: false, risposta: errore('Il credito del generatore è esaurito. Va ricaricato dal sito di Anthropic.', 402) };
+    return { ok: false, risposta: errore('Il generatore non risponde. Riprova fra un minuto.', 502) };
+  }
+
+  return { ok: true, corpo: risposta.body };
+}
+
+/**
+ * Srotola il flusso SSE di Anthropic e ne tira fuori solo quello che ci
+ * serve: i pezzi di testo man mano che arrivano, e il motivo per cui si
+ * è fermato. Scritta una volta, la usano tutti e due i mestieri.
+ */
+type PezzoDiFlusso = { testo?: string; stop?: string; guasto?: boolean };
+
+async function* pezziDiTesto(corpo: ReadableStream<Uint8Array>): AsyncGenerator<PezzoDiFlusso> {
+  const sorgente = corpo.getReader();
+  const decodificatore = new TextDecoder();
+  let resto = '';
+
+  while (true) {
+    const { done, value } = await sorgente.read();
+    if (done) break;
+    resto += decodificatore.decode(value, { stream: true });
+
+    const righe = resto.split('\n');
+    resto = righe.pop() ?? '';
+
+    for (const riga of righe) {
+      if (!riga.startsWith('data:')) continue;
+      const corpoRiga = riga.slice(5).trim();
+      if (!corpoRiga || corpoRiga === '[DONE]') continue;
+
+      let ev: Record<string, any>;
+      try { ev = JSON.parse(corpoRiga); } catch { continue; }
+
+      if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+        yield { testo: String(ev.delta.text ?? '') };
+      } else if (ev.type === 'message_delta' && ev.delta?.stop_reason) {
+        yield { stop: String(ev.delta.stop_reason) };
+      } else if (ev.type === 'error') {
+        yield { guasto: true };
+      }
+    }
+  }
+}
+
+/** Una riga NDJSON per messaggio: è il formato che l'app sa leggere. */
+function flussoNdjson(scrivi: (manda: (o: unknown) => void) => Promise<void>): Response {
+  const codificatore = new TextEncoder();
+  const flusso = new ReadableStream({
+    async start(controller) {
+      const manda = (o: unknown) =>
+        controller.enqueue(codificatore.encode(JSON.stringify(o) + '\n'));
+      try {
+        await scrivi(manda);
+      } catch (e) {
+        console.error('streaming', e);
+        manda({ tipo: 'errore', errore: 'Il collegamento col generatore si è interrotto. Riprova.' });
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(flusso, {
+    headers: {
+      ...CORS,
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'X-Accel-Buffering': 'no',
+    },
+  });
+}
+
+// ------------------------------------------------------------
+//  IL PIANO DELLA SETTIMANA — un blocco di 2-3 giorni per volta
+// ------------------------------------------------------------
+type PastoChiesto = { pasto: string; chi: string; nota: string };
+type GiornoChiesto = { day: string; pasti: PastoChiesto[] };
+
+async function pianificaSettimana(body: Record<string, unknown>): Promise<Response> {
+  const ioSlug = String(body.io_slug ?? 'lorena').slice(0, 40);
+  const primo   = body.primo === true;
+  const restanti = Math.min(BLOCCHI_SETTIMANA, Math.max(1, Number(body.restanti) || 1));
+
+  // I giorni chiesti, ripuliti: al massimo 3 giorni e 2 pasti per giorno.
+  const giorni: GiornoChiesto[] = (Array.isArray(body.giorni) ? body.giorni : [])
+    .slice(0, 3)
+    .map((g: any) => ({
+      day: String(g?.day ?? '').slice(0, 10),
+      pasti: (Array.isArray(g?.pasti) ? g.pasti : []).slice(0, 2).map((p: any) => ({
+        pasto: p?.pasto === 'cena' ? 'cena' : 'pranzo',
+        chi:   ['ciprian', 'entrambi', 'lorena'].includes(String(p?.chi)) ? String(p.chi) : 'entrambi',
+        nota:  String(p?.nota ?? '').slice(0, 200),
+      })),
+    }))
+    .filter((g) => /^\d{4}-\d{2}-\d{2}$/.test(g.day) && g.pasti.length);
+
+  if (!giorni.length) return errore('Non ci sono pasti da pianificare in questi giorni.', 400);
+
+  // Quello che i blocchi precedenti hanno già deciso: quella roba è già spesa.
+  const giaFatti = (Array.isArray(body.gia_pianificato) ? body.gia_pianificato : [])
+    .slice(0, 20)
+    .map((x) => String(x).slice(0, 400));
+  const restaPrima = String(body.resta_prima ?? '').slice(0, 900);
+  // Anche i pasti fuori e liberi contano: dicono chi NON mangia a casa.
+  const fuoriELiberi = (Array.isArray(body.fuori_e_liberi) ? body.fuori_e_liberi : [])
+    .slice(0, 20)
+    .map((x) => String(x).slice(0, 160));
+
+  // --- il tetto giornaliero ---------------------------------
+  // Sul primo blocco controlliamo che il margine basti per TUTTA la
+  // settimana: meglio fermarsi prima che a metà lavoro.
+  try {
+    if (primo) {
+      const usateFinora = await generazioniUsateOggi();
+      if (usateFinora + restanti > MAX_AL_GIORNO) {
+        return errore(
+          `Per generare la settimana servono ${restanti} generazioni delle ${MAX_AL_GIORNO} di oggi, e ne restano ${Math.max(0, MAX_AL_GIORNO - usateFinora)}. Riprova domani.`,
+          429,
+        );
+      }
+    }
+    const usate = await consumaUnaGenerazione();
+    if (usate === -1) {
+      return errore(
+        `Per oggi hai già usato tutte le ${MAX_AL_GIORNO} generazioni disponibili. Riprova domani.`,
+        429,
+      );
+    }
+  } catch {
+    return errore('Non riesco a controllare il contatore delle generazioni. Riprova fra poco.', 500);
+  }
+
+  // --- i dati veri ------------------------------------------
+  let c: Contesto;
+  try { c = await leggiContesto(); }
+  catch { return errore('Non riesco a leggere la dispensa. Riprova fra poco.', 500); }
+
+  if (!c.inv.length) {
+    return errore('La dispensa è vuota: aggiungi qualche ingrediente e riprova.', 400);
+  }
+
+  const impostazioni = Object.fromEntries(c.setRows.map((s) => [s.key, s.value]));
+  const quantiPasti = giorni.reduce((n, g) => n + g.pasti.length, 0);
+
+  const contesto = `## DISPENSA DI ADESSO
+
+${descriviDispensa(c.inv)}
+${restaPrima ? `\n⚠️ ATTENZIONE: i giorni precedenti del piano hanno già consumato una parte di questa dispensa.\nDopo quei giorni resta questo:\n${restaPrima}\nParti da QUI, non dalla dispensa piena.` : ''}
+
+## LE PERSONE
+${c.profili.length ? c.profili.map((p) => descriviProfilo(p, ioSlug)).join('\n\n') : '- (profili non configurati: considera una sola persona con gli obiettivi qui sotto)'}
+
+Nel piano le persone si chiamano con questi nomi: "ciprian" è chi ha l'obiettivo
+proteico, "lorena" è l'altra, "entrambi" quando mangiano insieme.
+
+## RICETTE GIÀ VOTATE — i voti sono PER PERSONA
+${descriviVoti(c)}
+
+## MANGIATO NEGLI ULTIMI GIORNI (per la regola della varietà)
+${descriviRecenti(c)}
+
+## OBIETTIVI DI RIFERIMENTO
+${impostazioni.kcal_target ?? 2200} kcal · ${impostazioni.protein_target ?? 170} g di proteine al giorno, per chi ce li ha.
+
+${giaFatti.length ? `## PASTI GIÀ DECISI NEI GIORNI PRECEDENTI DI QUESTO PIANO
+Questa roba è già spesa e questi piatti sono già stati usati: non ripeterli se il
+profilo di chi mangia chiede varietà, e non riusare gli ingredienti che hanno consumato.
+${giaFatti.map((x) => `- ${x}`).join('\n')}
+` : ''}
+${fuoriELiberi.length ? `## GIORNI IN CUI NON SI CUCINA (già segnati, non produrli)
+${fuoriELiberi.map((x) => `- ${x}`).join('\n')}
+` : ''}
+## I PASTI DA SCRIVERE ADESSO — esattamente ${quantiPasti}, né uno di più né uno di meno
+
+${giorni.map((g) => `### ${g.day}
+${g.pasti.map((p) => `- ${p.pasto} — mangia: ${p.chi}${p.nota ? ` — nota di chi ha compilato: "${p.nota}"` : ''}`).join('\n')}`).join('\n\n')}
+
+Scrivi i pasti in ordine di giorno e, dentro il giorno, prima il pranzo e poi la cena.
+Alla fine compila "resta" con quello che rimarrà in dispensa dopo questi giorni.`;
+
+  const chiamata = await chiamaAnthropic(REGOLE_SETTIMANA, contesto, SCHEMA_SETTIMANA, MAX_TOKENS_SETTIMANA);
+  if (!chiamata.ok) return chiamata.risposta;
+
+  return flussoNdjson(async (manda) => {
+    const lettore = creaLettore();
+    let mandati = 0;
+    let motivoStop = '';
+
+    manda({ tipo: 'stato', testo: 'Sto guardando cosa c’è in dispensa…' });
+
+    for await (const pezzo of pezziDiTesto(chiamata.corpo)) {
+      if (pezzo.guasto) {
+        manda({ tipo: 'errore', errore: 'Il generatore si è interrotto. Riprova.' });
+        continue;
+      }
+      if (pezzo.stop) { motivoStop = pezzo.stop; continue; }
+      if (!pezzo.testo) continue;
+
+      for (const pasto of lettore.aggiungi(pezzo.testo)) {
+        if (mandati >= quantiPasti) continue;
+        mandati++;
+        manda({ tipo: 'pasto', pasto });
+      }
+    }
+
+    // "resta" sta in fondo al JSON, dopo l'array: si legge alla fine.
+    let resta = '';
+    try {
+      const tutto = JSON.parse(lettore.testoIntero());
+      resta = String(tutto?.resta ?? '');
+    } catch { /* JSON incompleto: pazienza, i pasti li abbiamo già mandati */ }
+
+    if (!mandati) {
+      if (motivoStop === 'refusal') {
+        manda({ tipo: 'errore', errore: 'Il generatore non se la sente di rispondere a questa richiesta. Prova a riformularla.' });
+      } else if (motivoStop === 'max_tokens') {
+        manda({ tipo: 'errore', errore: 'La risposta si è interrotta a metà. Riprova con meno giorni per volta.' });
+      } else {
+        console.error('nessun pasto; testo grezzo:', lettore.testoIntero().slice(0, 500));
+        manda({ tipo: 'errore', errore: 'Non riesco a costruire un piano con questa dispensa. Prova ad aggiungere qualche ingrediente.' });
+      }
+      return;
+    }
+
+    manda({ tipo: 'fine', quanti: mandati, resta });
+  });
+}
+
 // ------------------------------------------------------------
 //  Il corpo della richiesta
 // ------------------------------------------------------------
@@ -321,6 +941,10 @@ Deno.serve(async (req) => {
     );
   }
 
+  // Il piano della settimana è l'altro mestiere di questa function:
+  // stessa chiave, stesso contatore, stessa dispensa, prompt diverso.
+  if (body.modo === 'settimana') return await pianificaSettimana(body);
+
   const pasto  = body.pasto === 'cena' ? 'cena' : 'pranzo';
   const chi    = ['io', 'io_e_x', 'solo_x'].includes(String(body.chi)) ? String(body.chi) : 'io';
   const ioSlug = String(body.io_slug ?? 'lorena').slice(0, 40);
@@ -347,106 +971,35 @@ Deno.serve(async (req) => {
   }
 
   // --- 3. i dati veri, letti qui dal database ---------------
-  let inv: Array<{ name: string; qty: string; cat: string }>;
-  let rec: Array<{ id: string; name: string; pref: string | null }>;
-  let setRows: Array<{ key: string; value: string }>;
-  try {
-    [inv, rec, setRows] = await Promise.all([
-      leggi('inventory_items', 'name,qty,cat'),
-      leggi('recipes', 'id,name,pref'),
-      leggi('settings', 'key,value'),
-    ]);
-  } catch {
-    return errore('Non riesco a leggere la dispensa. Riprova fra poco.', 500);
-  }
+  let c: Contesto;
+  try { c = await leggiContesto(); }
+  catch { return errore('Non riesco a leggere la dispensa. Riprova fra poco.', 500); }
 
-  // I profili delle due persone. Li legge la function, non il telefono.
-  let profili: Array<{
-    slug: string; nome: string; prot_target: number | null; kcal_target: number | null;
-    ripetizione: string; non_mangia: string[]; evita: string[]; ama: string[]; note: string | null;
-  }> = [];
-  try { profili = await leggi('profiles', '*'); } catch { /* v6 non ancora installata */ }
+  const { profili } = c;
 
-  // I voti sono per persona: il cuore di uno non è il cuore dell'altra.
-  let voti: Array<{ recipe_id: string; profile_slug: string; pref: string }> = [];
-  try { voti = await leggi('recipe_votes', 'recipe_id,profile_slug,pref'); } catch { /* niente voti */ }
-
-  // Gli ultimi 5 giorni di pasti, per non ripetere sempre le stesse cose.
-  // Se la tabella non esiste ancora, si va avanti lo stesso.
-  let recenti: Array<{ day: string; piatto: string; proteina: string | null }> = [];
-  try {
-    const da = new Date();
-    da.setDate(da.getDate() - 5);
-    recenti = await leggi(
-      'meals_log',
-      `day,piatto,proteina&day=gte.${da.toISOString().slice(0, 10)}&order=day.desc`,
-    );
-  } catch { /* niente diario: pazienza */ }
-
-  if (!inv.length) {
+  if (!c.inv.length) {
     return errore('La dispensa è vuota: aggiungi qualche ingrediente e riprova.', 400);
   }
 
-  const elenco = (v: string[] | null) => (v && v.length ? v.join(', ') : '—');
-  const descriviProfilo = (p: typeof profili[number]) => [
-    `### ${p.nome}${p.slug === ioSlug ? '  (è chi sta usando l\'app adesso)' : ''}`,
-    `- obiettivo proteine: ${p.prot_target ? p.prot_target + ' g al giorno' : 'nessuno'}`,
-    `- obiettivo calorie: ${p.kcal_target ? p.kcal_target + ' kcal al giorno' : 'nessuno'}`,
-    `- ripetizione dei piatti: ${p.ripetizione === 'bassa' ? 'BASSA — vuole varietà, non ripetere piatti simili ravvicinati' : 'ALTA — ripetere non è un problema, non forzare la varietà'}`,
-    `- NON MANGIA (vincolo assoluto, mai nel piatto): ${elenco(p.non_mangia)}`,
-    `- preferisce evitare: ${elenco(p.evita)}`,
-    `- ama: ${elenco(p.ama)}`,
-    p.note ? `- note: ${p.note}` : '',
-  ].filter(Boolean).join('\n');
-
-  const perCat = (c: string) => {
-    const righe = inv.filter((i) => i.cat === c);
-    return righe.length ? righe.map((i) => `- ${i.name} — ${i.qty}`).join('\n') : '- (vuoto)';
-  };
-  /** I voti di una persona, per nome di ricetta. */
-  const votiDi = (slug: string, pref: string) => {
-    const ids = new Set(voti.filter((v) => v.profile_slug === slug && v.pref === pref)
-                            .map((v) => v.recipe_id));
-    return rec.filter((r) => ids.has(r.id)).map((r) => r.name).join(' · ') || '(nessuna)';
-  };
-
-  const nomiPref = (p: string | null) =>
-    rec.filter((r) => r.pref === p).map((r) => r.name).join(' · ') || '(nessuna)';
-  const impostazioni = Object.fromEntries(setRows.map((s) => [s.key, s.value]));
+  const impostazioni = Object.fromEntries(c.setRows.map((s) => [s.key, s.value]));
 
   // --- 4. il messaggio per Claude ---------------------------
   const contesto = `## DISPENSA DI OGGI
 
-FRIGO
-${perCat('frigo')}
-
-CONGELATORE
-${perCat('freezer')}
-
-DISPENSA
-${perCat('dispensa')}
+${descriviDispensa(c.inv)}
 
 ## RICETTE GIÀ VOTATE — i voti sono PER PERSONA
-${profili.length
-  ? profili.map((p) => [
-      `### secondo ${p.nome}`,
-      `- preferite: ${votiDi(p.slug, 'fav')}`,
-      `- vanno bene: ${votiDi(p.slug, 'ok')}`,
-      `- DA NON RIPROPORRE MAI: ${votiDi(p.slug, 'no')}`,
-    ].join('\n')).join('\n\n')
-  : `Preferite (priorità): ${nomiPref('fav')}\nVanno bene: ${nomiPref('ok')}\nDA NON RIPROPORRE MAI: ${nomiPref('no')}`}
+${descriviVoti(c)}
 
 Regola sui voti: un piatto con **NO da una qualsiasi delle persone che mangiano
 adesso** non va proposto, mai. Un piatto con il cuore di TUTTE le persone che
 mangiano ha la precedenza. I voti di chi stasera non mangia non contano.
 
 ## LE PERSONE
-${profili.length ? profili.map(descriviProfilo).join('\n\n') : '- (profili non configurati: considera una sola persona con gli obiettivi qui sotto)'}
+${profili.length ? profili.map((p) => descriviProfilo(p, ioSlug)).join('\n\n') : '- (profili non configurati: considera una sola persona con gli obiettivi qui sotto)'}
 
 ## MANGIATO NEGLI ULTIMI GIORNI (per non ripeterti)
-${recenti.length
-  ? recenti.map((m) => `- ${m.day}: ${m.piatto}${m.proteina ? ` [proteina: ${m.proteina}]` : ''}`).join('\n')
-  : '- (nessun pasto registrato)'}
+${descriviRecenti(c)}
 
 ## OBIETTIVI DEL GIORNO
 ${impostazioni.kcal_target ?? 2200} kcal · ${impostazioni.protein_target ?? 170} g di proteine
@@ -483,161 +1036,51 @@ Genera ${quante === 1 ? 'UNA sola proposta' : 'ESATTAMENTE 3 proposte diverse fr
   // insieme (serve per garantire che almeno una sia fattibile e che siano
   // diverse fra loro).
 
-  let risposta: Response;
-  try {
-    risposta = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: MODELLO,
-        max_tokens: MAX_TOKENS,
-        system: REGOLE,
-        thinking: { type: 'adaptive' },
-        output_config: {
-          effort: IMPEGNO,
-          format: { type: 'json_schema', schema: SCHEMA },
-        },
-        messages: [{ role: 'user', content: contesto }],
-        stream: true,
-      }),
-    });
-  } catch {
-    return errore('Il generatore non risponde. Riprova fra un minuto.', 502);
-  }
+  const chiamata = await chiamaAnthropic(REGOLE, contesto, SCHEMA, MAX_TOKENS);
+  if (!chiamata.ok) return chiamata.risposta;
 
-  if (!risposta.ok || !risposta.body) {
-    const dettaglio = await risposta.text().catch(() => '');
-    console.error('Anthropic', risposta.status, dettaglio);
-    if (risposta.status === 401) return errore('La chiave del generatore non è valida. Va rifatta nei Secrets di Supabase.', 500);
-    if (risposta.status === 429) return errore('Il generatore è momentaneamente occupato. Riprova fra un minuto.', 503);
-    if (risposta.status === 400 && /credit|balance/i.test(dettaglio))
-      return errore('Il credito del generatore è esaurito. Va ricaricato dal sito di Anthropic.', 402);
-    return errore('Il generatore non risponde. Riprova fra un minuto.', 502);
-  }
+  return flussoNdjson(async (manda) => {
+    const lettore = creaLettore();
+    let quante_inviate = 0;
+    let motivoStop = '';
 
-  // Riconosce le proposte complete dentro il JSON che si sta scrivendo.
-  // Tiene conto delle stringhe e delle virgolette scappate, così una graffa
-  // dentro un testo (es. "sugo {piccante}") non lo confonde.
-  function creaLettore() {
-    let buf = '', i = 0;
-    let dentroArray = false, profondita = 0, inizio = -1, inStringa = false, scappato = false;
-    return {
-      aggiungi(pezzo: string): unknown[] {
-        buf += pezzo;
-        const complete: unknown[] = [];
-        for (; i < buf.length; i++) {
-          const c = buf[i];
-          if (inStringa) {
-            if (scappato) { scappato = false; continue; }
-            if (c === '\\') { scappato = true; continue; }
-            if (c === '"') inStringa = false;
-            continue;
-          }
-          if (c === '"') { inStringa = true; continue; }
-          if (!dentroArray) { if (c === '[') dentroArray = true; continue; }
-          if (c === '{') { if (profondita === 0) inizio = i; profondita++; continue; }
-          if (c === '}') {
-            profondita--;
-            if (profondita === 0 && inizio >= 0) {
-              try { complete.push(JSON.parse(buf.slice(inizio, i + 1))); } catch { /* non ancora valida */ }
-              inizio = -1;
-            }
-          }
-        }
-        return complete;
-      },
-      testoIntero: () => buf,
-    };
-  }
+    manda({ tipo: 'stato', testo: 'Sto pensando alla prima proposta…' });
 
-  const codificatore = new TextEncoder();
-  const flusso = new ReadableStream({
-    async start(controller) {
-      const manda = (o: unknown) =>
-        controller.enqueue(codificatore.encode(JSON.stringify(o) + '\n'));
-
-      const lettore = creaLettore();
-      const decodificatore = new TextDecoder();
-      const sorgente = risposta.body!.getReader();
-      let resto = '';
-      let quante_inviate = 0;
-      let motivoStop = '';
-
-      manda({ tipo: 'stato', testo: 'Sto pensando alla prima proposta…' });
-
-      try {
-        while (true) {
-          const { done, value } = await sorgente.read();
-          if (done) break;
-          resto += decodificatore.decode(value, { stream: true });
-
-          const righe = resto.split('\n');
-          resto = righe.pop() ?? '';
-
-          for (const riga of righe) {
-            if (!riga.startsWith('data:')) continue;
-            const corpo = riga.slice(5).trim();
-            if (!corpo || corpo === '[DONE]') continue;
-
-            let ev: Record<string, any>;
-            try { ev = JSON.parse(corpo); } catch { continue; }
-
-            if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-              for (const proposta of lettore.aggiungi(ev.delta.text ?? '')) {
-                if (quante_inviate >= quante) continue;
-                quante_inviate++;
-                manda({ tipo: 'proposta', proposta });
-                if (quante_inviate < quante) {
-                  manda({
-                    tipo: 'stato',
-                    testo: quante_inviate === 1
-                      ? 'Prima proposta pronta. Sto scrivendo la seconda…'
-                      : 'Ci siamo, ultima proposta…',
-                  });
-                }
-              }
-            }
-
-            if (ev.type === 'message_delta' && ev.delta?.stop_reason) {
-              motivoStop = ev.delta.stop_reason;
-            }
-            if (ev.type === 'error') {
-              manda({ tipo: 'errore', errore: 'Il generatore si è interrotto. Riprova.' });
-            }
-          }
-        }
-
-        if (!quante_inviate) {
-          if (motivoStop === 'refusal') {
-            manda({ tipo: 'errore', errore: 'Il generatore non se la sente di rispondere a questa richiesta. Prova a riformularla.' });
-          } else if (motivoStop === 'max_tokens') {
-            manda({ tipo: 'errore', errore: 'La risposta si è interrotta a metà. Riprova.' });
-          } else {
-            console.error('nessuna proposta; testo grezzo:', lettore.testoIntero().slice(0, 500));
-            manda({ tipo: 'errore', errore: 'Il generatore non ha trovato nulla da proporre con questa dispensa.' });
-          }
-        } else {
-          manda({ tipo: 'fine', quante: quante_inviate });
-        }
-      } catch (e) {
-        console.error('streaming', e);
-        manda({ tipo: 'errore', errore: 'Il collegamento col generatore si è interrotto. Riprova.' });
-      } finally {
-        controller.close();
+    for await (const pezzo of pezziDiTesto(chiamata.corpo)) {
+      if (pezzo.guasto) {
+        manda({ tipo: 'errore', errore: 'Il generatore si è interrotto. Riprova.' });
+        continue;
       }
-    },
-  });
+      if (pezzo.stop) { motivoStop = pezzo.stop; continue; }
+      if (!pezzo.testo) continue;
 
-  return new Response(flusso, {
-    headers: {
-      ...CORS,
-      'Content-Type': 'application/x-ndjson; charset=utf-8',
-      'Cache-Control': 'no-cache',
-      'X-Accel-Buffering': 'no',
-    },
+      for (const proposta of lettore.aggiungi(pezzo.testo)) {
+        if (quante_inviate >= quante) continue;
+        quante_inviate++;
+        manda({ tipo: 'proposta', proposta });
+        if (quante_inviate < quante) {
+          manda({
+            tipo: 'stato',
+            testo: quante_inviate === 1
+              ? 'Prima proposta pronta. Sto scrivendo la seconda…'
+              : 'Ci siamo, ultima proposta…',
+          });
+        }
+      }
+    }
+
+    if (!quante_inviate) {
+      if (motivoStop === 'refusal') {
+        manda({ tipo: 'errore', errore: 'Il generatore non se la sente di rispondere a questa richiesta. Prova a riformularla.' });
+      } else if (motivoStop === 'max_tokens') {
+        manda({ tipo: 'errore', errore: 'La risposta si è interrotta a metà. Riprova.' });
+      } else {
+        console.error('nessuna proposta; testo grezzo:', lettore.testoIntero().slice(0, 500));
+        manda({ tipo: 'errore', errore: 'Il generatore non ha trovato nulla da proporre con questa dispensa.' });
+      }
+      return;
+    }
+
+    manda({ tipo: 'fine', quante: quante_inviate });
   });
 });

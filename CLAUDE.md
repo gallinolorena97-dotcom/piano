@@ -286,8 +286,48 @@ Lo schema sta in `tabelle-piano-v5.sql`, con i campi commentati uno per uno.
   passa da Ciprian a tutti e due, due scongelamenti, un «dipende dalla spesa», un giorno
   senza cena, un giorno vuoto.
 
-⚠️ Il tasto **«Genera la settimana»** dello stato vuoto per ora dà solo un messaggio:
-si accende col Blocco 2. È voluto, non è un pezzo dimenticato.
+### La v5 — «Genera la settimana» (13/08/2026, Blocco 2)
+
+Il tasto è collegato. Sta in due punti: nello stato vuoto (`#pnGenera`, grande) e in
+fondo alla tab Piano quando un piano c'è già (stesso id, stile ghost). Apre
+`#pnWizard`, che **prende il posto del calendario** dentro la stessa tab: tre schermate
+in fila, `PS.fase` dice quale.
+
+1. **La passata.** Sette giorni × due pasti, ognuno con modo (A casa/Fuori/Libero),
+   chi mangia e una nota facoltativa. **Parte tutta compilata** su «A casa · Tutti e
+   due»: si tocca solo ciò che cambia, ed è il motivo per cui sta sotto il minuto.
+   Il chip «di solito a tavola ci sono» imposta tutti e quattordici i pasti insieme.
+   Ogni tocco ridisegna **solo quel pasto** (`ridisegnaPasto`), altrimenti il testo
+   della nota che stai scrivendo sparirebbe.
+2. **La generazione.** Tre blocchi: giorni 1-3, 4-5, 6-7. Ogni blocco è una chiamata
+   alla Edge Function con `modo:'settimana'`, e riceve `gia_pianificato` (i pasti già
+   decisi, ingredienti compresi) e `resta_prima` (cosa resta in dispensa secondo il
+   blocco precedente). **È questo che tiene in piedi la coerenza di magazzino.**
+   Fuori e liberi non si generano: si mandano come contorno informativo
+   (`fuori_e_liberi`), perché dicono chi non c'è.
+3. **Il riepilogo.** Mostra le righe **esatte** che finiranno in `plan_meals`
+   (`righeDaSalvare()`), i totali di Ciprian giorno per giorno riusando
+   `totaleGiorno()`, cosa manca e cosa resta. Solo qui si scrive nel database.
+
+Salvataggio: `delete` dei giorni della passata + `insert` delle righe nuove. I mancanti
+finiscono nella lista della spesa esistente (`aggiungiAllaSpesa(nomi, silenzioso)`) e i
+pasti che li aspettano hanno `dipende_da_spesa = true`. Il campo data ha `min = oggi`:
+**il passato non si riscrive mai.**
+
+⚠️ **Il tetto: una settimana costa 3 tacche, non 1.** Il brief chiedeva che contasse
+come una sola generazione, ma i blocchi sono tre chiamate vere: contarne una lascerebbe
+le altre due senza freno, e il freno è l'unica cosa fra l'indirizzo pubblico e la carta
+di credito. Con 30/giorno restano 10 settimane al giorno e **il tetto di spesa non si
+muove** (~60 centesimi al giorno nel caso peggiore). Sul primo blocco la function
+controlla che il margine basti per tutti e tre: meglio fermarsi prima che a metà
+settimana (`generazioniUsateOggi()`).
+
+⚠️ **La Edge Function è stata riorganizzata**: le letture dal database, la chiamata ad
+Anthropic, il lettore del JSON incrementale e il flusso NDJSON sono ora scritti **una
+volta sola** e usati da tutti e due i mestieri (proposte del giorno e piano
+settimanale). Il file va **reincollato su Supabase**: il ramo `modo:'settimana'` non
+esiste nella versione online vecchia. Lato client vale lo stesso: `flussoNdjson()` è
+condivisa, `chiamaGeneratore()` ci sta sopra.
 
 ### ⚠️ Ogni azione che salva deve dare un esito visibile
 
@@ -305,16 +345,22 @@ pannello in fondo. Sembrava che il pulsante non funzionasse.
 
 ### 🔖 DOVE SIAMO — leggere per prima cosa in una sessione nuova
 
-**Aggiornato: 12/08/2026, fine sessione.**
+**Aggiornato: 13/08/2026.**
 
 #### ✅ Fatto e online
 
-v4 (blocchi 1-3), v6 (blocchi 1-3), **v7 completa** e **v5 Blocco 1** (il calendario:
-striscia dei 7 giorni, tre stati, totali di solo Ciprian, dolce e scongelamenti).
+v4 (blocchi 1-3), v6 (blocchi 1-3), **v7 completa**, **v5 Blocco 1** (il calendario:
+collaudato dall'iPhone il 13/08 — tre stati distinguibili, dolce nel suo riquadro,
+numeri solo sui pasti di Ciprian, promemoria freezer sul giorno giusto) e
+**v5 Blocco 2** («Genera la settimana»).
 
-⚠️ **In sospeso da installare**: `tabelle-piano-v5.sql` va eseguito su Supabase, altrimenti
-la tab Piano dice «Il calendario non è ancora installato». `prova-piano-v5.sql` è
-facoltativo e serve solo a collaudare. Collaudo: `COLLAUDO-V5.md`.
+`tabelle-piano-v5.sql` è stato eseguito e la settimana di prova è stata rimossa;
+`prova-piano-v5.sql` resta nella cartella per eventuali collaudi futuri.
+
+⚠️ **In sospeso, un passaggio manuale**: `edge-function-cosa-cucino.ts` va **reincollato
+su Supabase** (Edge Functions → cosa-cucino → Deploy). Senza quello, «Genera la
+settimana» risponde come se il ramo nuovo non esistesse. Collaudo del Blocco 2:
+`COLLAUDO-V5-BLOCCO2.md`.
 
 Per il resto tutti i file SQL sono stati eseguiti, e la Edge Function online è quella
 col campo «che voglia hai?».
@@ -326,19 +372,16 @@ col campo «che voglia hai?».
 - **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.
 - **Stile: la passata ricca è approvata** nella versione attualmente online.
 
-#### ▶️ PROSSIMO PASSO — v5 Blocco 2
+#### ▶️ PROSSIMO PASSO — v5 Blocco 3, ma solo dopo il collaudo del Blocco 2
 
 Brief: `PROMPT-V5-PIANO.md` (sostituisce il vecchio `…-SETTIMANALE.md`, eliminato).
 Si va **un blocco alla volta con push separati, e ci si ferma dopo il Blocco 3.**
 
-Il Blocco 2 è **«Genera la settimana»**: prima la passata dei 7 giorni a bottoni
-(A casa / Fuori / Libero · chi mangia · nota), poi la generazione a blocchi di 2-3
-giorni in streaming, che **conta come una sola generazione** sul tetto giornaliero.
-I nove vincoli in ordine di priorità stanno nel brief: il primo, la coerenza di
-magazzino, è quello che giustifica tutti gli altri.
-
-Il tasto c'è già nello stato vuoto della tab Piano (`#pnGenera`) e per ora dà solo un
-messaggio: va collegato lì.
+Il Blocco 3 è **la verifica del giorno**: alla prima apertura, «Ieri hai mangiato
+questo?» con i pasti previsti e tre risposte per pasto (sì · no, altro · saltato), più
+la correzione di chi c'era davvero. Il «sì» deve **riusare la meccanica esistente di
+"Ho cucinato questo"** (`apriCucinato`, `calcolaRiga`, `confermaCucinato`): zero logica
+duplicata. Nessuna streak, nessun punteggio, nessun rimprovero.
 
 `plan_days` resta dov'è, vuota e inutilizzata: non si cancella mentre se ne introduce
 un'altra. Il frontend non la legge più.
@@ -368,12 +411,13 @@ un'altra. Il frontend non la legge più.
 
 ## Operazione ricorrente: il piano della settimana
 
-Comando: `/piano-settimana` (vedi `.claude/commands/piano-settimana.md`).
-In sintesi: parsing del testo incollato → riepilogo → conferma → file SQL di `upsert`.
-**I giorni vecchi non si cancellano mai**: restano come storico.
+La strada normale è ora **«Genera la settimana» dentro l'app** (v5 Blocco 2): la
+domenica si fa la passata dei sette giorni e si genera. Non serve più passare da qui.
 
-Dalla v5 il comando **scrive in `plan_meals`**, una riga per pasto, ed è diventato un
-**ripiego**: la strada normale sarà «Genera la settimana» dentro l'app (Blocco 2).
+Il comando `/piano-settimana` (vedi `.claude/commands/piano-settimana.md`) resta come
+**ripiego**, per quando un piano arriva scritto in chat: parsing del testo incollato →
+riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pasto.
+**I giorni vecchi non si cancellano mai**: restano come storico.
 
 ## File
 
@@ -386,7 +430,7 @@ Dalla v5 il comando **scrive in `plan_meals`**, una riga per pasto, ed è divent
 | `edge-function-cosa-cucino.ts` | il codice della Edge Function. **Non viene servito da Pages**: sta nel repo solo come copia di riferimento, va incollato nel pannello Supabase |
 | `limite-generatore.sql` | tabella e funzione del tetto giornaliero di generazioni |
 | `tabelle-piano-v5.sql` | la tabella `plan_meals` del calendario, coi campi commentati |
-| `prova-piano-v5.sql` | una settimana finta per collaudare il calendario prima del Blocco 2 |
+| `prova-piano-v5.sql` | una settimana finta per collaudare il calendario a mano |
 | `COLLAUDO-V5.md` | la checklist di collaudo del calendario. Come tutti i `COLLAUDO-*`, resta **solo sul computer**: è in `.gitignore` |
 | `seed-dati-iniziali.sql` | inventario e ricette di partenza (11/08) |
 | `README-OPERATIVO.md` | la routine per l'utente |
