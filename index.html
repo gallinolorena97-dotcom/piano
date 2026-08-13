@@ -602,6 +602,42 @@ select.field{appearance:none;-webkit-appearance:none;
 @keyframes pulsa{0%,100%{opacity:1}50%{opacity:.45}}
 
 /* ------------------------------------------------------------
+   8-sexies · V5 · BLOCCO 4 — a mano e rigenerazione
+   ------------------------------------------------------------ */
+/* il tasto ↻ nella fascia del giorno: c'è ma non grida */
+.gg-azione{
+  background:var(--surface);border:1px solid var(--linea-forte);border-radius:99px;
+  padding:4px 11px;font-size:12px;font-weight:600;color:var(--viola-testo);
+  white-space:nowrap;
+}
+.gg-azione:hover{border-color:var(--viola);background:var(--lavanda-soft)}
+/* un pasto scritto da una persona lo dice: non è una bozza del generatore */
+.badge-amano{
+  font-size:10px;font-weight:700;letter-spacing:.7px;padding:3px 8px;border-radius:99px;
+  background:var(--menta-soft);color:#1F6B4F;border:1px solid var(--menta);
+}
+.pasto-top .icon-btn{margin-left:auto;flex:0 0 32px;width:32px;height:32px;font-size:16px}
+.pasto.vuoto-pasto .pasto-top{margin-bottom:2px}
+
+/* il pannello «scrivo io il piatto» */
+.mano-box{
+  margin-top:12px;padding:14px;border-top:2px solid var(--viola);
+  background:var(--surface-2);border-radius:var(--r-m);
+}
+.mano-box.senza-numeri [data-numeri]{display:none}
+.mano-riga{display:flex;gap:7px;align-items:center;margin-top:6px}
+.mano-riga .field{flex:1;min-width:0;margin-top:0}
+.mano-riga .field[data-ing-qta]{flex:0 0 92px}
+.mano-piu{
+  background:none;border:none;padding:8px 0 2px;
+  color:var(--viola-testo);font-size:13px;font-weight:600;
+}
+/* gli avvisi in cima alla tab Piano */
+.avviso-scorte b,.avviso-corto b{color:inherit}
+.avviso-lista{margin:7px 0 0;padding-left:19px;font-size:13.5px;line-height:1.5}
+.avviso-lista li{margin-bottom:2px}
+
+/* ------------------------------------------------------------
    8-quinquies · V5 · LA VERIFICA DEL GIORNO (Blocco 3)
    Sta in cima alla tab Piano, sopra la striscia. Il fondo è menta
    perche' e' una domanda cordiale, non un avviso: l'ambra e il
@@ -1243,6 +1279,7 @@ const S = {
   tab:'piano',
   giornoSel:null,        // il giorno aperto nel calendario
   pianoErr:null,         // se la tabella plan_meals non c'è ancora
+  avvisoVia:false,       // «non ora» sull'avviso delle scorte, fino a ricaricare
 };
 try { S.io = localStorage.getItem('piano-io') || S.io; } catch { /* modalità privata */ }
 
@@ -1307,6 +1344,9 @@ function spiegaErrore(e){
     return 'Il database non accetta le AGGIUNTE: manca un permesso. Esegui riparazione-permessi.sql su Supabase.';
   if (/row-level security/i.test(m))
     return 'Il database non accetta le modifiche: manca un permesso. Esegui riparazione-permessi.sql su Supabase.';
+  // una COLONNA che manca è una migrazione non eseguita, non una tabella
+  if (/column .*a_mano|a_mano.* column/i.test(m))
+    return 'Manca una colonna nel database. Esegui tabelle-piano-v5-blocco4.sql su Supabase e riprova.';
   if (/Could not find the table|schema cache|does not exist/i.test(m)){
     const t = (m.match(/public\.([a-z_]+)/i) || [])[1];
     const quale = { recipe_votes:'tabelle-voti-v7.sql', profiles:'tabelle-profili-v6.sql',
@@ -1574,6 +1614,7 @@ function renderPlan(){
 
   box.innerHTML =
     `<div id="pnVerifica"></div>
+     <div id="pnAvvisi">${avvisoScorteHtml()}${pianoCortoHtml()}</div>
      <div class="settimana" id="pnStriscia" aria-label="I giorni del piano">
        ${giorni.map(chipGiorno).join('')}
      </div>
@@ -1836,6 +1877,8 @@ function cardGiorno(iso){
       <span class="day-label">${esc(labelData(iso))}</span>
       ${isToday ? '<span class="badge-oggi">OGGI</span>' : ''}
       ${etichetta}
+      ${iso > oggiISO() ? `<button class="gg-azione" data-rigenera
+          aria-label="Rigenera ${esc(labelData(iso))}">↻ Rigenera</button>` : ''}
     </div>
     <div class="day-rows">
       ${st === 'passato' ? corpoPassato(iso, righe) : corpoPiano(iso, righe)}
@@ -1850,8 +1893,15 @@ function corpoPiano(iso, righe){
   const pezzi = promemoriaDi(iso);
   for (const quale of ['pranzo','cena']){
     const r = righe.find(x => x.pasto === quale);
-    pezzi.push(r ? bloccoPasto(r) : `<div class="pasto">
-      <div class="pasto-top"><span class="pasto-quale">${quale}</span></div>
+    // anche un pasto che non c'è si può scrivere a mano: è il modo per
+    // riempire i buchi che il generatore ogni tanto lascia
+    pezzi.push(r ? bloccoPasto({ ...r, day:iso }) : `<div class="pasto vuoto-pasto">
+      <div class="pasto-top">
+        <span class="pasto-quale">${quale}</span>
+        ${modificabile(iso)
+          ? `<button class="icon-btn modifica" data-modifica="${quale}"
+               aria-label="Scrivi a mano ${quale}">✎</button>` : ''}
+      </div>
       <div class="pasto-niente">— niente in programma —</div>
     </div>`);
   }
@@ -1875,11 +1925,19 @@ const riquadro = (stile, eti, testo) =>
 
 const frecciaAvanzo = (t) => /^→/.test(String(t).trim()) ? t : `→ ${t}`;
 
+/* Si può modificare a mano solo oggi e i giorni futuri: sul passato
+   c'è il diario, e quello racconta cos'è successo davvero. */
+const modificabile = (iso) => iso >= oggiISO();
+
 function bloccoPasto(r){
   const testa = `<div class="pasto-top">
       <span class="pasto-quale">${esc(r.pasto)}</span>
       <span class="pasto-chi">${esc(nomeChi(r.chi))}</span>
+      ${r.a_mano ? '<span class="badge-amano">SCRITTO DA TE</span>' : ''}
       ${r.tempo ? `<span class="pasto-tempo">${esc(String(r.tempo))} min</span>` : ''}
+      ${modificabile(r.day)
+        ? `<button class="icon-btn modifica" data-modifica="${esc(r.pasto)}"
+             aria-label="Modifica a mano ${esc(r.pasto)}">✎</button>` : ''}
     </div>`;
 
   // Fuori e Libero non hanno un piatto da cucinare, ma restano segnati.
@@ -2146,6 +2204,297 @@ document.addEventListener('keydown', (ev) => {
 });
 
 /* ============================================================
+   TAB 1-quater — V5 · Blocco 4
+   MODIFICA A MANO · RIGENERAZIONE DELLA CODA
+
+   Tre cose che vanno insieme:
+   1. scrivo io il piatto, senza passare dal generatore;
+   2. l'app si accorge che le bozze non tornano più e propone di
+      rifare la coda;
+   3. si rigenera un giorno solo, o da un giorno in avanti, tenendo
+      tutto il resto.
+
+   ⚠️ Un pasto scritto a mano è sempre CONFERMATO e non si rigenera
+   senza chiedere: nella passata parte su «Lascia».
+   ⚠️ Si rigenerano solo i giorni FUTURI. Mai oggi, mai il passato.
+   ============================================================ */
+
+/** Quanti giorni ci sono fra due date (b - a). */
+function giorniFra(a, b){
+  let n = 0, d = a;
+  while (d < b && n < 60){ d = addGiorni(d, 1); n++; }
+  return n;
+}
+
+/* ---------- 1 · SCRIVO IO IL PIATTO ---------- */
+
+function apriModificaPasto(iso, quale, dentro){
+  if (dentro.querySelector('.mano-box')) return;
+  const r = pastiDi(iso).find(x => x.pasto === quale) || null;
+  const ing = (r && Array.isArray(r.ingredienti) ? r.ingredienti : []).map(i => ({ ...i }));
+  if (!ing.length) ing.push({ nome:'', qta:'' });
+  const chi0 = r?.chi || 'entrambi';
+
+  const box = document.createElement('div');
+  box.className = 'mano-box' + (chi0 === 'lorena' ? ' senza-numeri' : '');
+  box.innerHTML = `
+    <div class="q-label" style="margin-top:0">Scrivo io ${esc(quale)} di ${esc(labelData(iso))}</div>
+
+    <input class="field" data-piatto autocomplete="off"
+           placeholder="Cosa si mangia" value="${esc(r?.piatto || '')}">
+
+    <div class="q-label">Chi mangia</div>
+    <div class="chips mini" data-campo="chi">
+      ${PS_CHI.map(c => `<button data-chi="${c}" aria-pressed="${chi0 === c}"
+        >${esc(nomeChiBreve(c))}</button>`).join('')}
+    </div>
+
+    <div class="q-label">Ingredienti <span>— facoltativi</span></div>
+    <div class="mano-ing">${ing.map(rigaIngrediente).join('')}</div>
+    <button class="mano-piu" data-piu>+ aggiungi un ingrediente</button>
+
+    <div data-numeri>
+      <div class="q-label">Per ${esc(nomeDiChi('ciprian'))} <span>— facoltative</span></div>
+      <div class="form-row" style="margin-top:0">
+        <input class="field" data-prot type="number" inputmode="numeric"
+               placeholder="proteine g" value="${r?.prot ?? ''}">
+        <input class="field" data-kcal type="number" inputmode="numeric"
+               placeholder="kcal" value="${r?.kcal ?? ''}">
+      </div>
+      <p class="hint">Se le lasci vuote non invento niente: il totale del giorno
+        si dichiara <b>parziale</b>.</p>
+    </div>
+
+    <div class="q-label">Tocco dolce e nota <span>— facoltativi</span></div>
+    <input class="field" data-dolce autocomplete="off"
+           placeholder="Il dolce di ${esc(nomeDiChi('lorena'))}" value="${esc(r?.dolce || '')}">
+    <input class="field mini" data-nota autocomplete="off"
+           placeholder="Una nota per questo pasto" value="${esc(r?.nota || '')}">
+
+    <div class="form-row">
+      <button class="btn" data-salva style="flex:1">Salva questo pasto</button>
+      <button class="btn ghost" data-annulla>Annulla</button>
+    </div>`;
+  dentro.appendChild(box);
+  box.querySelector('[data-piatto]').focus();
+
+  box.addEventListener('click', (ev) => {
+    const chi = ev.target.closest('.chips[data-campo="chi"] button');
+    if (chi){
+      [...chi.parentElement.children].forEach(b =>
+        b.setAttribute('aria-pressed', String(b === chi)));
+      // i numeri sono di Ciprian: in un pasto di sola Lorena non esistono
+      box.classList.toggle('senza-numeri', chi.dataset.chi === 'lorena');
+      return;
+    }
+    if (ev.target.closest('[data-piu]')){
+      box.querySelector('.mano-ing').insertAdjacentHTML('beforeend', rigaIngrediente({ nome:'', qta:'' }));
+      return;
+    }
+    const via = ev.target.closest('[data-togli-ing]');
+    if (via){ via.closest('.mano-riga').remove(); return; }
+    if (ev.target.closest('[data-annulla]')){ box.remove(); return; }
+    if (ev.target.closest('[data-salva]')) salvaPastoAMano(iso, quale, box);
+  });
+}
+
+const rigaIngrediente = (i) => `<div class="mano-riga">
+  <input class="field mini" data-ing-nome placeholder="ingrediente"
+         value="${esc(i.nome || '')}" autocomplete="off">
+  <input class="field mini" data-ing-qta placeholder="quanto"
+         value="${esc(i.qta || '')}" autocomplete="off">
+  <button class="icon-btn" data-togli-ing aria-label="Togli">×</button>
+</div>`;
+
+async function salvaPastoAMano(iso, quale, box){
+  const piatto = box.querySelector('[data-piatto]').value.trim();
+  if (!piatto){ toast('Scrivi che cosa si mangia.'); box.querySelector('[data-piatto]').focus(); return; }
+
+  const chi = box.querySelector('.chips[data-campo="chi"] button[aria-pressed="true"]')?.dataset.chi
+            || 'entrambi';
+  const suoi = chi !== 'lorena';
+  const num = (sel) => {
+    const v = box.querySelector(sel).value.trim();
+    if (!suoi || v === '') return null;              // mai inventare un numero
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+  };
+
+  const ingredienti = [...box.querySelectorAll('.mano-riga')].map(riga => ({
+    nome: riga.querySelector('[data-ing-nome]').value.trim(),
+    qta:  riga.querySelector('[data-ing-qta]').value.trim(),
+    // scrivendo a mano si tiene una porzione sola: se un giorno servirà
+    // distinguere le due persone, si aggiunge qui il campo "per"
+    per: 'tutti',
+  })).filter(i => i.nome);
+
+  const riga = {
+    day: iso, pasto: quale, modo:'casa', chi,
+    stato:'confermato',        // ⚠️ un pasto scritto a mano non è mai una bozza
+    a_mano: true,
+    piatto,
+    perche: null,
+    ingredienti,
+    dolce: box.querySelector('[data-dolce]').value.trim() || null,
+    tempo: null,
+    prot: num('[data-prot]'),
+    kcal: num('[data-kcal]'),
+    scongelamento: null, scongelare_il: null, avanzo_per: null,
+    dipende_da_spesa: false,
+    nota: box.querySelector('[data-nota]').value.trim() || null,
+  };
+
+  box.querySelectorAll('button, input').forEach(x => x.disabled = true);
+  try{
+    const { error } = await sb.from('plan_meals')
+      .upsert(riga, { onConflict:'day,pasto' });
+    if (error) throw error;
+
+    await loadAll();
+    S.giornoSel = iso;
+    renderPlan();
+
+    // Regola 2: quello che hai scritto può far saltare i conti dei giorni
+    // dopo. Non si rigenera niente da soli: si avvisa e si propone.
+    const guai = scorteMancanti();
+    toast(guai.length
+      ? `Salvato: ${piatto}. Attenzione: da qui in avanti qualcosa non torna più — guarda l’avviso in cima.`
+      : `Salvato: ${piatto}.`);
+  }catch(e){
+    esitoErrore(e);
+    box.querySelectorAll('button, input').forEach(x => x.disabled = false);
+  }
+}
+
+/* ---------- 2 · LE BOZZE NON TORNANO PIÙ ---------- */
+
+/**
+ * Che cosa il piano dà per scontato di avere e non c'è (più).
+ *
+ * ⚠️ Prudenza come in «Ho cucinato questo»: si allarma solo quando il
+ * conto è sicuro. Quantità non numeriche, unità diverse, voci segnate
+ * «?» non producono avvisi — meglio tacere che gridare al lupo.
+ */
+function scorteMancanti(){
+  const futuri = S.piano.filter(r => r.day > oggiISO() && r.modo === 'casa');
+  const serve = new Map();
+
+  for (const r of futuri){
+    for (const i of (Array.isArray(r.ingredienti) ? r.ingredienti : [])){
+      const nome = String(i.nome || '').trim();
+      if (!nome) continue;
+      const voce = cercaInDispensa(nome);
+      const k = voce ? 'v:' + voce.id : 'x:' + senzaAccenti(nome);
+      if (!serve.has(k)) serve.set(k, { voce, nome, giorni:[], n:0, u:null, sicuro:true });
+      const s = serve.get(k);
+      if (!s.giorni.includes(r.day)) s.giorni.push(r.day);
+      const q = leggiQta(i.qta);
+      if (!q){ s.sicuro = false; continue; }
+      if (s.u === null) s.u = q.u;
+      if (s.u !== q.u){ s.sicuro = false; continue; }
+      s.n += q.n;
+    }
+  }
+
+  const guai = [];
+  for (const s of serve.values()){
+    if (!s.voce){ guai.push({ ...s, tipo:'assente' }); continue; }
+    if (!s.sicuro) continue;
+    const qty = String(s.voce.qty);
+    if (qty.includes('?')) continue;
+    const hai = leggiQta(qty);
+    if (!hai || hai.u !== s.u) continue;
+    if (s.n > hai.n)
+      guai.push({ ...s, tipo:'poco', serve:scriviQta(s.n, s.u), hai:scriviQta(hai.n, hai.u) });
+  }
+  guai.forEach(g => g.giorni.sort());
+  return guai.sort((a,b) => a.giorni[0].localeCompare(b.giorni[0]));
+}
+
+function avvisoScorteHtml(){
+  if (S.avvisoVia) return '';
+  const guai = scorteMancanti();
+  if (!guai.length) return '';
+
+  const dal = guai[0].giorni[0];
+  const ultimo = S.piano.map(r => r.day).sort().slice(-1)[0];
+
+  return `<div class="ps-avviso avviso-scorte" data-dal="${esc(dal)}"
+       data-quanti="${giorniFra(dal, ultimo) + 1}">
+    <b>Da ${esc(quandoRelativo(dal))} in poi il piano conta su cose che non hai più.</b>
+    <ul class="avviso-lista">
+      ${guai.slice(0, 6).map(g => `<li>${esc(g.nome)} — ${g.tipo === 'assente'
+        ? 'non è in dispensa'
+        : `servono ${esc(g.serve)}, ne hai ${esc(g.hai)}`}</li>`).join('')}
+      ${guai.length > 6 ? `<li>e altre ${guai.length - 6}</li>` : ''}
+    </ul>
+    <div class="form-row">
+      <button class="btn small" data-rigenera-coda style="flex:1">Rigenera da ${esc(quandoRelativo(dal))}</button>
+      <button class="btn small ghost" data-avviso-via>Non ora</button>
+    </div>
+  </div>`;
+}
+
+/* ---------- 3 · IL PIANO È CORTO ---------- */
+function pianoCortoHtml(){
+  if (!S.piano.length) return '';
+  const ultimo = S.piano.map(r => r.day).sort().slice(-1)[0];
+  const voluto = addGiorni(oggiISO(), 6);
+  if (ultimo >= voluto) return '';
+
+  const dal = ultimo < oggiISO() ? oggiISO() : addGiorni(ultimo, 1);
+  const quanti = giorniFra(dal, voluto) + 1;
+  if (quanti < 1) return '';
+
+  return `<div class="ps-avviso avviso-corto" data-dal="${esc(dal)}" data-quanti="${quanti}">
+    Il piano arriva fino a <b>${esc(labelData(ultimo))}</b>: mancano
+    ${quanti} ${quanti === 1 ? 'giorno' : 'giorni'} alla settimana piena.
+    <div class="form-row">
+      <button class="btn small" data-allunga style="flex:1">Allunga il piano</button>
+    </div>
+  </div>`;
+}
+
+/* ---------- i tocchi del Blocco 4 ---------- */
+$('#planBody').addEventListener('click', (ev) => {
+  const card = ev.target.closest('.day');
+
+  const modifica = ev.target.closest('[data-modifica]');
+  if (modifica && card){
+    const quale = modifica.dataset.modifica;
+    apriModificaPasto(card.dataset.day, quale, modifica.closest('.pasto') || card);
+    return;
+  }
+
+  if (ev.target.closest('[data-rigenera]') && card){
+    apriPassata({ dal:card.dataset.day, quanti:1, daPiano:true,
+                  titolo:`Rigenero solo ${labelData(card.dataset.day)}` });
+    return;
+  }
+
+  const coda = ev.target.closest('[data-rigenera-coda]');
+  if (coda){
+    const a = coda.closest('.avviso-scorte');
+    apriPassata({ dal:a.dataset.dal, quanti:Number(a.dataset.quanti) || 7, daPiano:true,
+                  titolo:'Rifaccio il piano da qui in avanti' });
+    return;
+  }
+
+  if (ev.target.closest('[data-avviso-via]')){
+    S.avvisoVia = true;       // torna alla prossima apertura: il problema resta
+    renderPlan();
+    return;
+  }
+
+  const allunga = ev.target.closest('[data-allunga]');
+  if (allunga){
+    const a = allunga.closest('.avviso-corto');
+    apriPassata({ dal:a.dataset.dal, quanti:Number(a.dataset.quanti) || 7,
+                  titolo:'Allungo il piano' });
+  }
+});
+
+/* ============================================================
    TAB 1-bis — V5 · Blocco 2 · GENERA LA SETTIMANA
 
    Tre schermate, una dietro l'altra, al posto del calendario:
@@ -2166,6 +2515,9 @@ const PS = {
   aperto:false,
   fase:'passata',        // 'passata' · 'generazione' · 'riepilogo'
   dal:null,
+  quanti:7,              // quanti giorni copre questa passata
+  daPiano:false,         // sto rigenerando qualcosa che esiste già
+  titolo:null,           // che cosa c'è scritto in cima, se non la settimana
   giorni:[],             // [{ day, pranzo:{modo,chi,nota}, cena:{…} }]
   pasti:[],              // i pasti scritti dal generatore
   resta:'',              // cosa rimarra' in dispensa, a parole
@@ -2175,7 +2527,13 @@ const PS = {
   inCorso:false,
 };
 
-const PS_MODI = [['casa','A casa'],['fuori','Fuori'],['libero','Libero']];
+/* Il quarto modo, "lascia", vuol dire NON TOCCARE questo pasto:
+   - in una settimana nuova = «questo giorno non lo decido adesso»,
+     e nel calendario non ci finisce niente;
+   - in una rigenerazione = «tieni quello che c'è già», ed è così che
+     un pasto scritto a mano non viene rifatto senza che tu lo chieda.
+   Un modo solo per due bisogni che sono la stessa cosa vista da due lati. */
+const PS_MODI = [['casa','A casa'],['fuori','Fuori'],['libero','Libero'],['lascia','Lascia']];
 const PS_CHI  = ['ciprian','entrambi','lorena'];
 
 /* "Ciprian e Lorena" non ci sta in un bottone da un terzo di schermo:
@@ -2200,19 +2558,43 @@ const PS_PASTI = ['pranzo','cena'];
    stessa regola che il calendario applica gia' quando legge. */
 const statoPerGiorno = (iso) => iso <= addGiorni(oggiISO(), 1) ? 'confermato' : 'bozza';
 
-function nuovaPassata(dal){
-  return Array.from({ length:7 }, (_, i) => ({
-    day: addGiorni(dal, i),
-    pranzo:{ modo:'casa', chi:'entrambi', nota:'' },
-    cena:  { modo:'casa', chi:'entrambi', nota:'' },
-  }));
+/**
+ * Costruisce la passata. Se "daPiano" è vero, ogni pasto parte da quello
+ * che c'è già nel calendario invece che dai valori di partenza: serve alla
+ * rigenerazione, dove le scelte le hai già fatte una volta.
+ *
+ * ⚠️ Un pasto scritto a mano parte su «lascia»: non si rigenera senza che
+ * tu lo chieda. Se lo vuoi rifare, basta che tocchi «A casa».
+ */
+function costruisciPassata(dal, quanti, daPiano){
+  return Array.from({ length:quanti }, (_, i) => {
+    const day = addGiorni(dal, i);
+    const g = { day };
+    for (const q of PS_PASTI){
+      const r = daPiano ? pastiDi(day).find(x => x.pasto === q) : null;
+      g[q] = r
+        ? { modo: r.a_mano ? 'lascia' : r.modo, chi: r.chi, nota: r.nota || '' }
+        : { modo: daPiano ? 'lascia' : 'casa', chi:'entrambi', nota:'' };
+    }
+    return g;
+  });
 }
 
-function apriPassata(){
+/**
+ * Apre la passata. Senza argomenti fa la settimana intera da oggi.
+ *   dal      da che giorno partire
+ *   quanti   quanti giorni
+ *   daPiano  parti da quello che c'è già nel calendario
+ *   titolo   che cosa c'è scritto in cima
+ */
+function apriPassata(opz = {}){
   PS.aperto = true;
   PS.fase = 'passata';
-  PS.dal = oggiISO();
-  PS.giorni = nuovaPassata(PS.dal);
+  PS.dal = opz.dal || oggiISO();
+  PS.quanti = Math.max(1, Math.min(14, opz.quanti || 7));
+  PS.daPiano = !!opz.daPiano;
+  PS.titolo = opz.titolo || null;
+  PS.giorni = costruisciPassata(PS.dal, PS.quanti, PS.daPiano);
   PS.pasti = []; PS.resta = ''; PS.errore = null; PS.stato = '';
   PS.blocco = 0; PS.blocchiTot = 1;
   $('#planBody').hidden = true;
@@ -2243,8 +2625,12 @@ function vistaPassata(){
   const conti = contaPassata();
   return `<div class="panel decorato">
       <span class="stelline" style="right:14px;bottom:12px" aria-hidden="true"></span>
-      <div class="q-label" style="margin-top:0">Da quale giorno parto</div>
+      ${PS.titolo ? `<div class="q-label" style="margin-top:0">${esc(PS.titolo)}</div>` : ''}
+      <div class="q-label"${PS.titolo ? '' : ' style="margin-top:0"'}>Da quale giorno parto</div>
       <input class="field" type="date" id="psDal" value="${esc(PS.dal)}" min="${esc(oggiISO())}">
+      ${PS.daPiano ? `<p class="hint" style="margin-top:7px">I pasti partono da come sono
+        adesso nel calendario. Quelli che hai scritto tu sono su <b>Lascia</b>: non li
+        tocco, a meno che non me lo dica tu.</p>` : ''}
       <div class="q-label">Di solito a tavola ci sono</div>
       <div class="chips" id="psTutti">
         ${PS_CHI.map(c => `<button data-tutti="${c}">${esc(nomeChi(c))}</button>`).join('')}
@@ -2271,17 +2657,16 @@ function vistaPassata(){
 }
 
 function contaPassata(){
-  let casa = 0, fuori = 0, libero = 0;
-  for (const g of PS.giorni) for (const q of PS_PASTI){
-    if (g[q].modo === 'casa') casa++; else if (g[q].modo === 'fuori') fuori++; else libero++;
-  }
-  return { casa, fuori, libero };
+  const c = { casa:0, fuori:0, libero:0, lascia:0 };
+  for (const g of PS.giorni) for (const q of PS_PASTI) c[g[q].modo]++;
+  return c;
 }
 
-function riassuntoPassata({ casa, fuori, libero }){
+function riassuntoPassata({ casa, fuori, libero, lascia }){
   const pezzi = [`${casa} ${casa === 1 ? 'pasto da cucinare' : 'pasti da cucinare'}`];
   if (fuori)  pezzi.push(`${fuori} fuori casa`);
   if (libero) pezzi.push(`${libero} ${libero === 1 ? 'libero' : 'liberi'}`);
+  if (lascia) pezzi.push(`${lascia} da non toccare`);
   return pezzi.join(' · ');
 }
 
@@ -2386,12 +2771,16 @@ function anteprimaPasto(m){
    la coppia "cena di oggi → avanzo a pranzo domani".
    Se anche cosi' un blocco viene troncato, l'app lo rifa' da sola un giorno
    alla volta: vedi rigeneraGiornoPerGiorno() qui sotto. */
-const PS_BLOCCHI = [[0,1],[2,3],[4,5],[6]];
+const blocchiDa = (n) => {
+  const out = [];
+  for (let i = 0; i < n; i += 2) out.push(i + 1 < n ? [i, i+1] : [i]);
+  return out;
+};
 
 async function avviaGenerazione(){
-  // Solo i pasti "a casa" si chiedono al generatore: fuori e liberi
-  // sono gia' decisi e vengono scritti dall'app.
-  const blocchi = PS_BLOCCHI
+  // Solo i pasti "a casa" si chiedono al generatore: fuori, liberi e
+  // "lascia" sono gia' decisi e non passano dal modello.
+  const blocchi = blocchiDa(PS.giorni.length)
     .map(idx => idx
       .map(i => PS.giorni[i])
       .map(g => ({
@@ -2545,9 +2934,15 @@ function compattaPasto(m){
 function fuoriELiberi(){
   const out = [];
   for (const g of PS.giorni) for (const q of PS_PASTI){
-    if (g[q].modo === 'casa') continue;
-    out.push(`${g.day} ${q}: ${g[q].modo === 'fuori' ? 'si mangia fuori' : 'pasto libero'}` +
-      ` (${chiDelPasto(g.day, q)})${g[q].nota ? ` — ${g[q].nota}` : ''}`);
+    const m = g[q].modo;
+    if (m === 'casa') continue;
+    // "lascia" non è un'informazione per il generatore: è un pasto che
+    // esiste già o che non è stato deciso. Si dice solo dov'è, se c'è.
+    const gia = m === 'lascia' ? pastiDi(g.day).find(x => x.pasto === q) : null;
+    out.push(m === 'lascia'
+      ? `${g.day} ${q}: già deciso${gia?.piatto ? ` — ${gia.piatto}` : ', non lo tocco'}`
+      : `${g.day} ${q}: ${m === 'fuori' ? 'si mangia fuori' : 'pasto libero'}` +
+        ` (${chiDelPasto(g.day, q)})${g[q].nota ? ` — ${g[q].nota}` : ''}`);
   }
   return out;
 }
@@ -2561,9 +2956,13 @@ function righeDaSalvare(){
   for (const g of PS.giorni){
     for (const quale of PS_PASTI){
       const p = g[quale];
+      // «Lascia» non produce nessuna riga: quello che c'è nel calendario
+      // resta dov'è, e dove non c'è niente non ci finisce niente
+      if (p.modo === 'lascia') continue;
+
       const base = {
         day:g.day, pasto:quale, modo:p.modo, chi:p.chi, stato:statoPerGiorno(g.day),
-        nota: p.nota.trim() || null,
+        nota: p.nota.trim() || null, a_mano:false,
       };
 
       if (p.modo !== 'casa'){
@@ -2617,16 +3016,32 @@ function vistaRiepilogo(){
   const attesi   = contaPassata().casa;
   const buchi    = attesi - cucinati;
 
-  // i giorni già pianificati che verranno sostituiti
-  const nostri = new Set(PS.giorni.map(g => g.day));
-  const sovrascritti = [...new Set(S.piano.filter(r => nostri.has(r.day)).map(r => r.day))];
+  // i giorni in cui un pasto già pianificato verrà davvero sostituito:
+  // quelli su «Lascia» non contano, perché non li tocchiamo
+  const sovrascritti = [...new Set(righe
+    .filter(r => S.piano.some(x => x.day === r.day && x.pasto === r.pasto))
+    .map(r => r.day))];
 
   const perGiorno = PS.giorni.map(g => {
     const sue = righe.filter(r => r.day === g.day);
-    const t   = totaleGiorno(sue, g.day);
+    // nel totale del giorno contano anche i pasti lasciati com'erano:
+    // altrimenti un giorno mezzo rigenerato sembrerebbe dimezzato
+    const tenuti = PS_PASTI
+      .filter(q => g[q].modo === 'lascia')
+      .map(q => pastiDi(g.day).find(x => x.pasto === q))
+      .filter(Boolean);
+    const t = totaleGiorno([...sue, ...tenuti], g.day);
     const testo = PS_PASTI.map(q => {
       const r = sue.find(x => x.pasto === q);
-      if (!r) return `${q}: —`;
+      if (!r){
+        // niente riga nuova: o è «Lascia», e allora resta quello che c'è già,
+        // oppure il generatore non ha scritto niente
+        if (g[q].modo === 'lascia'){
+          const gia = pastiDi(g.day).find(x => x.pasto === q);
+          return `${q}: ${gia ? `${gia.piatto || gia.modo} (invariato)` : 'non deciso'}`;
+        }
+        return `${q}: —`;
+      }
       if (r.modo !== 'casa') return `${q}: ${r.modo === 'fuori' ? 'fuori' : 'libero'}`;
       return `${q}: ${r.piatto || '—'}`;
     }).join(' · ');
@@ -2683,10 +3098,17 @@ async function salvaSettimana(btn){
   btn.disabled = true;
   const giorni = PS.giorni.map(g => g.day);
   try{
+    // ⚠️ Si cancella SOLO quello che si sta per riscrivere, pasto per pasto:
+    // i pasti marcati «Lascia» — fra cui quelli scritti a mano — non
+    // compaiono in righe[] e quindi sopravvivono.
     // I giorni della passata partono da oggi in avanti (il campo data non
     // scende sotto): lo storico passato non viene mai toccato.
-    const { error: e1 } = await sb.from('plan_meals').delete().in('day', giorni);
-    if (e1) throw e1;
+    for (const q of PS_PASTI){
+      const gg = righe.filter(r => r.pasto === q).map(r => r.day);
+      if (!gg.length) continue;
+      const { error } = await sb.from('plan_meals').delete().eq('pasto', q).in('day', gg);
+      if (error) throw error;
+    }
     const { error: e2 } = await sb.from('plan_meals').insert(righe);
     if (e2) throw e2;
 
@@ -2694,14 +3116,15 @@ async function salvaSettimana(btn){
     let messi = 0;
     try { messi = await aggiungiAllaSpesa(mancantiTutti(), true); } catch { /* lo diciamo sotto */ }
 
-    const quanti = giorni.length;
+    const quantiGiorni = new Set(righe.map(r => r.day)).size;
     PS.inCorso = false;
     chiudiPassata();
     await loadAll();
-    // il calendario si apre sul primo giorno del piano appena salvato
-    S.giornoSel = giorni[0];
+    // il calendario si apre sul primo giorno appena salvato
+    S.giornoSel = righe[0]?.day || giorni[0];
     renderPlan();
-    toast(`Piano salvato: ${quanti} giorni.` + (messi ? ` ${messi} cose messe nella lista della spesa.` : ''));
+    toast(`Piano salvato: ${quantiGiorni} ${quantiGiorni === 1 ? 'giorno' : 'giorni'}.` +
+          (messi ? ` ${messi} cose messe nella lista della spesa.` : ''));
   }catch(e){
     esitoErrore(e);
     btn.disabled = false;
@@ -2767,6 +3190,7 @@ $('#pnWizard').addEventListener('input', (ev) => {
     PS.dal = nuovo;
     PS.giorni = PS.giorni.map((g, i) => ({ ...g, day: addGiorni(nuovo, i) }));
     ridisegnaLista();
+    return;
   }
 });
 

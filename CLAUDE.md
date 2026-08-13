@@ -380,8 +380,12 @@ pannello in fondo. Sembrava che il pulsante non funzionasse.
 v4 (blocchi 1-3), v6 (blocchi 1-3), **v7 completa**, **v5 Blocco 1** (il calendario:
 collaudato dall'iPhone il 13/08 — tre stati distinguibili, dolce nel suo riquadro,
 numeri solo sui pasti di Ciprian, promemoria freezer sul giorno giusto),
-**v5 Blocco 2** («Genera la settimana», collaudato) e **v5 Blocco 3** (la verifica del
-giorno, **da collaudare**). In più: si cambia giorno strisciando col pollice.
+**v5 Blocco 2** («Genera la settimana», collaudato), **v5 Blocco 3** (la verifica del
+giorno) e **v5 Blocco 4** (modifica a mano, rigenerazione, «Lascia») — **questi due da
+collaudare**. In più: si cambia giorno strisciando col pollice.
+
+⚠️ **Da eseguire su Supabase**: `tabelle-piano-v5-blocco4.sql` (aggiunge
+`plan_meals.a_mano`). Finché non è eseguito, salvare un pasto a mano non funziona.
 
 `tabelle-piano-v5.sql` è stato eseguito e la settimana di prova è stata rimossa;
 `prova-piano-v5.sql` resta nella cartella per eventuali collaudi futuri.
@@ -478,6 +482,54 @@ stimati**. La precisione, quando servirà, arriverà dai campi facoltativi `kcal
 `prot_100g` sulle voci di dispensa (punto C del blocco «dopo i Blocchi 3 e 4»), non da
 un archivio esterno né da uno scanner.
 
+### La v5 — Blocco 4 (13/08/2026): a mano e rigenerazione
+
+⚠️ **Serve un passaggio sul database**: `tabelle-piano-v5-blocco4.sql` aggiunge la
+colonna `plan_meals.a_mano`. Senza, il salvataggio a mano fallisce e `spiegaErrore()`
+dice quale file eseguire.
+
+**Il quarto modo della passata: «Lascia».** Vuol dire *non toccare questo pasto*, e
+copre due bisogni che sono la stessa cosa vista da due lati:
+
+- in una settimana nuova = «questo giorno non lo decido adesso» → **non scrive niente**
+  nel calendario. È il buco trovato collaudando il Blocco 2, ora chiuso;
+- in una rigenerazione = «tieni quello che c'è già».
+
+Di conseguenza **il salvataggio non cancella più il giorno intero**: cancella pasto per
+pasto solo quello che sta per riscrivere (due `delete`, uno per pranzo e uno per cena,
+poi un `insert`). I pasti su «Lascia» non compaiono in `righeDaSalvare()` e quindi
+sopravvivono.
+
+**Modifica a mano.** Due ingressi, tutti e due chiesti: la matita **✎ su ogni pasto**
+(anche su un pasto che non c'è: è così che si riempiono i buchi) e il tocco sul pasto.
+Solo da **oggi in avanti** (`modificabile()`): sul passato c'è il diario.
+Il pannello scrive nome, chi mangia, ingredienti, proteine e kcal, dolce e nota.
+
+Le tre regole, tutte e tre nel codice:
+
+1. **proteine/kcal vuote → mai inventate.** `salvaPastoAMano()` scrive `null`, e
+   `totaleGiorno()` conta quel pasto in `senzaNumeri`: il totale del giorno si dichiara
+   **parziale**. I due campi spariscono del tutto sui pasti di sola Lorena.
+2. **Può rompere i giorni dopo.** Dopo il salvataggio gira `scorteMancanti()` e, se
+   qualcosa non torna, il messaggio rimanda all'avviso in cima — lo stesso della
+   rigenerazione. Non si rigenera mai niente da soli.
+3. **È `confermato` e `a_mano:true`, mai bozza.** Nella passata di una rigenerazione
+   parte su «Lascia»: non si rifà senza che tu lo chieda.
+
+**L'avviso delle scorte.** `scorteMancanti()` somma quello che i pasti futuri danno per
+scontato e lo confronta con la dispensa. ⚠️ **Prudenza uguale a «Ho cucinato questo»:
+si allarma solo quando il conto è sicuro.** Quantità non numeriche, unità diverse, voci
+segnate «?» non producono avvisi — meglio tacere che gridare al lupo.
+«Non ora» lo nasconde **fino a ricaricare** (`S.avvisoVia`, non `localStorage`): il
+problema è vero e non va dimenticato.
+
+**Rigenerazione.** Non c'è un motore nuovo: si **riapre la stessa passata**
+(`apriPassata({dal, quanti, daPiano, titolo})`) precompilata da `S.piano`, e i blocchi
+si calcolano su misura (`blocchiDa(n)`, sempre due giorni per volta). Tre ingressi:
+il tasto **↻ Rigenera** nella fascia del giorno (**solo giorni futuri, mai oggi**),
+**Rigenera da …** nell'avviso delle scorte, e **Allunga il piano** quando il piano
+copre meno di 7 giorni da oggi (`pianoCortoHtml()`).
+
 ### Scorrere fra i giorni (13/08/2026)
 
 Si cambia giorno **strisciando col pollice** sulla scheda (verso sinistra = avanti,
@@ -501,14 +553,18 @@ col campo «che voglia hai?».
 - **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.
 - **Stile: la passata ricca è approvata** nella versione attualmente online.
 
-#### ▶️ PROSSIMO PASSO — ⛔ il brief dice di FERMARSI QUI
+#### ▶️ PROSSIMO PASSO — collaudare, e poi il Blocco 5
 
-Brief: `PROMPT-V5-PIANO.md`. I blocchi 1, 2 e 3 sono scritti: **«FERMATI QUI. Collaudo
-insieme, poi si decide se proseguire.»** Non cominciare il Blocco 4 senza che l'utente
-lo chieda: prima si collauda la verifica del giorno su giorni veri.
+Brief: `PROMPT-V5-PIANO.md`. Il brief diceva di fermarsi dopo il Blocco 3; **l'utente ha
+deciso il 13/08 di proseguire col Blocco 4**, che è quindi scritto ma **non collaudato**.
 
-Quando si riparte, il Blocco 4 è **la rigenerazione della coda** — più la **modifica a
-mano**, che l'utente ha chiesto tre volte e va fatta per prima (memo qui sopra).
+Prima di andare avanti: `COLLAUDO-V5-BLOCCO3.md` e `COLLAUDO-V5-BLOCCO4.md`, ed eseguire
+`tabelle-piano-v5-blocco4.sql`.
+
+Poi il **Blocco 5 — spesa collegata al piano**: quando spunto un acquisto, proposta di
+aggiungerlo alla dispensa; e se un giorno «dipende dalla spesa» ora è coperto, l'avviso
+sparisce. Dopo ancora, i tre punti A/B/C qui sopra e il Blocco 6 (procedimento,
+sostituzioni, svuota-frigo).
 
 `plan_days` resta dov'è, vuota e inutilizzata: non si cancella mentre se ne introduce
 un'altra. Il frontend non la legge più.

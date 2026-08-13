@@ -75,6 +75,41 @@ nella tab Spesa.
 pollice** sulla scheda: verso sinistra vai avanti, verso destra torni indietro. Sul
 computer funzionano le frecce ← e →.
 
+### Scrivere un piatto a mano
+
+Su ogni pasto di **oggi o dei giorni futuri** c'è una **matita ✎**. La trovi anche sui
+pasti vuoti: è il modo per riempire i buchi che il generatore ogni tanto lascia.
+
+Scrivi il nome del piatto, chi mangia e — se vuoi — gli ingredienti, le proteine, le
+kcal, il dolce e una nota. **Proteine e kcal sono facoltative**: se le lasci vuote non
+invento niente, e il totale del giorno si dichiara **parziale**. Nei pasti di sola
+Lorena quei campi non compaiono proprio.
+
+Un pasto scritto da te porta il bollino **SCRITTO DA TE** e **non viene mai rigenerato
+senza chiedertelo**: se rifai il piano, parte su «Lascia» e resta com'è.
+
+### Quando il piano non torna più
+
+Se cambi la dispensa (o scrivi un piatto che consuma molto), i giorni futuri possono
+contare su cose che non hai più. L'app se ne accorge da sola e in cima alla tab Piano
+compare un riquadro ambra che dice **cosa manca, quanto serve e quanto ne hai**.
+
+Da lì puoi **rigenerare da quel giorno in avanti**. Oppure **↻ Rigenera** nella fascia
+di un singolo giorno, per rifare solo quello tenendo tutti gli altri.
+
+**Non viene mai rigenerato niente da solo**, e **oggi non si rigenera mai**: si cambia
+solo da domani in poi.
+
+Se il piano copre meno di sette giorni, in cima compare anche **Allunga il piano**.
+
+### «Lascia»: il quarto bottone della passata
+
+Quando fai la passata dei giorni, oltre a *A casa · Fuori · Libero* c'è **Lascia**, che
+vuol dire «questo pasto non toccarlo»:
+
+- su una settimana nuova, per i giorni che **non vuoi ancora decidere**: restano vuoti;
+- rifacendo il piano, per i pasti che **vuoi tenere come sono**.
+
 ### «Ieri hai mangiato questo?»
 
 Alla prima apertura, se ieri c'erano pasti in programma, in cima alla tab Piano trovi la
@@ -262,6 +297,8 @@ I messaggi sono già scritti in italiano semplice. I due più probabili:
 | `edge-function-cosa-cucino.ts` | il generatore di ricette, da incollare in Supabase | sì (ma non è l'app: è una copia di riferimento) |
 | `limite-generatore.sql` | il tetto giornaliero che protegge il credito | sì |
 | `tabelle-piano-v5.sql` | crea la tabella del calendario (`plan_meals`) | sì |
+| `tabelle-piano-v5-blocco4.sql` | aggiunge la colonna che ricorda i pasti scritti a mano | sì |
+| `pulizia-prova-piano.sql` | toglie la settimana finta di collaudo, se ricapita | sì |
 | `prova-piano-v5.sql` | una settimana finta, solo per guardare il calendario | sì |
 | `seed-dati-iniziali.sql` | carica inventario e ricette di partenza | sì |
 | `README-OPERATIVO.md` | questo foglio | sì |
