@@ -2387,6 +2387,19 @@ const PAROLE_VUOTE = new Set(['per','di','da','con','del','della','dei','delle',
  *   «grana» → «Base sempre in casa — grana · burro · …»
  *             (le voci-contenitore, che nominano le cose nella quantità)
  */
+/* In italiano il plurale cambia la vocale finale: uovo→uova, polpo→polpi,
+   mozzarella→mozzarelle, panino→panini. Invece di tagliare la parola —
+   che faceva incontrare pezzi di parole diverse — se ne provano le quattro
+   forme, ed è molto più preciso. */
+function formeDi(parola){
+  const forme = new Set([parola]);
+  if (parola.length >= 4 && /[aeio]$/.test(parola)){
+    const base = parola.slice(0, -1);
+    for (const v of ['a','e','i','o']) forme.add(base + v);
+  }
+  return [...forme];
+}
+
 function forseInCasa(nome){
   const parole = senzaAccenti(nome).split(/[^a-z0-9]+/)
     .filter(p => p.length >= 4 && !PAROLE_VUOTE.has(p));
@@ -2394,9 +2407,11 @@ function forseInCasa(nome){
 
   // la parola più lunga è la più specifica: è quella che deve trovarsi
   const chiave = parole.reduce((a,b) => b.length >= a.length ? b : a);
-  const radice = chiave.length >= 5 ? chiave.replace(/[aeio]$/, '') : chiave;
+  // deve cominciare una parola, non finire dentro un'altra:
+  // «riso» non si deve trovare dentro «grissini»
+  const cerca = new RegExp('(^|[^a-z])(' + formeDi(chiave).join('|') + ')');
 
-  return S.inv.some(v => senzaAccenti(`${v.name} ${v.qty}`).includes(radice));
+  return S.inv.some(v => cerca.test(senzaAccenti(`${v.name} ${v.qty}`)));
 }
 
 /** Già segnato sulla lista della spesa: lo sai già, non è una novità. */
