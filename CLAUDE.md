@@ -274,18 +274,23 @@ Il divieto di Lorena è **«pomodoro crudo»**, e il generatore lo trattava come
 «pomodoro»: lo evitava dappertutto. È un errore, non una cautela — in dispensa c'era un
 cuore di bue fermo a dimostrarlo.
 
+⚠️ **La famiglia però resta intera**: pomodoro, pomodorini, datterini, ciliegini,
+pachino, cuore di bue, passata, pelati. Il divieto si restringe sulla **forma**, non
+sulla famiglia — cambiare nome non è una scappatoia, e i datterini crudi in insalata
+sono pomodoro crudo tanto quanto una fetta di cuore di bue.
+
 | Forma | Con Lorena a tavola | Nei pasti di solo Ciprian |
 |---|---|---|
-| **cotto** — sugo, passata, pelati, al forno, in umido, datterini saltati | **sì**, liberamente | sì |
-| **crudo** — insalate, bruschette, fette a crudo | **no**: o si cuoce o si toglie | **sì**, senza spiegazioni |
+| **cotta** — sugo, al forno, in umido, datterini saltati, confit. Passata e pelati sono cotti per natura | **sì**, liberamente e senza limiti | sì |
+| **cruda** — insalate, bruschette, fette a crudo, panzanella, pomodorini a spicchi | **no**, per tutta la famiglia: o si cuoce o si toglie | **sì**, senza spiegazioni |
 
 Quando il pomodoro cotto entra in un pasto con Lorena, il piatto o gli ingredienti
 **devono dirlo** («datterini saltati in padella», non «datterini»): chi legge deve
 vedere che è nella forma consentita.
 
-⚠️ **La regola generale che ne esce**: un divieto **senza** precisazioni vale per tutta
-la famiglia dell'alimento; un divieto **con** una precisazione vieta **solo quello che
-dice**. Vale per ogni divieto futuro, non solo per il pomodoro.
+⚠️ **La regola generale che ne esce**: un divieto **senza** precisazioni vieta tutta la
+famiglia dell'alimento in ogni forma; un divieto **con** una precisazione vieta tutta la
+famiglia **in quella forma lì**. Vale per ogni divieto futuro, non solo per il pomodoro.
 
 #### I pranzi di Ciprian da solo: ha un'ora di pausa
 

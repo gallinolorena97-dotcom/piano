@@ -311,15 +311,18 @@ Se il suo profilo prevede un tocco dolce finale, mettilo sempre.
 Un divieto **senza precisazioni** vale per tutta la famiglia dell'alimento, non solo
 per la parola scritta: "cetrioli" comprende i sottaceti di cetriolo.
 
-⚠️ **Un divieto CON una precisazione vieta solo quello che dice**, e il pomodoro è il
-caso che si sbaglia più spesso. Il divieto di Lorena è "pomodoro **crudo**": vieta il
-crudo, **non il pomodoro**.
+⚠️ **Un divieto CON una precisazione restringe la FORMA, non la FAMIGLIA**, e il
+pomodoro è il caso che si sbaglia più spesso, in tutti e due i sensi. Il divieto di
+Lorena è "pomodoro **crudo**".
 
-- pomodoro **cotto** — sugo, passata, pelati, al forno, in umido, datterini saltati —
-  va benissimo **per tutti e due**. Usalo liberamente.
-- pomodoro **crudo** — insalate, bruschette, fette a crudo — va bene nei pasti che
-  mangia **solo Ciprian**: lì è permesso e non c'è niente da spiegare.
-- nei pasti con Lorena il crudo non si usa: o lo cuoci, o lo togli.
+- **La famiglia resta intera**: pomodoro, pomodorini, datterini, ciliegini, pachino,
+  cuore di bue, passata, pelati. Cambiare nome non è una scappatoia.
+- **Vietata è la forma cruda.** In un pasto con Lorena: niente pomodorini crudi in
+  insalata, niente fette di cuore di bue, niente panzanella, niente bruschette.
+- **Cotti vanno benissimo per tutti e due**, senza limiti: sugo, al forno, in umido,
+  datterini saltati. Passata e pelati sono cotti per natura: liberi anche loro.
+- **Crudi** vanno bene nei pasti che mangia **solo Ciprian**: lì è permesso e non c'è
+  niente da spiegare.
 
 Quando usi il pomodoro cotto in un pasto con Lorena, **dillo esplicitamente** nel nome
 del piatto e negli ingredienti (es. "datterini saltati in padella", non "datterini"):
@@ -494,21 +497,26 @@ Ogni pasto dice chi lo mangia. Guarda i profili delle persone coinvolte in QUEL 
 - Quello che una persona NON MANGIA non entra nel piatto, in nessuna forma.
   Un divieto SENZA precisazioni vale per tutta la famiglia dell'alimento: "cetrioli"
   comprende i sottaceti di cetriolo.
-- ⚠️ MA UN DIVIETO CON UNA PRECISAZIONE VIETA SOLO QUELLO CHE DICE, e il caso del
-  POMODORO è quello che sbagli più spesso. Il divieto di Lorena è "pomodoro CRUDO":
-  vieta il crudo, NON il pomodoro.
-  - pomodoro COTTO — sugo, passata, pelati, al forno, in umido, datterini saltati,
-    pomodorini confit — VA BENISSIMO per tutti e due. Usalo liberamente.
-  - pomodoro CRUDO — insalate, bruschette, fette a crudo, panzanella — va bene nei
-    pasti che mangia SOLO CIPRIAN. Lì è permesso e non c'è niente da spiegare.
-  - nei pasti con Lorena il pomodoro crudo non si usa: se il piatto lo chiederebbe
-    crudo, o lo cuoci o lo togli.
-  Quando usi il pomodoro cotto in un pasto con Lorena, dillo esplicitamente nel nome
+- ⚠️ UN DIVIETO CON UNA PRECISAZIONE RESTRINGE LA FORMA, NON LA FAMIGLIA. Il divieto
+  di Lorena è "pomodoro CRUDO", ed è il caso che si sbaglia più spesso, in tutti e due
+  i sensi.
+  - LA FAMIGLIA RESTA INTERA: pomodoro, pomodorini, datterini, ciliegini, pachino,
+    cuore di bue, passata, pelati. Nessuno di questi è "un altro alimento", e cambiare
+    nome non è una scappatoia.
+  - Quello che è vietato è la FORMA CRUDA. Quindi in un pasto con Lorena: niente
+    pomodorini crudi nell'insalata, niente fette di cuore di bue, niente datterini a
+    spicchi a crudo, niente panzanella, niente bruschette.
+  - COTTI VANNO BENISSIMO PER TUTTI E DUE, senza limiti: sugo, al forno, in umido,
+    datterini saltati in padella, pomodorini confit. Passata e pelati sono cotti per
+    natura: liberi anche loro.
+  - CRUDI vanno bene nei pasti che mangia SOLO CIPRIAN. Lì è permesso e non c'è
+    niente da spiegare.
+  Quando il pomodoro cotto entra in un pasto con Lorena, dillo esplicitamente nel nome
   del piatto o negli ingredienti ("datterini saltati in padella", non "datterini"):
   chi legge deve vedere che è nella forma consentita.
   NON evitare il pomodoro per prudenza: evitarlo sempre è un errore, non una cautela.
-- La stessa logica vale per ogni altro divieto con una precisazione: vieta la forma
-  scritta, non l'alimento intero.
+- La stessa logica vale per ogni altro divieto con una precisazione: si restringe la
+  forma vietata, e la famiglia dell'alimento resta tutta dentro quella forma.
 - Se il profilo chiede pochi ingredienti riconoscibili, il piatto ha pochi ingredienti.
 - Il tocco dolce, se è nel profilo di chi mangia, fa parte del pasto: va nel campo
   "dolce", pescato dalla dispensa, e NON fra gli ingredienti.
