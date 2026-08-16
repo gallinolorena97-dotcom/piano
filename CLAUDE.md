@@ -423,8 +423,9 @@ collaudare**. In più: si cambia giorno strisciando col pollice.
 ⚠️ **In sospeso, un passaggio manuale**: `edge-function-cosa-cucino.ts` va **reincollato
 su Supabase** (Edge Functions → cosa-cucino → Deploy) — la seconda volta il 13/08,
 per la correzione di `max_tokens`; **la terza il 16/08**, per il piatto unico nei pasti
-condivisi e per i nomi degli ingredienti copiati dalla dispensa. Finché non è
-reincollato, quelle due regole non sono attive: il frontend da solo non le può imporre.
+condivisi, per i nomi degli ingredienti copiati dalla dispensa e per il **battito** che
+tiene caldo il collegamento. Finché non è reincollato, quelle regole non sono attive: il
+frontend da solo non le può imporre.
 Collaudo del Blocco 2: `COLLAUDO-V5-BLOCCO2.md`.
 
 **Blocco 2 collaudato su giorni veri il 13/08** (settimana 16-22/08): la **coerenza di
@@ -603,6 +604,54 @@ si calcolano su misura (`blocchiDa(n)`, sempre due giorni per volta). Tre ingres
 il tasto **↻ Rigenera** nella fascia del giorno (**solo giorni futuri, mai oggi**),
 **Rigenera da …** nell'avviso delle scorte, e **Allunga il piano** quando il piano
 copre meno di 7 giorni da oggi (`pianoCortoHtml()`).
+
+### ⚠️ «Load failed» sull'iPhone — il filo non deve essere il tavolo di lavoro (16/08/2026)
+
+«Genera la settimana» si è rotta **due volte su due** dall'iPhone, con la frase
+`Load failed`. Diagnosi, in tre pezzi:
+
+1. **`Load failed` è la frase di Safari per «la connessione si è rotta».** Non è un
+   errore dell'app né della function: la function parla sempre italiano. L'app aveva
+   un traduttore per i guasti di rete, ma conosceva solo il modo di dire di Chrome
+   (`Failed to fetch`), quindi la frase di Safari arrivava grezza e sembrava un guasto
+   misterioso. Ora c'è **`guastoDiRete()`**, che conosce tutti e due: **se salta fuori
+   un altro browser con parole sue, si aggiunge lì e la capiscono tutti.**
+2. **Perché il filo cade.** Ogni blocco tiene aperto **un collegamento solo** mentre il
+   modello ragiona — e mentre ragiona **sul filo non passa niente**: può essere un
+   minuto di silenzio prima del primo piatto. Basta che si spenga lo schermo, che si
+   cambi app o che il telefono passi dal Wi-Fi alla rete cellulare.
+3. **Perché faceva male**, ed è il difetto vero: fino al «Salva» finale i pasti generati
+   vivevano **solo nella memoria del telefono**. Il filo non era il mezzo di trasporto,
+   era il tavolo di lavoro.
+
+⚠️ **La regola che ne esce: il database è la verità, il telefono è una finestra.**
+Ogni blocco finito si scrive **subito** in `plan_meals` (`salvaBlocco()` dopo
+`completaMancanti()`); `scriviRighe()` è il pezzo condiviso col salvataggio finale, e
+`PS.salvati` tiene il conto di cosa è già scritto perché non si riscriva due volte. Se
+il filo cade, quello che c'era prima è già al sicuro e **ricaricando si vede lo stato
+reale**. I giorni scoperti si completano coi tasti che c'erano già.
+
+Conseguenze da non dimenticare:
+
+- il riepilogo **non è più il momento in cui si salva**: dice che è già tutto scritto,
+  scrive quel che resta (i giorni fuori/liberi) e chiude. Per questo «Butta via»
+  diventa «Chiudi» quando qualcosa è già stato scritto: **un tasto non deve promettere
+  di cancellare una cosa che non cancella**;
+- `chiudiPassata()` **rilegge dal database** se qualcosa è stato scritto, altrimenti si
+  vedrebbe la settimana di prima. Chi ha già riletto passa `true`;
+- la **ricevuta** (`ricevuta()`) conta su `S.piano` appena riletto, non sulla schermata:
+  «nel calendario ci sono 11 pasti su 14» è una verifica, «salvato» era una promessa.
+
+**Il battito.** La function manda `{tipo:'battito'}` ogni 10 secondi mentre il modello
+pensa: tiene caldo il collegamento ed evita almeno le cadute per inattività. **Non
+basta da solo** — con lo schermo spento il filo cade lo stesso — ed è per questo che la
+difesa vera è il salvataggio blocco per blocco.
+
+⛔ **Resta scoperto un caso solo, ed è dichiarato**: se il filo si taglia in **mezzo** a
+un blocco, quei due giorni non erano finiti e non c'erano da nessuna parte. Per salvare
+anche quelli dovrebbe scrivere la **Edge Function**, il che vuol dire spostare là dentro
+`righeDaSalvare()` e tutto quello che ci sta intorno, con due copie da tenere allineate.
+**È stato valutato e scartato il 16/08/2026**: non riproporlo senza una ragione nuova.
 
 ### Scorrere fra i giorni (13/08/2026)
 

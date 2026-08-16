@@ -1335,10 +1335,20 @@ $('#toastAction').onclick = async () => {
 };
 
 /* Traduce gli errori tecnici in italiano comprensibile. */
+/** Il filo si è rotto: NON è un errore dell'app né del database.
+ *
+ * ⚠️ Ogni browser lo dice a modo suo, e per un anno abbiamo conosciuto solo
+ * la frase di Chrome. Safari dice «Load failed», ed è la frase che compariva
+ * grezza sull'iPhone durante «Genera la settimana», come se fosse un guasto
+ * misterioso: era solo un guasto di rete non tradotto. Se salta fuori un
+ * altro browser con parole sue, si aggiunge qui e la capiscono tutti. */
+const guastoDiRete = (m) => !navigator.onLine ||
+  /Failed to fetch|NetworkError|Load failed|network connection was lost|connessione/i.test(String(m || ''));
+
 function spiegaErrore(e){
   const m = String(e?.message || e || '');
   if (!navigator.onLine)                return 'Sei senza connessione. I dati mostrati potrebbero non essere aggiornati.';
-  if (/Failed to fetch|NetworkError/i.test(m))
+  if (guastoDiRete(m))
     return 'Non riesco a raggiungere il database. Controlla la connessione e riprova.';
   if (/violates row-level security/i.test(m))
     return 'Il database non accetta le AGGIUNTE: manca un permesso. Esegui riparazione-permessi.sql su Supabase.';
@@ -2664,6 +2674,8 @@ const PS = {
   blocco:0, blocchiTot:1,
   errore:null,
   inCorso:false,
+  salvati:new Set(),     // "giorno|pasto" già scritti nel calendario, blocco per blocco
+  attesa:0,              // battiti ricevuti mentre il modello pensa in silenzio
 };
 
 /* Il quarto modo, "lascia", vuol dire NON TOCCARE questo pasto:
@@ -2735,6 +2747,7 @@ function apriPassata(opz = {}){
   PS.titolo = opz.titolo || null;
   PS.giorni = costruisciPassata(PS.dal, PS.quanti, PS.daPiano);
   PS.pasti = []; PS.resta = ''; PS.errore = null; PS.stato = '';
+  PS.salvati = new Set(); PS.attesa = 0;
   PS.blocco = 0; PS.blocchiTot = 1;
   $('#planBody').hidden = true;
   $('#pnWizard').hidden = false;
@@ -2742,14 +2755,20 @@ function apriPassata(opz = {}){
   window.scrollTo(0, 0);
 }
 
-function chiudiPassata(){
+function chiudiPassata(giaRiletto){
   if (PS.inCorso) return;
+  // ⚠️ I blocchi finiscono nel calendario mentre si genera: chiudendo senza
+  // rileggere si vedrebbe la settimana di prima, cioè il contrario di quello
+  // che serve. Chi ha già riletto (il salvataggio finale) lo dice e non si
+  // rilegge due volte.
+  const daRileggere = !giaRiletto && PS.salvati.size > 0;
   PS.aperto = false;
   $('#pnWizard').hidden = true;
   $('#pnWizard').innerHTML = '';
   $('#planBody').hidden = false;
   renderPlan();
   window.scrollTo(0, 0);
+  if (daRileggere) loadAll().catch(e => console.warn('rilettura dopo la passata', e));
 }
 
 function renderWizard(){
@@ -2864,11 +2883,17 @@ function vistaGenerazione(){
     `<span class="ps-tacca ${b < PS.blocco ? 'fatta' : b === PS.blocco ? 'ora' : ''}"></span>`).join('');
 
   if (PS.errore){
+    // La prima cosa da dire non è che cosa si è rotto, ma che cosa è salvo.
+    const salvati = PS.salvati.size;
+    const dire = [];
+    if (salvati) dire.push(`<b>${salvati} ${salvati === 1 ? 'pasto è già scritto' : 'pasti sono già scritti'}
+      nel calendario</b>: quelli non si perdono, nemmeno se chiudi l’app.`);
+    if (PS.pasti.length) dire.push('Qui sotto c’è tutto quello che è uscito: puoi salvarlo, oppure rifare.');
+    if (!dire.length) dire.push('Non è stato scritto niente: il calendario è come l’hai lasciato.');
+
     return `<div class="empty">
         <b>${esc(PS.errore)}</b>
-        <p style="margin:10px 0 0">${PS.pasti.length
-          ? 'I pasti già scritti sono qui sotto: puoi salvarli lo stesso, oppure rifare tutto.'
-          : 'Non è stato salvato niente.'}</p>
+        <p style="margin:10px 0 0">${dire.join(' ')}</p>
       </div>
       <div class="form-row">
         ${PS.pasti.length ? '<button class="btn" id="psVaiRiepilogo" style="flex:1">Guarda cosa è uscito ›</button>' : ''}
@@ -2882,7 +2907,9 @@ function vistaGenerazione(){
         <svg class="attesa-pentola" viewBox="0 0 180 136" width="112" height="85" aria-hidden="true">
           <use href="#ill-pentola"/></svg>
         ${esc(PS.stato || 'Ci sono quasi…')}<br>
-        <span style="font-size:13px">Non ricaricare la pagina.</span>
+        <span style="font-size:13px">Tieni acceso lo schermo${PS.salvati.size
+          ? `: se il collegamento cade, i ${PS.salvati.size} pasti già scritti restano.`
+          : '. Se il collegamento cade, quello che è già scritto resta.'}</span>
       </div>
     </div>
     ${PS.pasti.length ? `<div id="psFatti">${PS.pasti.map(anteprimaPasto).join('')}</div>` : scheletro()}`;
@@ -2937,6 +2964,7 @@ async function avviaGenerazione(){
 
   PS.fase = 'generazione';
   PS.pasti = []; PS.resta = ''; PS.errore = null;
+  PS.salvati = new Set(); PS.attesa = 0;
   PS.blocco = 0; PS.blocchiTot = blocchi.length;
   PS.inCorso = true;
   PS.stato = 'Sto leggendo la dispensa…';
@@ -2958,6 +2986,12 @@ async function avviaGenerazione(){
       // è arrivato — troncatura, salto, data sbagliata, qualunque cosa — si
       // rifà. Quando non manca niente questa riga non costa nulla.
       await completaMancanti(blocchi[b]);
+
+      // ⚠️ Si scrive ADESSO, non alla fine: da qui in poi questi giorni
+      // sopravvivono a una caduta del filo. Vedi il commento di salvaBlocco().
+      PS.stato = 'Metto al sicuro quello che ho scritto…';
+      renderWizard();
+      await salvaBlocco(blocchi[b]);
     }
     PS.blocco = blocchi.length;
 
@@ -2968,10 +3002,12 @@ async function avviaGenerazione(){
     }
   }catch(e){
     // i messaggi della Edge Function sono già in italiano semplice e vanno
-    // mostrati com'è; solo i guasti di rete vanno tradotti
+    // mostrati com'è; solo i guasti di rete vanno tradotti — e vanno detti
+    // per quello che sono: non un guasto dell'app, e non colpa di chi guarda
     const m = String(e?.message || e || '');
-    PS.errore = (!navigator.onLine || /Failed to fetch|NetworkError/i.test(m))
-      ? spiegaErrore(e) : m;
+    PS.errore = guastoDiRete(m)
+      ? 'È caduto il collegamento mentre generavo. Succede quando si spegne lo schermo o il telefono cambia rete.'
+      : m;
   }finally{
     PS.inCorso = false;
     renderWizard();
@@ -3037,11 +3073,24 @@ async function generaBlocco(giorni, primo, restanti){
       if (!chiesti.has(k)){ console.warn('pasto scartato, non era stato chiesto:', k); return; }
       if (PS.pasti.some(x => `${x.day}|${x.pasto}` === k)) return;
       PS.pasti.push(m);
+      PS.attesa = 0;
       PS.stato = 'Sto scrivendo…';
       renderWizard();
     }else if (ev.tipo === 'stato'){
+      PS.attesa = 0;
       PS.stato = ev.testo;
       renderWizard();
+    }else if (ev.tipo === 'battito'){
+      // Il modello pensa a lungo prima di scrivere il primo piatto, e mentre
+      // pensa sul filo non passa niente. Il battito serve a due cose: tenere
+      // caldo il collegamento, e non lasciare una scritta ferma che sembra
+      // bloccata. Non toglie le cadute da schermo spento: quelle le para il
+      // salvataggio blocco per blocco.
+      PS.attesa++;
+      if (PS.attesa === 3){
+        PS.stato = 'Sto ragionando sul magazzino: ci vuole un minuto…';
+        renderWizard();
+      }
     }else if (ev.tipo === 'fine'){
       resta = String(ev.resta || '');
       troncato = ev.troncato === true;
@@ -3090,9 +3139,10 @@ function fuoriELiberi(){
 
 /** Le righe esatte che finiranno in plan_meals. Il riepilogo mostra
     QUESTE, non un'altra versione: cosi' quello che leggi è quello che salvi. */
-function righeDaSalvare(){
+function righeDaSalvare(soloGiorni){
   const righe = [];
   for (const g of PS.giorni){
+    if (soloGiorni && !soloGiorni.includes(g.day)) continue;
     for (const quale of PS_PASTI){
       const p = g[quale];
       // «Lascia» non produce nessuna riga: quello che c'è nel calendario
@@ -3148,6 +3198,74 @@ const mancantiTutti = () => [...new Set(
   PS.pasti.flatMap(m => (m.manca || []).map(x => String(x).trim())).filter(Boolean)
 )];
 
+/* ==========================================================
+   SI SCRIVE SUBITO, BLOCCO PER BLOCCO
+   ==========================================================
+
+   ⚠️ Il 16/08/2026 «Genera la settimana» si è rotta due volte su due
+   dall'iPhone, con la frase di Safari «Load failed»: il filo si taglia.
+   Quattro chiamate che tengono aperto un collegamento mentre il modello
+   pensa — e mentre pensa sul filo non passa niente — sono minuti di
+   silenzio: basta che si spenga lo schermo o che il telefono passi dal
+   Wi-Fi alla rete cellulare.
+
+   Il guaio vero però non era la rete: era che fino al «Salva» finale i
+   pasti generati vivevano SOLO nella memoria del telefono. Il filo non
+   era il mezzo di trasporto, era il tavolo di lavoro.
+
+   Adesso ogni blocco finito si scrive subito nel calendario. Il database
+   è la verità, il telefono è solo una finestra: se il filo cade, quello
+   che è stato generato prima è già al sicuro e ricaricando l'app vedi lo
+   stato REALE, non un riassunto di cui fidarti. I giorni rimasti scoperti
+   si completano con i tasti che ci sono già («Allunga il piano»,
+   «Rigenera da…»).
+
+   Resta scoperto un solo caso, ed è dichiarato: se il filo si taglia in
+   MEZZO a un blocco, quei due giorni non erano ancora finiti e non c'erano
+   da nessuna parte. Per salvare anche quelli dovrebbe scrivere la Edge
+   Function, e vorrebbe dire spostare là dentro tutto questo file. */
+
+/** Scrive nel calendario le righe date.
+    Cancella SOLO i pasti che sta per riscrivere, come il salvataggio
+    finale: i pasti su «Lascia» e quelli scritti a mano sopravvivono. */
+async function scriviRighe(righe){
+  if (!righe.length) return 0;
+  for (const q of PS_PASTI){
+    const gg = righe.filter(r => r.pasto === q).map(r => r.day);
+    if (!gg.length) continue;
+    const { error } = await sb.from('plan_meals').delete().eq('pasto', q).in('day', gg);
+    if (error) throw error;
+  }
+  const { error } = await sb.from('plan_meals').insert(righe);
+  if (error) throw error;
+  righe.forEach(r => PS.salvati.add(`${r.day}|${r.pasto}`));
+  return righe.length;
+}
+
+/** Un blocco appena finito va nel calendario, senza aspettare la fine.
+    Se non ci riesce non ferma la generazione: il salvataggio finale
+    riproverà con le righe rimaste indietro. Interrompere la settimana
+    per un intoppo qui sarebbe peggio del male. */
+async function salvaBlocco(giorni){
+  const righe = righeDaSalvare(giorni.map(g => g.day))
+    .filter(r => !PS.salvati.has(`${r.day}|${r.pasto}`));
+  if (!righe.length) return;
+  try{
+    await scriviRighe(righe);
+    // quello che manca lo mettiamo in lista subito, per lo stesso motivo
+    try { await aggiungiAllaSpesa(mancantiDi(giorni), true); } catch { /* accessorio */ }
+  }catch(e){
+    console.warn('blocco non salvato subito, ci riprova il salvataggio finale', e);
+  }
+}
+
+/** Le cose che mancano per i pasti di questi giorni. */
+const mancantiDi = (giorni) => {
+  const gg = giorni.map(g => g.day);
+  return [...new Set(PS.pasti.filter(m => gg.includes(m.day))
+    .flatMap(m => (m.manca || []).map(x => String(x).trim())).filter(Boolean))];
+};
+
 function vistaRiepilogo(){
   const righe   = righeDaSalvare();
   const manca   = mancantiTutti();
@@ -3192,9 +3310,14 @@ function vistaRiepilogo(){
     </div>`;
   }).join('');
 
+  const giaScritti = PS.salvati.size;
+
   return `<div class="panel decorato">
       <span class="stelline" style="right:14px;bottom:12px" aria-hidden="true"></span>
       <div class="q-label" style="margin-top:0">Il piano è pronto</div>
+      ${giaScritti ? `<p class="hint" style="margin:0 0 10px">Quello che vedi è
+        <b>già nel calendario</b>: viene scritto man mano, per non perderlo se cade la
+        connessione. Qui sotto chiudi la settimana e ti dico cosa c’è davvero.</p>` : ''}
       ${perGiorno}
       <p class="hint">I numeri sono di ${esc(nomeDiChi('ciprian'))}, colazione e yogurt compresi
         (${FISSE_CIPRIAN.reduce((s,f) => s+f.prot, 0)} g · ${FISSE_CIPRIAN.reduce((s,f) => s+f.kcal, 0)} kcal).
@@ -3209,8 +3332,8 @@ function vistaRiepilogo(){
     ${manca.length ? `<div class="panel">
       <div class="q-label" style="margin-top:0">Cosa ti manca</div>
       <div style="font-size:14.5px;line-height:1.5">${esc(manca.join(' · '))}</div>
-      <p class="hint">Finiscono nella lista della spesa quando salvi. I pasti che
-        li aspettano sono segnati «dipende dalla spesa».</p>
+      <p class="hint">Finiscono nella lista della spesa man mano, insieme ai pasti.
+        Quelli che li aspettano sono segnati «dipende dalla spesa».</p>
     </div>` : ''}
 
     ${buchi > 0 ? `<div class="ps-avviso">Per ${buchi} ${buchi === 1 ? 'pasto' : 'pasti'}
@@ -3222,11 +3345,13 @@ function vistaRiepilogo(){
       (${esc(sovrascritti.map(d => labelData(d)).join(', '))}).</div>` : ''}
 
     <div class="form-row">
-      <button class="btn" id="psSalva" style="flex:1">${sovrascritti.length ? 'Sostituisci e salva' : 'Salva nel calendario'}</button>
+      <button class="btn" id="psSalva" style="flex:1">${giaScritti
+        ? 'Finisci e controlla'
+        : (sovrascritti.length ? 'Sostituisci e salva' : 'Salva nel calendario')}</button>
     </div>
     <div class="form-row">
       <button class="btn ghost" id="psRifai" style="flex:1">‹ Rifai la passata</button>
-      <button class="btn ghost" id="psAnnulla" style="flex:1">Butta via</button>
+      <button class="btn ghost" id="psAnnulla" style="flex:1">${giaScritti ? 'Chiudi' : 'Butta via'}</button>
     </div>`;
 }
 
@@ -3236,38 +3361,53 @@ async function salvaSettimana(btn){
 
   btn.disabled = true;
   const giorni = PS.giorni.map(g => g.day);
+  const attesi = contaPassata().casa;
   try{
-    // ⚠️ Si cancella SOLO quello che si sta per riscrivere, pasto per pasto:
+    // ⚠️ Quasi tutto è già stato scritto blocco per blocco durante la
+    // generazione: qui restano i giorni in cui non si cucina (fuori, liberi)
+    // e le righe che un intoppo di rete aveva lasciato indietro.
+    // Si cancella SOLO quello che si sta per riscrivere, pasto per pasto:
     // i pasti marcati «Lascia» — fra cui quelli scritti a mano — non
     // compaiono in righe[] e quindi sopravvivono.
     // I giorni della passata partono da oggi in avanti (il campo data non
     // scende sotto): lo storico passato non viene mai toccato.
-    for (const q of PS_PASTI){
-      const gg = righe.filter(r => r.pasto === q).map(r => r.day);
-      if (!gg.length) continue;
-      const { error } = await sb.from('plan_meals').delete().eq('pasto', q).in('day', gg);
-      if (error) throw error;
-    }
-    const { error: e2 } = await sb.from('plan_meals').insert(righe);
-    if (e2) throw e2;
+    await scriviRighe(righe.filter(r => !PS.salvati.has(`${r.day}|${r.pasto}`)));
 
     // La spesa è un'operazione accessoria: se fallisce, il piano resta salvato.
     let messi = 0;
     try { messi = await aggiungiAllaSpesa(mancantiTutti(), true); } catch { /* lo diciamo sotto */ }
 
-    const quantiGiorni = new Set(righe.map(r => r.day)).size;
     PS.inCorso = false;
-    chiudiPassata();
+    chiudiPassata(true);   // rileggo io qui sotto: non due volte
     await loadAll();
     // il calendario si apre sul primo giorno appena salvato
     S.giornoSel = righe[0]?.day || giorni[0];
     renderPlan();
-    toast(`Piano salvato: ${quantiGiorni} ${quantiGiorni === 1 ? 'giorno' : 'giorni'}.` +
+    toast(ricevuta(righe, attesi) +
           (messi ? ` ${messi} cose messe nella lista della spesa.` : ''));
   }catch(e){
     esitoErrore(e);
     btn.disabled = false;
   }
+}
+
+/** La ricevuta: non «ho salvato», ma «nel calendario adesso c'è questo».
+ *
+ * ⚠️ Si conta su S.piano appena RILETTO dal database, non su quello che
+ * c'era sullo schermo. È la differenza fra dire una cosa e verificarla:
+ * prima l'app diceva «salvato» fidandosi di sé stessa, e non c'era modo
+ * di sapere se la settimana fosse intera. */
+function ricevuta(volute, attesi){
+  const arrivate = volute.filter(r => S.piano.some(x => x.day === r.day && x.pasto === r.pasto));
+  const perse    = volute.length - arrivate.length;
+  const cucinati = arrivate.filter(r => r.modo === 'casa').length;
+
+  let t = `Nel calendario ci sono ${cucinati} ${cucinati === 1 ? 'pasto' : 'pasti'} da cucinare su ${attesi}.`;
+  if (perse)
+    t += ` ${perse} ${perse === 1 ? 'riga non è arrivata' : 'righe non sono arrivate'}: riprova.`;
+  else if (cucinati < attesi)
+    t += ` I ${attesi - cucinati} che mancano li rifai con «Rigenera da…».`;
+  return t;
 }
 
 /* --- i tocchi del wizard --- */

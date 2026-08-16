@@ -933,19 +933,33 @@ Alla fine compila "resta" con quello che rimarrà in dispensa dopo questi giorni
 
     manda({ tipo: 'stato', testo: 'Sto guardando cosa c’è in dispensa…' });
 
-    for await (const pezzo of pezziDiTesto(chiamata.corpo)) {
-      if (pezzo.guasto) {
-        manda({ tipo: 'errore', errore: 'Il generatore si è interrotto. Riprova.' });
-        continue;
-      }
-      if (pezzo.stop) { motivoStop = pezzo.stop; continue; }
-      if (!pezzo.testo) continue;
+    // ⚠️ Il modello ragiona a lungo prima di scrivere il primo piatto, e
+    // mentre ragiona sul filo non passa NIENTE: un collegamento silenzioso
+    // per minuti, su un telefono, viene chiuso da chi sta in mezzo. Il
+    // battito lo tiene caldo e dice all'app che siamo vivi.
+    // Non basta da solo: se lo schermo si spegne il filo cade lo stesso, ed
+    // è per questo che l'app scrive nel calendario blocco per blocco.
+    const battito = setInterval(() => {
+      try { manda({ tipo: 'battito' }); } catch { /* il filo è già chiuso */ }
+    }, 10_000);
 
-      for (const pasto of lettore.aggiungi(pezzo.testo)) {
-        if (mandati >= quantiPasti) continue;
-        mandati++;
-        manda({ tipo: 'pasto', pasto });
+    try {
+      for await (const pezzo of pezziDiTesto(chiamata.corpo)) {
+        if (pezzo.guasto) {
+          manda({ tipo: 'errore', errore: 'Il generatore si è interrotto. Riprova.' });
+          continue;
+        }
+        if (pezzo.stop) { motivoStop = pezzo.stop; continue; }
+        if (!pezzo.testo) continue;
+
+        for (const pasto of lettore.aggiungi(pezzo.testo)) {
+          if (mandati >= quantiPasti) continue;
+          mandati++;
+          manda({ tipo: 'pasto', pasto });
+        }
       }
+    } finally {
+      clearInterval(battito);
     }
 
     // "resta" sta in fondo al JSON, dopo l'array: si legge alla fine.
@@ -1117,27 +1131,37 @@ Genera ${quante === 1 ? 'UNA sola proposta' : 'ESATTAMENTE 3 proposte diverse fr
 
     manda({ tipo: 'stato', testo: 'Sto pensando alla prima proposta…' });
 
-    for await (const pezzo of pezziDiTesto(chiamata.corpo)) {
-      if (pezzo.guasto) {
-        manda({ tipo: 'errore', errore: 'Il generatore si è interrotto. Riprova.' });
-        continue;
-      }
-      if (pezzo.stop) { motivoStop = pezzo.stop; continue; }
-      if (!pezzo.testo) continue;
+    // Stesso battito del piano settimanale: tiene caldo un filo che, mentre
+    // il modello pensa, resterebbe muto. Vedi il commento là sopra.
+    const battito = setInterval(() => {
+      try { manda({ tipo: 'battito' }); } catch { /* il filo è già chiuso */ }
+    }, 10_000);
 
-      for (const proposta of lettore.aggiungi(pezzo.testo)) {
-        if (quante_inviate >= quante) continue;
-        quante_inviate++;
-        manda({ tipo: 'proposta', proposta });
-        if (quante_inviate < quante) {
-          manda({
-            tipo: 'stato',
-            testo: quante_inviate === 1
-              ? 'Prima proposta pronta. Sto scrivendo la seconda…'
-              : 'Ci siamo, ultima proposta…',
-          });
+    try {
+      for await (const pezzo of pezziDiTesto(chiamata.corpo)) {
+        if (pezzo.guasto) {
+          manda({ tipo: 'errore', errore: 'Il generatore si è interrotto. Riprova.' });
+          continue;
+        }
+        if (pezzo.stop) { motivoStop = pezzo.stop; continue; }
+        if (!pezzo.testo) continue;
+
+        for (const proposta of lettore.aggiungi(pezzo.testo)) {
+          if (quante_inviate >= quante) continue;
+          quante_inviate++;
+          manda({ tipo: 'proposta', proposta });
+          if (quante_inviate < quante) {
+            manda({
+              tipo: 'stato',
+              testo: quante_inviate === 1
+                ? 'Prima proposta pronta. Sto scrivendo la seconda…'
+                : 'Ci siamo, ultima proposta…',
+            });
+          }
         }
       }
+    } finally {
+      clearInterval(battito);
     }
 
     if (!quante_inviate) {
