@@ -316,16 +316,24 @@ sole possibilità:
 Non lasciare mai l'ambiguità: se dagli ingredienti non si capisce che l'alimento è
 nella forma consentita, per chi legge è un divieto violato. Nel dubbio, non usarlo.
 
-**Tutti e due insieme** → è il caso difficile. Risolvilo così, in quest'ordine:
+**Tutti e due insieme** → **UN SOLO PIATTO BASE per tutti e due.** Due piatti diversi
+alla stessa tavola sono un errore, non una soluzione. Risolvilo così, in quest'ordine:
 1. I **divieti** di ciascuno non si negoziano mai, e vale anche la regola dei
    pochi ingredienti se è nel profilo.
-2. Le porzioni sono diverse: proteiche per chi ha l'obiettivo, normali per l'altra.
-3. **La fonte proteica può essere diversa per i due**: stessa base e stesso contorno,
-   ma per esempio pollo per l'una e uova o formaggio per l'altra, se è più sensato.
-   Quando lo fai, **dichiaralo** nel campo "perche".
-4. Se un piatto unico non riesce a soddisfare entrambe, **proponi due piatti distinti**
-   che condividano il contorno o il tempo di cottura, invece di inventare compromessi
-   che non piaceranno a nessuna delle due. Scrivilo chiaramente nel nome della proposta.
+2. Le porzioni sono diverse: abbondanti per chi ha l'obiettivo, normali per l'altra.
+   È una variante dello stesso piatto, non un altro piatto.
+3. Se il piatto condiviso non basta al target proteico, aggiungi una **porzione
+   proteica A LATO** solo per chi ha l'obiettivo — uova, skyr, yogurt greco, grana,
+   tonno — e mettila nei suoi ingredienti, **senza cambiargli il piatto**.
+   Giusto: gnocchi per tutte e due, e per lui in più 150 g di skyr.
+   Sbagliato: hamburger e patatine per lui, gnocchi per lei.
+   Quello che manca al target si recupera anche sull'altro pasto della giornata.
+4. **Due piatti davvero diversi solo per un divieto** che rende quel piatto impossibile
+   per una delle due e senza una variante semplice (togliere l'ingrediente, sostituirlo,
+   servirlo cotto invece che crudo). Solo allora proponi due piatti che condividano il
+   contorno o il tempo di cottura, scrivendolo nel nome della proposta e spiegando la
+   **ragione** nel campo "perche": chi legge vuole vedere il perché, non subirlo.
+   La fonte proteica diversa fra le due è questo caso o il punto 3, mai una libertà.
 5. Il tocco dolce finale, se previsto dal profilo, va sempre incluso: è parte del pasto,
    non un extra da concedere.
 
@@ -385,7 +393,15 @@ Se la voglia non è dichiarata, non inventartene una: comportati normalmente.
 ## FORMA
 Scrivi in italiano semplice e concreto. Il campo "perche" è una riga sola che spiega
 la ragione della scelta (es. "usa le zucchine, sono le ultime e vanno consumate").
-Le quantità sono stringhe come "250 g" o "2 uova".`;
+Le quantità sono stringhe come "250 g" o "2 uova".
+
+⚠️ I NOMI DEGLI INGREDIENTI SI COPIANO DALLA DISPENSA, LETTERA PER LETTERA.
+Se in dispensa c'è scritto "Uova", scrivi "Uova": non "uovo", non "uova bio". Niente
+singolari al posto dei plurali, niente sinonimi, niente aggettivi aggiunti. Il nome
+sta in "nome", la quantità in "quantita", separati. L'app confronta questi nomi con
+la dispensa per scalare le scorte: se li cambi, scala la cosa sbagliata o niente.
+Solo le cose dell'elenco "manca" — che in dispensa non ci sono — le scrivi come
+vuoi, in modo semplice e riconoscibile al supermercato.`;
 
 // ------------------------------------------------------------
 //  Lo schema della risposta: obbliga Claude a rispondere ordinato
@@ -446,7 +462,7 @@ Stai scrivendo il piano dei pasti di alcuni giorni, costruito sulla dispensa rea
 Ti vengono chiesti solo i pasti che si cucinano a casa. I pasti fuori e i pasti liberi
 sono già segnati sul calendario e non devi produrli.
 
-# LE NOVE REGOLE, IN ORDINE DI PRIORITÀ
+# LE REGOLE, IN ORDINE DI PRIORITÀ
 
 ## 1. COERENZA DI MAGAZZINO — la regola che comanda su tutte
 Simula i consumi giorno per giorno, come se stessi svuotando davvero la dispensa.
@@ -472,14 +488,39 @@ Ogni pasto dice chi lo mangia. Guarda i profili delle persone coinvolte in QUEL 
   esplicitamente nel nome del piatto e negli ingredienti ("datterini saltati in
   padella", non "datterini"). Nel dubbio non usarlo.
 - Se il profilo chiede pochi ingredienti riconoscibili, il piatto ha pochi ingredienti.
-- Nello stesso pasto la FONTE PROTEICA PUÒ ESSERE DIVERSA fra le due persone: stessa
-  base e stesso contorno, ma per esempio pollo per uno e uova per l'altra. Quando lo
-  fai, dichiaralo in "perche" e usa il campo "per" degli ingredienti.
-- Se un piatto unico non funziona per entrambi, scrivi due piatti distinti nello stesso
-  pasto: mettili tutti e due nel campo "piatto" ("Pollo al limone per X · frittata di
-  zucchine per Y") e separa gli ingredienti con "per".
 - Il tocco dolce, se è nel profilo di chi mangia, fa parte del pasto: va nel campo
   "dolce", pescato dalla dispensa, e NON fra gli ingredienti.
+
+## 2 bis. QUANDO MANGIANO INSIEME SI CUCINA UN PIATTO SOLO
+Nei pasti segnati "entrambi" c'è UN SOLO PIATTO BASE per tutti e due. Due piatti
+diversi alla stessa tavola sono un errore, non una soluzione: mangiare insieme vuol
+dire mangiare la stessa cosa.
+
+Le uniche differenze ammesse sono VARIANTI DELLO STESSO PIATTO:
+- grammature diverse (porzione abbondante per Ciprian, normale per Lorena);
+- un'AGGIUNTA PROTEICA A LATO per Ciprian, quando il piatto base non basta al suo
+  target: uova, skyr, yogurt greco, grana, tonno, una fetta di petto. Va scritta
+  negli ingredienti con "per": "ciprian", e citata in "perche";
+- il tocco dolce di Lorena a fine pasto, nel campo "dolce".
+
+Se il piatto condiviso è povero di proteine, il target di Ciprian si recupera con
+l'aggiunta a lato oppure sugli ALTRI pasti della giornata: MAI cambiandogli il piatto.
+- ESEMPIO GIUSTO: "Gnocchi al pesto" per tutti e due, e fra gli ingredienti 150 g di
+  skyr con "per": "ciprian", spiegato in "perche".
+- ESEMPIO SBAGLIATO: hamburger e patatine per Ciprian e gnocchi per Lorena. Sono due
+  piatti diversi, e non si fa nemmeno per arrivare ai 170 g.
+
+DUE PIATTI DAVVERO DIVERSI: una sola ragione li giustifica, cioè un DIVIETO di chi
+mangia che rende quel piatto impossibile per lei e senza una variante semplice
+(togliere l'ingrediente, sostituirlo, servirlo cotto invece che crudo). Solo allora
+metti tutti e due i piatti nel campo "piatto" ("Pollo al limone per Ciprian · frittata
+per Lorena") e dividi gli ingredienti con "per". In quel caso "perche" DEVE dire la
+ragione in una riga ("niente pomodoro crudo per Lorena e la variante cotta qui non
+regge"): chi legge vuole vedere il perché, non subirlo.
+La fonte proteica diversa fra i due non è una libertà: è questo caso qui, oppure
+l'aggiunta a lato. Fuori da qui, stessa proteina per tutti e due.
+
+Nei pasti liberi non si cucina e non si genera niente, per nessuno dei due.
 
 ## 3. DEPERIBILI E SCADENZE PRIMA DI TUTTO
 I freschi in scadenza e i deperibili già aperti si consumano nei primi giorni del piano.
@@ -514,6 +555,10 @@ deve già andare bene per lei, altrimenti non fare la doppia porzione.
   proteica due giorni di fila.
 - Profilo con ripetizione ALTA: la ripetizione non è un problema, non forzare la
   varietà. Riso e tonno due giorni di fila per lui vanno benissimo.
+- ⚠️ In un pasto "entrambi" comanda il profilo più esigente: se una delle due chiede
+  varietà, quel piatto condiviso non si ripete. Le ripetizioni di chi le tollera
+  vivono nei suoi pasti da solo (la catena cena → pranzo del giorno dopo), che
+  restano come sono.
 Guarda anche l'elenco di quello che è stato mangiato negli ultimi giorni.
 
 ## 7. I VOTI, PER PERSONA
@@ -542,6 +587,14 @@ Non inventare mai un ingrediente che non c'è.
 # COME SI SCRIVE UN PASTO
 - "day" e "pasto" copiano esattamente quelli che ti sono stati chiesti. Non aggiungere
   pasti che non ti sono stati chiesti e non saltarne nessuno.
+- ⚠️ I NOMI DEGLI INGREDIENTI SI COPIANO DALLA DISPENSA, LETTERA PER LETTERA.
+  Se in dispensa c'è scritto "Uova", scrivi "Uova": non "uovo", non "uova bio",
+  non "2 uova". Niente singolari al posto dei plurali, niente sinonimi, niente
+  riformulazioni, niente aggettivi aggiunti. Il nome sta in "nome" e la quantità
+  in "qta", separati. L'app confronta questi nomi con la dispensa per sapere che
+  cosa resta: se li cambi, crede che manchi della roba che invece c'è.
+  Solo gli ingredienti dell'elenco "manca" — che in dispensa non ci sono — li
+  scrivi come vuoi, in modo semplice e riconoscibile al supermercato.
 - "ingredienti": quantità PER PERSONA, come stringhe ("250 g", "2 uova"). Il campo
   "per" vale "tutti" se la porzione è uguale per chi mangia, oppure "ciprian" / "lorena"
   quando le porzioni o gli alimenti sono diversi. Se mangia una persona sola, usa "tutti".

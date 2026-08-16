@@ -219,9 +219,39 @@ entrambi. Le liste sono `text[]` in Postgres, array JS nel frontend.
 **Blocco 2 — chi mangia.** Tre voci con i nomi veri: `io` · `io_e_x` · `solo_x`
 (gli stessi valori accettati da `meals_log.chi`). Il frontend manda solo `chi` e
 `io_slug`: **i profili li rilegge la function dal database**, non arrivano dal telefono.
-I divieti non si negoziano; a pasto condiviso la fonte proteica può essere diversa per
-le due persone; se un piatto unico non funziona la function propone due piatti distinti.
-La regola della varietà è **per persona** (campo `ripetizione`).
+I divieti non si negoziano. A pasto condiviso vale la regola del **piatto unico** qui
+sotto. La regola della varietà è **per persona** (campo `ripetizione`).
+
+#### ⚠️ Quando mangiano insieme si cucina UN PIATTO SOLO (16/08/2026)
+
+Trovato su un piano vero: una domenica sera il generatore ha dato **hamburger e
+patatine a Ciprian e gnocchi a Lorena**. Era permesso — la vecchia regola diceva che
+«la fonte proteica può essere diversa fra i due» — e il modello l'ha usata per arrivare
+ai 170 g. La licenza è stata **ristretta, non tolta**.
+
+Nei pasti «Entrambi» c'è **un solo piatto base per tutti e due**. Le sole differenze
+ammesse sono varianti dello stesso piatto:
+
+- **grammature diverse** (abbondante per Ciprian, normale per Lorena);
+- un'**aggiunta proteica a lato** per Ciprian quando il piatto base non basta al suo
+  target — uova, skyr, grana, tonno — scritta negli ingredienti con `per: "ciprian"`;
+- il **tocco dolce** di Lorena, che ha già il campo `dolce` suo.
+
+Se il piatto condiviso è povero di proteine, il target di Ciprian si recupera con
+l'aggiunta a lato o **sugli altri pasti della giornata**, mai cambiandogli il piatto.
+
+**Due piatti davvero diversi: una sola ragione**, cioè un divieto di Lorena che rende
+quel piatto impossibile per lei e senza una variante semplice. In quel caso il campo
+`perche` **deve** dire il motivo: si vede già accanto al pasto (`.nota.perche`), e
+serve a poter vedere il perché invece di subirlo.
+
+Nei pasti condivisi comanda il profilo più esigente sulla varietà: le ripetizioni di
+Ciprian vivono nei **suoi pasti da solo** (la catena cena → pranzo del giorno dopo),
+che restano come sono. I pasti liberi restano liberi: non si genera niente, per nessuno.
+
+Sta nel prompt della Edge Function, in **tutti e due i mestieri**: `REGOLE_SETTIMANA`
+(sezione «2 bis») e `REGOLE` (il caso «Tutti e due insieme»). **Se il metodo cambia, si
+cambia lì**, non nel frontend.
 
 **Blocco 3 — streaming.** La function chiama Anthropic con `stream: true` e riconosce
 ogni proposta dentro il JSON mentre si scrive (`creaLettore()`: conta le graffe tenendo
@@ -392,7 +422,10 @@ collaudare**. In più: si cambia giorno strisciando col pollice.
 
 ⚠️ **In sospeso, un passaggio manuale**: `edge-function-cosa-cucino.ts` va **reincollato
 su Supabase** (Edge Functions → cosa-cucino → Deploy) — la seconda volta il 13/08,
-per la correzione di `max_tokens`. Collaudo del Blocco 2: `COLLAUDO-V5-BLOCCO2.md`.
+per la correzione di `max_tokens`; **la terza il 16/08**, per il piatto unico nei pasti
+condivisi e per i nomi degli ingredienti copiati dalla dispensa. Finché non è
+reincollato, quelle due regole non sono attive: il frontend da solo non le può imporre.
+Collaudo del Blocco 2: `COLLAUDO-V5-BLOCCO2.md`.
 
 **Blocco 2 collaudato su giorni veri il 13/08** (settimana 16-22/08): la **coerenza di
 magazzino ha retto**, nessun ingrediente fantasma. Ma **un blocco intero (20 e 21) è
@@ -523,31 +556,46 @@ segnate «?» non producono avvisi — meglio tacere che gridare al lupo.
 «Non ora» lo nasconde **fino a ricaricare** (`S.avvisoVia`, non `localStorage`): il
 problema è vero e non va dimenticato.
 
-#### ⚠️ `cercaInDispensa()` non riconosce i plurali — e non va allargata
+#### ⚠️ I nomi degli ingredienti: un solo confronto, `stessoNome()` (16/08/2026)
 
-Trovato provando il Blocco 2 sui dati veri: alla prima accensione l'avviso segnalava
-quattro cose mancanti, **tutte e quattro false**.
+Trovato due volte sui dati veri: l'avviso segnalava mancante «uovo» mentre in dispensa
+c'era «Uova», e prima ancora mozzarella/Mozzarelle, polpo/Polpi, panino per
+burger/Panini burger. Non era un caso isolato: erano **quattro confronti diversi**
+sparsi per l'app, che sbagliavano in quattro modi diversi.
 
-| L'ingrediente | In dispensa c'era | Perché non lo trovava |
-|---|---|---|
-| mozzarella | **Mozzarelle** | singolare contro plurale |
-| panino per burger | **Panini burger** | nome di più parole, nessuno contiene l'altro |
-| polpo | **Polpi** | singolare contro plurale |
-| grana | **Base sempre in casa** — grana · burro · … | è nominato nella *quantità*, non nel nome |
+Ora ce n'è **uno solo**, `stessoNome(a, b)`, ed è usato in **tutti** i punti in cui si
+confrontano nomi di cibo: `cercaInDispensa()` (lo scalo di «Ho cucinato questo» e
+l'avviso delle scorte), il raggruppamento dentro `scorteMancanti()`, `inListaSpesa()`,
+la deduplica di `aggiungiAllaSpesa()` e le liste del Profilo. **Se serve confrontare
+due nomi, si passa da lì: non se ne scrive un altro.**
 
-`cercaInDispensa()` cerca per contenimento sul solo **nome**, ed è **giusto che resti
-severa**: è la stessa funzione che scala la dispensa, e un abbinamento sbagliato lì
-scalerebbe l'ingrediente sbagliato. **Non allargarla.**
+Due principi:
 
-La soluzione è un secondo controllo, `forseInCasa()`, usato **solo per NON dare un
-falso allarme**: il rischio è rovesciato — un abbinamento largo può soltanto far tacere
-un avviso, mai toccare niente. Prende la parola più lunga del nome, ne toglie la vocale
-finale («mozzarella» → `mozzarell`, «polpo» → `polp`) e la cerca dentro nome **e**
-quantità di ogni voce. Più `inListaSpesa()`: quello che è già sulla lista non è una
-notizia.
-Effetto collaterale accettato: `polp` trova anche «polpa di pomodoro». Sbagliare verso
-il silenzio va bene, verso il rumore no — un avviso che grida sempre smette di essere
-letto.
+1. **Nome intero, mai pezzi di parola.** «latte» non è «latte di cocco», «farina» non
+   è «farina di mandorle». Per questo non si usa più `includes()`: si confrontano le
+   parole che contano (via `paroleNome()`, che butta via articoli e preposizioni), e
+   devono essere **tante uguali e tutte appaiate**. Così «panino per burger» trova
+   «Panini burger», ma «latte» non tocca il latte di cocco.
+2. **Singolare e plurale sono la stessa cosa.** `formeParola()` genera i plurali
+   regolari italiani (carota→carote, pomodoro→pomodori, zucca→zucche, aglio→agli,
+   pesce→pesci). Gli irregolari stanno nella mappa `ALIAS_NOMI` — **uovo/uova è lì**,
+   ed è fatta apposta per essere allungata quando salta fuori un caso nuovo.
+
+⚠️ **Solo dal singolare al plurale, mai il contrario**, ed è la parte delicata: se si
+provasse a indovinare il singolare, «pesche» diventerebbe «pesce» e la dispensa
+scalerebbe il pesce al posto delle pesche. Funziona lo stesso perché due nomi si
+incontrano se almeno uno dei due è al singolare — e in dispensa uno dei due lo è quasi
+sempre. Per lo stesso motivo restano distinti grana/grano, pasta/pasto, pesce/pesca.
+
+`forseInCasa()` resta, ma solo per **l'ultimo caso** che a `stessoNome()` sfugge di
+proposito: le voci-contenitore che nominano la roba nella **quantità** e non nel nome
+(«Base sempre in casa — grana · burro · …»). È larga, e va usata **solo per far tacere
+un avviso**, mai per scalare: sbagliare verso il silenzio va bene, verso il rumore no.
+
+⚠️ **La cura vera è a monte**: nel prompt della Edge Function c'è l'ordine di scrivere
+gli ingredienti del piano **con i nomi della dispensa, lettera per lettera** — niente
+singolari al posto dei plurali, niente sinonimi, niente aggettivi in più. `stessoNome()`
+copre i residui, non è il rimedio principale.
 
 **Rigenerazione.** Non c'è un motore nuovo: si **riapre la stessa passata**
 (`apriPassata({dal, quanti, daPiano, titolo})`) precompilata da `S.piano`, e i blocchi
