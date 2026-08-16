@@ -2366,11 +2366,102 @@ async function salvaPastoAMano(iso, quale, box){
   }
 }
 
-/* ---------- 2 · LE BOZZE NON TORNANO PIÙ ---------- */
+/* ==========================================================
+   I NOMI DEGLI INGREDIENTI — UN SOLO CONFRONTO PER TUTTA L'APP
+   ==========================================================
+
+   ⚠️ Ogni volta che due nomi di cibo si confrontano — scalo della dispensa,
+   avviso delle scorte, lista della spesa, liste dei profili — si passa da
+   QUI. Prima erano quattro confronti diversi che sbagliavano in quattro
+   modi diversi: «uovo» non trovava «uova», e la lista della spesa faceva
+   doppioni con gli stessi due nomi.
+
+   Due principi, tutti e due importanti:
+
+   1. Si confronta il NOME INTERO, mai un pezzo di parola.
+      «latte» NON è «latte di cocco», «farina» NON è «farina di mandorle».
+      È il motivo per cui non si usa più includes().
+   2. Singolare e plurale sono la stessa cosa: pomodoro = pomodori,
+      zucchina = zucchine, carota = carote. Gli irregolari (uovo/uova)
+      stanno in ALIAS_NOMI, che è fatta apposta per essere allungata.  */
 
 /* Parole troppo corte o di servizio non dicono niente su cosa sia una cosa. */
 const PAROLE_VUOTE = new Set(['per','di','da','con','del','della','dei','delle',
                               'il','lo','la','le','gli','un','uno','una','al','alla','in','e','o']);
+
+/** I plurali che non seguono nessuna regola: qui si aggiungono a mano.
+    Ogni riga è un gruppo di forme che vogliono dire la stessa cosa. */
+const ALIAS_NOMI = [
+  ['uovo','uova','uove'],
+  ['ala','ali'],
+  ['bue','buoi'],
+];
+
+/* forma scritta → tutte le forme del suo gruppo */
+const ALIAS_MAP = new Map();
+for (const gruppo of ALIAS_NOMI){
+  const forme = new Set(gruppo);
+  for (const f of gruppo) ALIAS_MAP.set(f, forme);
+}
+
+/**
+ * Le forme equivalenti di UNA parola: la parola stessa più i suoi plurali
+ * regolari italiani.
+ *
+ * ⚠️ Solo in avanti, dal singolare al plurale. Non si prova a indovinare il
+ * singolare di una parola che finisce per -i o per -e, e c'è un motivo:
+ * «pesche» darebbe «pesce», e la dispensa scalerebbe il pesce al posto
+ * delle pesche. Basta così, perché due nomi si incontrano se almeno uno
+ * dei due è al singolare — e nella dispensa uno dei due lo è quasi sempre.
+ */
+function formeParola(p){
+  const gruppo = ALIAS_MAP.get(p);
+  if (gruppo) return gruppo;
+
+  const f = new Set([p]);
+  if (p.length < 4) return f;                 // parole corte: nessuna acrobazia
+  const b = p.slice(0, -1);                   // senza la vocale finale
+  const b2 = p.slice(0, -2);
+
+  if (p.endsWith('cia') || p.endsWith('gia')){ f.add(b2 + 'e'); f.add(b2 + 'ie'); }
+  else if (p.endsWith('ca') || p.endsWith('ga')) f.add(b + 'he');   // zucca→zucche
+  else if (p.endsWith('a')) f.add(b + 'e');                          // carota→carote
+  else if (p.endsWith('io')) f.add(b);                               // aglio→agli
+  else if (p.endsWith('co') || p.endsWith('go')){ f.add(b + 'hi'); f.add(b + 'i'); }
+  else if (p.endsWith('o')) f.add(b + 'i');                          // pomodoro→pomodori
+  else if (p.endsWith('e')) f.add(b + 'i');                          // pesce→pesci
+  return f;
+}
+
+/** Un nome ridotto alle sue parole che contano, senza accenti né punteggiatura. */
+function paroleNome(nome){
+  return senzaAccenti(nome).replace(/[^a-z0-9]+/g, ' ').split(' ')
+    .filter(p => p && !PAROLE_VUOTE.has(p));
+}
+
+/**
+ * I due nomi indicano la stessa cosa? È IL confronto dell'app.
+ *
+ * Devono avere lo stesso numero di parole che contano, e ogni parola
+ * dell'uno deve trovare la sua nell'altro (singolare o plurale che sia).
+ * «panino per burger» = «panini burger» ✓   «latte» = «latte di cocco» ✗
+ */
+function stessoNome(a, b){
+  const A = paroleNome(a), B = paroleNome(b);
+  // nomi fatti di sole parole di servizio o di segni: si confrontano com'erano
+  if (!A.length && !B.length) return senzaAccenti(a) === senzaAccenti(b);
+  if (!A.length || A.length !== B.length) return false;
+  const restano = B.map(formeParola);
+  return A.every(x => {
+    const forme = formeParola(x);
+    const k = restano.findIndex(y => y && [...forme].some(w => y.has(w)));
+    if (k < 0) return false;
+    restano[k] = null;                       // ogni parola si spende una volta sola
+    return true;
+  });
+}
+
+/* ---------- 2 · LE BOZZE NON TORNANO PIÙ ---------- */
 
 /**
  * Un controllo LARGO, che serve solo a NON dare un falso allarme.
@@ -2381,42 +2472,28 @@ const PAROLE_VUOTE = new Set(['per','di','da','con','del','della','dei','delle',
  * rovesciato: un abbinamento largo può solo far tacere un avviso, mai
  * toccare niente. Per questo si può permettere di essere generoso.
  *
- * Riconosce quello che cercaInDispensa() si perde:
- *   «mozzarella» → «Mozzarelle»          (singolare e plurale)
- *   «panino per burger» → «Panini burger» (nomi di più parole)
+ * Singolare, plurale e nomi di più parole ora li riconosce già
+ * stessoNome(). Qui resta l'ultimo caso che a quella sfugge, ed è giusto
+ * che le sfugga:
  *   «grana» → «Base sempre in casa — grana · burro · …»
- *             (le voci-contenitore, che nominano le cose nella quantità)
+ *             le voci-contenitore, che nominano le cose nella QUANTITÀ e
+ *             non nel nome. Buone per tacere, mai per scalare.
  */
-/* In italiano il plurale cambia la vocale finale: uovo→uova, polpo→polpi,
-   mozzarella→mozzarelle, panino→panini. Invece di tagliare la parola —
-   che faceva incontrare pezzi di parole diverse — se ne provano le quattro
-   forme, ed è molto più preciso. */
-function formeDi(parola){
-  const forme = new Set([parola]);
-  if (parola.length >= 4 && /[aeio]$/.test(parola)){
-    const base = parola.slice(0, -1);
-    for (const v of ['a','e','i','o']) forme.add(base + v);
-  }
-  return [...forme];
-}
-
 function forseInCasa(nome){
-  const parole = senzaAccenti(nome).split(/[^a-z0-9]+/)
-    .filter(p => p.length >= 4 && !PAROLE_VUOTE.has(p));
+  const parole = paroleNome(nome).filter(p => p.length >= 4);
   if (!parole.length) return false;
 
   // la parola più lunga è la più specifica: è quella che deve trovarsi
   const chiave = parole.reduce((a,b) => b.length >= a.length ? b : a);
   // deve cominciare una parola, non finire dentro un'altra:
   // «riso» non si deve trovare dentro «grissini»
-  const cerca = new RegExp('(^|[^a-z])(' + formeDi(chiave).join('|') + ')');
+  const cerca = new RegExp('(^|[^a-z])(' + [...formeParola(chiave)].join('|') + ')');
 
   return S.inv.some(v => cerca.test(senzaAccenti(`${v.name} ${v.qty}`)));
 }
 
 /** Già segnato sulla lista della spesa: lo sai già, non è una novità. */
-const inListaSpesa = (nome) => S.spesa.some(v =>
-  !v.done && senzaAccenti(v.name).includes(senzaAccenti(nome).slice(0, 12)));
+const inListaSpesa = (nome) => S.spesa.some(v => !v.done && stessoNome(v.name, nome));
 
 /**
  * Che cosa il piano dà per scontato di avere e non c'è (più).
@@ -2435,7 +2512,12 @@ function scorteMancanti(){
       const nome = String(i.nome || '').trim();
       if (!nome) continue;
       const voce = cercaInDispensa(nome);
-      const k = voce ? 'v:' + voce.id : 'x:' + senzaAccenti(nome);
+      // senza voce di dispensa, «uovo» e «uova» sono la stessa mancanza:
+      // si cerca fra i buchi già segnati prima di aprirne un altro
+      let k = voce ? 'v:' + voce.id : null;
+      if (!k) for (const [kk, s] of serve)
+        if (!s.voce && stessoNome(s.nome, nome)){ k = kk; break; }
+      if (!k) k = 'x:' + paroleNome(nome).join(' ');
       if (!serve.has(k)) serve.set(k, { voce, nome, giorni:[], n:0, u:null, sicuro:true });
       const s = serve.get(k);
       if (!s.giorni.includes(r.day)) s.giorni.push(r.day);
@@ -3821,20 +3903,16 @@ function scriviQta(n, u){
 const senzaAccenti = (s) => String(s ?? '').toLowerCase()
   .normalize('NFD').replace(/\p{Diacritic}/gu, '').trim();
 
-/** Trova la voce di dispensa che corrisponde a un ingrediente. */
+/** Trova la voce di dispensa che corrisponde a un ingrediente.
+ *
+ * ⚠️ È la funzione che SCALA la dispensa: un abbinamento sbagliato qui
+ * toglie grammi alla cosa sbagliata. Per questo confronta il nome intero
+ * con stessoNome() — prima bastava che un nome contenesse l'altro, e
+ * «latte» finiva sul «latte di cocco». Il singolare e il plurale li
+ * riconosce stessoNome(): «uovo» trova «uova». */
 function cercaInDispensa(nomeIngrediente){
-  const ing = senzaAccenti(nomeIngrediente);
-  if (!ing) return null;
-  let migliore = null;
-  for (const voce of S.inv){
-    const nome = senzaAccenti(voce.name);
-    if (!nome) continue;
-    if (ing.includes(nome) || nome.includes(ing)){
-      // a parità vince il nome più lungo: è il più specifico
-      if (!migliore || nome.length > senzaAccenti(migliore.name).length) migliore = voce;
-    }
-  }
-  return migliore;
+  if (!paroleNome(nomeIngrediente).length) return null;
+  return S.inv.find(voce => stessoNome(voce.name, nomeIngrediente)) || null;
 }
 
 /** Prepara le righe del riepilogo: un ingrediente per riga, senza doppioni. */
@@ -4356,7 +4434,8 @@ $('#profForm').addEventListener('click', async ev => {
     const v = inp.value.trim();
     if (!v){ inp.focus(); return; }
     const p = profilo(profModificato);
-    const gia = (p[campo] || []).some(x => senzaAccenti(x) === senzaAccenti(v));
+    // stesso confronto del resto dell'app: «pomodoro» e «pomodori» sono uno solo
+    const gia = (p[campo] || []).some(x => stessoNome(x, v));
     if (gia){ toast('C’è già.'); inp.value = ''; return; }
     salvaProfilo({ [campo]: [...(p[campo] || []), v] }, 'Aggiunto.');
   }
@@ -4537,12 +4616,16 @@ function rigaSpesa(v){
     Con "silenzioso" non dice niente: serve quando fa parte di un'azione più
     grande che ha già il suo messaggio d'esito (il salvataggio del piano). */
 async function aggiungiAllaSpesa(nomi, silenzioso){
-  const puliti = [...new Set(
-    (Array.isArray(nomi) ? nomi : [nomi])
-      .map(n => String(n || '').trim())
-      .filter(Boolean)
-      .filter(n => !S.spesa.some(v => senzaAccenti(v.name) === senzaAccenti(n)))
-  )];
+  // doppioni: né con quello che c'è già in lista, né fra i nomi in arrivo.
+  // «uovo» e «uova» sono la stessa riga (stessoNome), non due.
+  const puliti = [];
+  for (const grezzo of (Array.isArray(nomi) ? nomi : [nomi])){
+    const n = String(grezzo || '').trim();
+    if (!n) continue;
+    if (S.spesa.some(v => stessoNome(v.name, n))) continue;
+    if (puliti.some(p => stessoNome(p, n))) continue;
+    puliti.push(n);
+  }
   if (!puliti.length){ if (!silenzioso) toast('Erano già tutti in lista.'); return 0; }
   try{
     const { data, error } = await sb.from('shopping_list')
