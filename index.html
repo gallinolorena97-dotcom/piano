@@ -1280,6 +1280,8 @@ const S = {
   giornoSel:null,        // il giorno aperto nel calendario
   pianoErr:null,         // se la tabella plan_meals non c'è ancora
   avvisoVia:false,       // «non ora» sull'avviso delle scorte, fino a ricaricare
+  lavoro:null,           // la settimana che il server sta generando da sé (la staffetta)
+  staffetta:false,       // il database sa fare la staffetta? (tabella plan_jobs presente)
 };
 try { S.io = localStorage.getItem('piano-io') || S.io; } catch { /* modalità privata */ }
 
@@ -1388,7 +1390,7 @@ async function loadAll(){
   const aISO  = addGiorni(oggiISO(), 20);
 
   try{
-    const [p, i, r, s, sp, pf, vt] = await Promise.all([
+    const [p, i, r, s, sp, pf, vt, lv] = await Promise.all([
       sb.from('plan_meals').select('*').gte('day', daISO).lte('day', aISO)
         .order('day', { ascending:true }),
       sb.from('inventory_items').select('id,name,qty,cat'),
@@ -1397,6 +1399,8 @@ async function loadAll(){
       sb.from('shopping_list').select('id,name,done').order('created_at', { ascending:true }),
       sb.from('profiles').select('*').order('slug', { ascending:true }),
       sb.from('recipe_votes').select('recipe_id,profile_slug,pref'),
+      // la settimana che il server sta generando per conto suo, se c'è
+      sb.from('plan_jobs').select('*').order('creato_il', { ascending:false }).limit(1),
     ]);
     for (const res of [i,r,s]) if (res.error) throw res.error;
 
@@ -1418,10 +1422,19 @@ async function loadAll(){
     if (!vt.error) for (const v of (vt.data || [])){
       S.voti[v.recipe_id] = { ...(S.voti[v.recipe_id] || {}), [v.profile_slug]: v.pref };
     }
+    // La staffetta è facoltativa come tutto il resto: se la tabella non
+    // c'è ancora, l'app genera come prima e lo dice quando serve.
+    S.staffetta = !lv.error;
+    S.lavoro = (!lv.error && (lv.data || [])[0]) || null;
+    // un lavoro finito o vecchio non è una notizia: non deve restare in cima
+    if (S.lavoro && (S.lavoro.stato === 'finito' || S.lavoro.creato_il < unGiornoFa())) S.lavoro = null;
+
     await caricaDiario();
 
     banner(null);
     renderAll();
+    // se il server sta ancora lavorando, lo si segue senza che tu faccia niente
+    if (S.lavoro && S.lavoro.stato === 'in_corso') seguiLavoro();
   }catch(e){
     // qui il banner ha senso: è un problema di caricamento e sei in cima
     banner(spiegaErrore(e));
@@ -1608,7 +1621,10 @@ function renderPlan(){
   }
 
   if (!S.piano.length){
-    box.innerHTML = `<div class="empty vuoto-ill">
+    // la fascia della staffetta va anche qui: all'inizio il calendario è
+    // vuoto proprio mentre il server ci sta lavorando
+    box.innerHTML = `<div id="pnAvvisi">${avvisoLavoroHtml()}</div>
+      <div class="empty vuoto-ill">
       <svg viewBox="0 0 180 138" width="176" height="135" aria-hidden="true"><use href="#ill-piano"/></svg>
       <b>Non c'è ancora un piano.</b>
       <p>Sette giorni di pranzi e cene, costruiti su quello che hai
@@ -1624,7 +1640,7 @@ function renderPlan(){
 
   box.innerHTML =
     `<div id="pnVerifica"></div>
-     <div id="pnAvvisi">${avvisoScorteHtml()}${pianoCortoHtml()}</div>
+     <div id="pnAvvisi">${avvisoLavoroHtml()}${avvisoScorteHtml()}${pianoCortoHtml()}</div>
      <div class="settimana" id="pnStriscia" aria-label="I giorni del piano">
        ${giorni.map(chipGiorno).join('')}
      </div>
@@ -2584,6 +2600,146 @@ function avvisoScorteHtml(){
   </div>`;
 }
 
+/* ==========================================================
+   LA STAFFETTA, VISTA DAL TELEFONO
+   ==========================================================
+
+   Premi «Genera», e da lì in poi il telefono non serve più: il server si
+   prende in carico la settimana e la scrive un giorno per volta, anche a
+   schermo spento, anche con l'app chiusa.
+
+   Qui dentro non c'è nessun motore: c'è solo una finestra su un lavoro che
+   avviene altrove. L'app guarda la riga di `plan_jobs` e il calendario, e
+   li mostra. Se chiudi, non cambia niente; se riapri, ricomincia a
+   guardare da sola (vedi la coda di loadAll).
+
+   ⚠️ Non rimettere qui la generazione: è il guasto che abbiamo tolto. Il
+   telefono che tiene vivo un collegamento per minuti è il tavolo di lavoro
+   sbagliato. */
+
+const unGiornoFa = () => new Date(Date.now() - 864e5).toISOString();
+
+/** Da quanti secondi il lavoro non dà segni di vita. */
+const fermoDa = (lav) => (Date.now() - new Date(lav.aggiornato_il).getTime()) / 1000;
+
+/** Un lavoro «in corso» che però non si muove da un pezzo: un anello è morto.
+    Quattro minuti sono larghi apposta — un giorno ne impiega circa uno e mezzo. */
+const sembraFermo = (lav) => lav.stato === 'in_corso' && fermoDa(lav) > 240;
+
+/** Chiede al server di prendersi in carico la settimana.
+    Torna l'id del lavoro, oppure null se la function online è ancora quella
+    vecchia e non sa cosa sia una staffetta. */
+async function chiediStaffetta(){
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/cosa-cucino`, {
+    method:'POST',
+    headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}`,
+              'Content-Type':'application/json' },
+    body: JSON.stringify({
+      modo:'settimana-avvia',
+      oggi: oggiISO(),                 // il «oggi» del telefono: il server sta su UTC
+      io_slug: S.io,
+      passata: PS.giorni.map(g => ({
+        day: g.day,
+        pranzo: { modo:g.pranzo.modo, chi:g.pranzo.chi, nota:g.pranzo.nota },
+        cena:   { modo:g.cena.modo,   chi:g.cena.chi,   nota:g.cena.nota },
+      })),
+    }),
+  });
+  const testo = await r.text();
+  let dati = null;
+  try { dati = JSON.parse(testo); } catch { /* non è JSON: è la function vecchia */ }
+  if (!r.ok) throw new Error(dati?.errore || 'Il generatore non risponde. Riprova fra un minuto.');
+  return dati?.lavoro || null;
+}
+
+/** Riprende una settimana che si è fermata. Ricomincia dal giorno dopo
+    l'ultimo scritto: quelli già fatti non si rifanno e non si ripagano. */
+async function riprendiLavoro(){
+  if (!S.lavoro) return;
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/cosa-cucino`, {
+    method:'POST',
+    headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}`,
+              'Content-Type':'application/json' },
+    body: JSON.stringify({ modo:'settimana-riprendi', lavoro:S.lavoro.id }),
+  });
+  if (!r.ok){
+    let msg = ''; try { msg = (await r.json())?.errore || ''; } catch { /* pazienza */ }
+    throw new Error(msg || 'Non riesco a riprendere. Riprova fra poco.');
+  }
+  S.lavoro = { ...S.lavoro, stato:'in_corso', errore:null, aggiornato_il:new Date().toISOString() };
+  renderPlan();
+  seguiLavoro();
+}
+
+/* Il controllo periodico. Uno solo per volta, e si spegne da sé quando il
+   lavoro finisce: un timer dimenticato continuerebbe a interrogare il
+   database per sempre. */
+let timerLavoro = null;
+
+function seguiLavoro(){
+  clearTimeout(timerLavoro);
+  timerLavoro = setTimeout(guardaLavoro, 6000);
+}
+
+async function guardaLavoro(){
+  if (!S.lavoro){ clearTimeout(timerLavoro); return; }
+  try{
+    const [lav, righe] = await Promise.all([
+      sb.from('plan_jobs').select('*').eq('id', S.lavoro.id).maybeSingle(),
+      sb.from('plan_meals').select('*')
+        .gte('day', addGiorni(oggiISO(), -13)).lte('day', addGiorni(oggiISO(), 20))
+        .order('day', { ascending:true }),
+    ]);
+    if (lav.error) throw lav.error;
+    if (lav.data) S.lavoro = lav.data;
+    if (!righe.error) S.piano = righe.data || [];
+    renderPlan();
+
+    if (S.lavoro && S.lavoro.stato === 'in_corso'){ seguiLavoro(); return; }
+
+    // finita o ferma: si smette di guardare e si rilegge tutto per bene
+    clearTimeout(timerLavoro);
+    if (S.lavoro && S.lavoro.stato === 'finito'){
+      const fatti = S.lavoro.prossimo, tot = S.lavoro.giorni_tot;
+      toast(`Settimana pronta: ${fatti} ${fatti === 1 ? 'giorno scritto' : 'giorni scritti'} su ${tot}.`);
+      S.lavoro = null;
+    }
+    await loadAll();
+  }catch(e){
+    // un intoppo nel guardare non è un intoppo nel lavoro: si riprova piano
+    console.warn('controllo del lavoro', e);
+    timerLavoro = setTimeout(guardaLavoro, 15000);
+  }
+}
+
+/** La fascia in cima al Piano: cosa sta facendo il server, adesso. */
+function avvisoLavoroHtml(){
+  const lav = S.lavoro;
+  if (!lav || lav.stato === 'finito') return '';
+
+  const fatti = Number(lav.prossimo) || 0, tot = Number(lav.giorni_tot) || 0;
+  const avanzamento = tot ? `${Math.min(fatti, tot)} ${fatti === 1 ? 'giorno' : 'giorni'} su ${tot}` : '';
+
+  if (lav.stato === 'fermo' || sembraFermo(lav)){
+    return `<div class="ps-avviso avviso-scorte">
+      <b>La settimana si è fermata${avanzamento ? ` dopo ${esc(avanzamento)}` : ''}.</b>
+      <p style="margin:6px 0 0">${esc(lav.errore ||
+        'Il collegamento col generatore si è interrotto.')} Quello che è già scritto
+        resta dov'è: riprendendo, si ricomincia dal primo giorno mancante.</p>
+      <div class="form-row">
+        <button class="btn small" data-riprendi style="flex:1">Riprendi la settimana</button>
+        <button class="btn small ghost" data-lavoro-via>Lascia stare</button>
+      </div>
+    </div>`;
+  }
+
+  return `<div class="ps-avviso avviso-corto">
+    <b>Sto scrivendo la settimana${avanzamento ? `: ${esc(avanzamento)}` : ''}.</b>
+    <p style="margin:6px 0 0">${esc(lav.passo || 'Ci sto lavorando…')}
+      <br><b>Puoi chiudere l'app</b>: va avanti da sé, i giorni compaiono qui man mano.</p>
+  </div>`;
+}
+
 /* ---------- 3 · IL PIANO È CORTO ---------- */
 function pianoCortoHtml(){
   if (!S.piano.length) return '';
@@ -2605,8 +2761,27 @@ function pianoCortoHtml(){
 }
 
 /* ---------- i tocchi del Blocco 4 ---------- */
-$('#planBody').addEventListener('click', (ev) => {
+$('#planBody').addEventListener('click', async (ev) => {
   const card = ev.target.closest('.day');
+
+  const riprendi = ev.target.closest('[data-riprendi]');
+  if (riprendi){
+    riprendi.disabled = true;
+    riprendi.textContent = 'Riprendo…';
+    try { await riprendiLavoro(); }
+    catch(e){ esitoErrore(e); riprendi.disabled = false; riprendi.textContent = 'Riprendi la settimana'; }
+    return;
+  }
+
+  if (ev.target.closest('[data-lavoro-via]')){
+    // ⚠️ Non ferma niente sul server: toglie solo la fascia da qui. Se il
+    // lavoro è davvero fermo, non c'è niente da fermare; e se riparte, i
+    // giorni compaiono lo stesso — il calendario è la verità.
+    S.lavoro = null;
+    clearTimeout(timerLavoro);
+    renderPlan();
+    return;
+  }
 
   const modifica = ev.target.closest('[data-modifica]');
   if (modifica && card){
@@ -2971,6 +3146,36 @@ async function avviaGenerazione(){
   PS.inCorso = true;
   PS.stato = 'Sto leggendo la dispensa…';
   renderWizard();
+
+  /* ⚠️ LA STAFFETTA PRIMA DI TUTTO. Se il server sa prendersi in carico la
+     settimana, il telefono ha finito il suo lavoro qui: si chiude la passata
+     e si guarda il calendario riempirsi. Il ciclo qui sotto — quattro, ora
+     sette chiamate tenute in piedi dal telefono — resta solo come ripiego
+     per quando la function online non è ancora stata reincollata. */
+  if (S.staffetta){
+    try{
+      const id = await chiediStaffetta();
+      if (id){
+        PS.inCorso = false;
+        chiudiPassata(true);
+        S.lavoro = { id, stato:'in_corso', prossimo:0, giorni_tot:blocchi.length,
+                     passo:'Sto per cominciare…', aggiornato_il:new Date().toISOString() };
+        renderPlan();
+        guardaLavoro();
+        toast('Ci penso io: puoi chiudere l’app, i giorni compaiono man mano.');
+        return;
+      }
+      toast('La funzione su Supabase è ancora quella vecchia: genero come prima.');
+    }catch(e){
+      const m = String(e?.message || e);
+      PS.errore = guastoDiRete(m)
+        ? 'È caduto il collegamento prima di cominciare. Non è stato scritto niente: riprova.'
+        : m;
+      PS.inCorso = false;
+      renderWizard();
+      return;
+    }
+  }
 
   try{
     for (let b = 0; b < blocchi.length; b++){

@@ -95,6 +95,24 @@ const { chiave: ANTHROPIC_API_KEY, nome: NOME_SECRET } = trovaChiaveAnthropic();
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
+/**
+ * Continua a lavorare DOPO aver già risposto.
+ *
+ * `EdgeRuntime.waitUntil()` è il globale con cui il runtime di Supabase
+ * tiene viva la funzione a risposta già spedita: è il pezzo su cui sta in
+ * piedi la staffetta, e senza di lui il telefono dovrebbe restare in linea.
+ *
+ * ⚠️ Lo si prende da globalThis invece di dichiararlo: una dichiarazione
+ * nostra si scontrerebbe con quella del runtime al momento del deploy.
+ * Se un giorno non ci fosse, il lavoro parte lo stesso — semplicemente
+ * senza garanzia di arrivare in fondo.
+ */
+function inSottofondo(p: Promise<unknown>): void {
+  const rt = (globalThis as any).EdgeRuntime;
+  if (rt && typeof rt.waitUntil === 'function') rt.waitUntil(p);
+  else p.catch((e) => console.error('sottofondo', e));
+}
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -114,11 +132,37 @@ const errore = (messaggio: string, status = 500) => json({ errore: messaggio }, 
 //  Lettura dal database (con la chiave di servizio, lato server)
 // ------------------------------------------------------------
 async function leggi(tabella: string, colonne: string) {
-  const r = await fetch(`${SUPABASE_URL}/rest/v1/${tabella}?select=${colonne}`, {
+  // "tabella" può già portarsi dietro un filtro (plan_jobs?id=eq.…):
+  // in quel caso select si attacca con &, non con un secondo ?
+  const sep = tabella.includes('?') ? '&' : '?';
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${tabella}${sep}select=${colonne}`, {
     headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` },
   });
   if (!r.ok) throw new Error(`lettura ${tabella}: ${r.status}`);
   return await r.json();
+}
+
+/**
+ * Scrive nel database con la chiave di servizio.
+ *
+ * ⚠️ La usa solo la STAFFETTA. Il resto della function legge e basta: qui
+ * si scrive perché il telefono può essere spento, e qualcuno deve pur
+ * mettere i pasti nel calendario.
+ */
+async function scrivi(metodo: string, percorso: string, corpo?: unknown, prefer = 'return=representation') {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${percorso}`, {
+    method: metodo,
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+      Prefer: prefer,
+    },
+    body: corpo === undefined ? undefined : JSON.stringify(corpo),
+  });
+  if (!r.ok) throw new Error(`${metodo} ${percorso}: ${r.status} ${(await r.text()).slice(0, 200)}`);
+  const testo = await r.text();
+  return testo ? JSON.parse(testo) : null;
 }
 
 /** Incrementa il contatore del giorno. Restituisce -1 se il tetto è stato raggiunto. */
@@ -880,13 +924,9 @@ function flussoNdjson(scrivi: (manda: (o: unknown) => void) => Promise<void>): R
 type PastoChiesto = { pasto: string; chi: string; nota: string };
 type GiornoChiesto = { day: string; pasti: PastoChiesto[] };
 
-async function pianificaSettimana(body: Record<string, unknown>): Promise<Response> {
-  const ioSlug = String(body.io_slug ?? 'lorena').slice(0, 40);
-  const primo   = body.primo === true;
-  const restanti = Math.min(BLOCCHI_SETTIMANA, Math.max(1, Number(body.restanti) || 1));
-
-  // I giorni chiesti, ripuliti: al massimo 3 giorni e 2 pasti per giorno.
-  const giorni: GiornoChiesto[] = (Array.isArray(body.giorni) ? body.giorni : [])
+/** I giorni chiesti, ripuliti: al massimo 3 giorni e 2 pasti per giorno. */
+function ripulisciGiorni(grezzi: unknown): GiornoChiesto[] {
+  return (Array.isArray(grezzi) ? grezzi : [])
     .slice(0, 3)
     .map((g: any) => ({
       day: String(g?.day ?? '').slice(0, 10),
@@ -897,6 +937,80 @@ async function pianificaSettimana(body: Record<string, unknown>): Promise<Respon
       })),
     }))
     .filter((g) => /^\d{4}-\d{2}-\d{2}$/.test(g.day) && g.pasti.length);
+}
+
+type PezziContesto = {
+  giorni: GiornoChiesto[];
+  giaFatti: string[];
+  restaPrima: string;
+  fuoriELiberi: string[];
+  settimana: string[];
+  ioSlug: string;
+};
+
+/**
+ * Il contesto del piano settimanale: dispensa, persone, voti, storia,
+ * la settimana intera e i pasti da scrivere adesso.
+ *
+ * ⚠️ Scritto UNA VOLTA SOLA e usato da tutti e due i modi: quello vecchio
+ * (il telefono guida, `modo:'settimana'`) e la STAFFETTA (il server guida,
+ * `modo:'settimana-avvia'`). Se il metodo cambia, cambia per tutti e due:
+ * due copie di questo testo si sarebbero scollate alla prima modifica.
+ */
+function costruisciContestoSettimana(c: Contesto, p: PezziContesto): string {
+  const impostazioni = Object.fromEntries(c.setRows.map((s) => [s.key, s.value]));
+  const quantiPasti = p.giorni.reduce((n, g) => n + g.pasti.length, 0);
+
+  return `## DISPENSA DI ADESSO
+
+${descriviDispensa(c.inv)}
+${p.restaPrima ? `\n⚠️ ATTENZIONE: i giorni precedenti del piano hanno già consumato una parte di questa dispensa.\nDopo quei giorni resta questo:\n${p.restaPrima}\nParti da QUI, non dalla dispensa piena.` : ''}
+
+## LE PERSONE
+${c.profili.length ? c.profili.map((x) => descriviProfilo(x, p.ioSlug)).join('\n\n') : '- (profili non configurati: considera una sola persona con gli obiettivi qui sotto)'}
+
+Nel piano le persone si chiamano con questi nomi: "ciprian" è chi ha l'obiettivo
+proteico, "lorena" è l'altra, "entrambi" quando mangiano insieme.
+
+## RICETTE GIÀ VOTATE — i voti sono PER PERSONA
+${descriviVoti(c)}
+
+## MANGIATO NEGLI ULTIMI GIORNI (per la regola della varietà)
+${descriviRecenti(c)}
+
+## OBIETTIVI DI RIFERIMENTO
+${impostazioni.kcal_target ?? 2200} kcal · ${impostazioni.protein_target ?? 170} g di proteine al giorno, per chi ce li ha.
+
+${p.giaFatti.length ? `## PASTI GIÀ DECISI NEI GIORNI PRECEDENTI DI QUESTO PIANO
+Questa roba è già spesa e questi piatti sono già stati usati: non ripeterli se il
+profilo di chi mangia chiede varietà, e non riusare gli ingredienti che hanno consumato.
+${p.giaFatti.map((x) => `- ${x}`).join('\n')}
+` : ''}
+${p.settimana.length ? `## LA SETTIMANA INTERA — serve a guardare avanti
+Questi sono TUTTI i pasti della settimana, compresi quelli che NON stai scrivendo
+adesso: dove si mangia e chi c'è. Guardali prima di decidere le porzioni doppie —
+una cena cucina doppio solo se sa chi ci sarà domani a pranzo — e prima di scegliere
+la fonte proteica, per non ripetere quella di ieri o di domani.
+Scrivi SOLO i pasti che ti vengono chiesti più sotto: gli altri sono contorno.
+${p.settimana.map((x) => `- ${x}`).join('\n')}
+` : (p.fuoriELiberi.length ? `## GIORNI IN CUI NON SI CUCINA (già segnati, non produrli)
+${p.fuoriELiberi.map((x) => `- ${x}`).join('\n')}
+` : '')}
+## I PASTI DA SCRIVERE ADESSO — esattamente ${quantiPasti}, né uno di più né uno di meno
+
+${p.giorni.map((g) => `### ${g.day}
+${g.pasti.map((x) => `- ${x.pasto} — mangia: ${x.chi}${x.nota ? ` — nota di chi ha compilato: "${x.nota}"` : ''}`).join('\n')}`).join('\n\n')}
+
+Scrivi i pasti in ordine di giorno e, dentro il giorno, prima il pranzo e poi la cena.
+Alla fine compila "resta" con quello che rimarrà in dispensa dopo questi giorni.`;
+}
+
+async function pianificaSettimana(body: Record<string, unknown>): Promise<Response> {
+  const ioSlug = String(body.io_slug ?? 'lorena').slice(0, 40);
+  const primo   = body.primo === true;
+  const restanti = Math.min(BLOCCHI_SETTIMANA, Math.max(1, Number(body.restanti) || 1));
+
+  const giorni = ripulisciGiorni(body.giorni);
 
   if (!giorni.length) return errore('Non ci sono pasti da pianificare in questi giorni.', 400);
 
@@ -953,51 +1067,10 @@ async function pianificaSettimana(body: Record<string, unknown>): Promise<Respon
     return errore('La dispensa è vuota: aggiungi qualche ingrediente e riprova.', 400);
   }
 
-  const impostazioni = Object.fromEntries(c.setRows.map((s) => [s.key, s.value]));
   const quantiPasti = giorni.reduce((n, g) => n + g.pasti.length, 0);
-
-  const contesto = `## DISPENSA DI ADESSO
-
-${descriviDispensa(c.inv)}
-${restaPrima ? `\n⚠️ ATTENZIONE: i giorni precedenti del piano hanno già consumato una parte di questa dispensa.\nDopo quei giorni resta questo:\n${restaPrima}\nParti da QUI, non dalla dispensa piena.` : ''}
-
-## LE PERSONE
-${c.profili.length ? c.profili.map((p) => descriviProfilo(p, ioSlug)).join('\n\n') : '- (profili non configurati: considera una sola persona con gli obiettivi qui sotto)'}
-
-Nel piano le persone si chiamano con questi nomi: "ciprian" è chi ha l'obiettivo
-proteico, "lorena" è l'altra, "entrambi" quando mangiano insieme.
-
-## RICETTE GIÀ VOTATE — i voti sono PER PERSONA
-${descriviVoti(c)}
-
-## MANGIATO NEGLI ULTIMI GIORNI (per la regola della varietà)
-${descriviRecenti(c)}
-
-## OBIETTIVI DI RIFERIMENTO
-${impostazioni.kcal_target ?? 2200} kcal · ${impostazioni.protein_target ?? 170} g di proteine al giorno, per chi ce li ha.
-
-${giaFatti.length ? `## PASTI GIÀ DECISI NEI GIORNI PRECEDENTI DI QUESTO PIANO
-Questa roba è già spesa e questi piatti sono già stati usati: non ripeterli se il
-profilo di chi mangia chiede varietà, e non riusare gli ingredienti che hanno consumato.
-${giaFatti.map((x) => `- ${x}`).join('\n')}
-` : ''}
-${settimana.length ? `## LA SETTIMANA INTERA — serve a guardare avanti
-Questi sono TUTTI i pasti della settimana, compresi quelli che NON stai scrivendo
-adesso: dove si mangia e chi c'è. Guardali prima di decidere le porzioni doppie —
-una cena cucina doppio solo se sa chi ci sarà domani a pranzo — e prima di scegliere
-la fonte proteica, per non ripetere quella di ieri o di domani.
-Scrivi SOLO i pasti che ti vengono chiesti più sotto: gli altri sono contorno.
-${settimana.map((x) => `- ${x}`).join('\n')}
-` : (fuoriELiberi.length ? `## GIORNI IN CUI NON SI CUCINA (già segnati, non produrli)
-${fuoriELiberi.map((x) => `- ${x}`).join('\n')}
-` : '')}
-## I PASTI DA SCRIVERE ADESSO — esattamente ${quantiPasti}, né uno di più né uno di meno
-
-${giorni.map((g) => `### ${g.day}
-${g.pasti.map((p) => `- ${p.pasto} — mangia: ${p.chi}${p.nota ? ` — nota di chi ha compilato: "${p.nota}"` : ''}`).join('\n')}`).join('\n\n')}
-
-Scrivi i pasti in ordine di giorno e, dentro il giorno, prima il pranzo e poi la cena.
-Alla fine compila "resta" con quello che rimarrà in dispensa dopo questi giorni.`;
+  const contesto = costruisciContestoSettimana(c, {
+    giorni, giaFatti, restaPrima, fuoriELiberi, settimana, ioSlug,
+  });
 
   const chiamata = await chiamaAnthropic(REGOLE_SETTIMANA, contesto, SCHEMA_SETTIMANA, MAX_TOKENS_SETTIMANA);
   if (!chiamata.ok) return chiamata.risposta;
@@ -1069,6 +1142,341 @@ Alla fine compila "resta" con quello che rimarrà in dispensa dopo questi giorni
   });
 }
 
+// ============================================================
+//  LA STAFFETTA — la settimana si genera da sola, sul server
+//  ============================================================
+//
+//  Il telefono dice "fai questa settimana" e se ne va. Da lì in poi:
+//
+//    avvia  →  scrive i giorni in cui non si cucina, crea la riga di
+//              lavoro, RISPONDE SUBITO, e in sottofondo parte il primo passo
+//    passo  →  genera UN giorno, lo scrive nel calendario, aggiorna la riga
+//              di lavoro, sveglia il passo dopo e si spegne
+//
+//  ⚠️ Perché a staffetta e non tutto in un lavoro solo in sottofondo:
+//  Supabase spegne una funzione dopo 150 secondi sul piano gratuito, e
+//  lo stesso tetto vale per i lavori in sottofondo (EdgeRuntime.waitUntil).
+//  Un giorno costa 86 secondi misurati: ci sta. Una settimana intera, no.
+//  Ogni anello riparte con il suo budget pieno.
+//
+//  ⚠️ Nessun anello si fida del precedente: rilegge la riga di lavoro dal
+//  database. Se un anello muore, la catena si ferma e la riga resta con
+//  "aggiornato_il" vecchio — l'app se ne accorge e offre di riprendere.
+//  Meglio una catena ferma e dichiarata di una che riparte da sola in
+//  eterno consumando credito.
+// ============================================================
+
+const PASTI_DEL_GIORNO = ['pranzo', 'cena'] as const;
+
+type PastoPassata = { modo: string; chi: string; nota: string };
+type GiornoPassata = { day: string; pranzo: PastoPassata; cena: PastoPassata };
+
+/** La passata ripulita: quello che il telefono ha compilato, di cui non ci fidiamo. */
+function ripulisciPassata(grezza: unknown): GiornoPassata[] {
+  const pasto = (p: any): PastoPassata => ({
+    modo: ['casa', 'fuori', 'libero', 'lascia'].includes(String(p?.modo)) ? String(p.modo) : 'casa',
+    chi:  ['ciprian', 'entrambi', 'lorena'].includes(String(p?.chi)) ? String(p.chi) : 'entrambi',
+    nota: String(p?.nota ?? '').slice(0, 200),
+  });
+  return (Array.isArray(grezza) ? grezza : [])
+    .slice(0, 14)
+    .map((g: any) => ({ day: String(g?.day ?? '').slice(0, 10), pranzo: pasto(g?.pranzo), cena: pasto(g?.cena) }))
+    .filter((g) => /^\d{4}-\d{2}-\d{2}$/.test(g.day));
+}
+
+const haDaCucinare = (g: GiornoPassata) => PASTI_DEL_GIORNO.some((q) => g[q].modo === 'casa');
+
+/** Il giorno dopo, in AAAA-MM-GG. */
+function giornoDopo(iso: string): string {
+  const d = new Date(`${iso}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Da un pasto della passata (più il piatto generato, se c'è) alla riga di
+ * `plan_meals`.
+ *
+ * ⚠️ È il gemello di `righeDaSalvare()` nel frontend, e le due devono dire
+ * la stessa cosa. Non è una copia per pigrizia: da qui in avanti è QUESTA
+ * che scrive i pasti generati, e quella di là resta per i pasti scritti a
+ * mano e per il modo vecchio. Se cambia lo schema, si toccano tutte e due.
+ */
+function rigaDiPasto(g: GiornoPassata, quale: string, m: any, oggi: string) {
+  const p = (g as any)[quale] as PastoPassata;
+  const base = {
+    day: g.day,
+    pasto: quale,
+    modo: p.modo,
+    chi: p.chi,
+    // oggi e domani sono confermati, il resto è bozza. "oggi" arriva dal
+    // telefono: il server sta su UTC e sbaglierebbe di poco, ma sbaglierebbe.
+    stato: g.day <= giornoDopo(oggi) ? 'confermato' : 'bozza',
+    nota: p.nota.trim() || null,
+    a_mano: false,
+  };
+
+  if (p.modo !== 'casa') {
+    return {
+      ...base, piatto: null, perche: null, ingredienti: [], dolce: null, tempo: null,
+      prot: null, kcal: null, scongelamento: null, scongelare_il: null,
+      avanzo_per: null, dipende_da_spesa: false,
+    };
+  }
+
+  // I numeri sono di Ciprian: nei pasti di sola Lorena non esistono.
+  const suoi = p.chi !== 'lorena';
+  const num = (v: unknown) => { const n = Number(v); return suoi && n > 0 ? Math.round(n) : null; };
+
+  return {
+    ...base,
+    piatto: String(m?.piatto ?? '').trim() || null,
+    perche: String(m?.perche ?? '').trim() || null,
+    ingredienti: (Array.isArray(m?.ingredienti) ? m.ingredienti : []).map((i: any) => ({
+      nome: String(i?.nome ?? '').trim(),
+      qta:  String(i?.qta ?? '').trim(),
+      per:  ['tutti', 'ciprian', 'lorena'].includes(String(i?.per)) ? String(i.per) : 'tutti',
+    })).filter((i: any) => i.nome),
+    dolce: String(m?.dolce ?? '').trim() || null,
+    tempo: Number(m?.tempo) > 0 ? Math.round(Number(m.tempo)) : null,
+    prot: num(m?.prot),
+    kcal: num(m?.kcal),
+    scongelamento: String(m?.scongelamento ?? '').trim() || null,
+    // il promemoria si mostra sul giorno in cui va fatto: se la data non è
+    // scritta bene, meglio nessun promemoria che uno sbagliato
+    scongelare_il: /^\d{4}-\d{2}-\d{2}$/.test(String(m?.scongelare_il ?? '')) ? m.scongelare_il : null,
+    avanzo_per: String(m?.avanzo_per ?? '').trim() || null,
+    dipende_da_spesa: (Array.isArray(m?.manca) ? m.manca : []).length > 0,
+  };
+}
+
+/** Scrive righe nel calendario cancellando SOLO i pasti che riscrive. */
+async function scriviNelCalendario(righe: any[]) {
+  if (!righe.length) return;
+  for (const q of PASTI_DEL_GIORNO) {
+    const giorni = righe.filter((r) => r.pasto === q).map((r) => r.day);
+    if (!giorni.length) continue;
+    await scrivi('DELETE', `plan_meals?pasto=eq.${q}&day=in.(${giorni.join(',')})`, undefined, 'return=minimal');
+  }
+  await scrivi('POST', 'plan_meals', righe, 'return=minimal');
+}
+
+/** Quello che manca finisce nella lista della spesa, senza doppioni. */
+async function aggiungiAllaSpesaServer(nomi: string[]) {
+  const puliti = [...new Set(nomi.map((n) => String(n).trim()).filter(Boolean))];
+  if (!puliti.length) return;
+  const gia: any[] = await leggi('shopping_list', 'name');
+  const gianomi = new Set(gia.map((x: any) => String(x.name).toLowerCase().trim()));
+  const nuovi = puliti.filter((n) => !gianomi.has(n.toLowerCase()));
+  if (nuovi.length) await scrivi('POST', 'shopping_list', nuovi.map((name) => ({ name })), 'return=minimal');
+}
+
+/** Una riga di lavoro, riletta dal database. Nessun anello si fida del precedente. */
+async function leggiLavoro(id: string) {
+  const righe: any[] = await leggi(`plan_jobs?id=eq.${encodeURIComponent(id)}`, '*');
+  return Array.isArray(righe) && righe.length ? righe[0] : null;
+}
+
+const aggiornaLavoro = (id: string, campi: Record<string, unknown>) =>
+  scrivi('PATCH', `plan_jobs?id=eq.${encodeURIComponent(id)}`,
+    { ...campi, aggiornato_il: new Date().toISOString() }, 'return=minimal');
+
+/** Un pasto già deciso, in una riga: è il testimone che passa di anello in anello. */
+function compattaPastoServer(m: any, chi: string): string {
+  const ing = (Array.isArray(m?.ingredienti) ? m.ingredienti : [])
+    .map((i: any) => `${i.nome} ${i.qta}`).join(', ');
+  return `${m.day} ${m.pasto} (mangia: ${chi}): ${m.piatto}` +
+    (ing ? ` — usa: ${ing}` : '') +
+    (String(m?.avanzo_per ?? '').trim() ? ` — ⚠️ cucinato doppio, l'avanzo va a: ${m.avanzo_per}` : '');
+}
+
+/**
+ * Chiede al modello UN giorno e raccoglie i pasti. Nessuno sta guardando:
+ * il flusso serve solo a poter salvare quello che è arrivato se la risposta
+ * si tronca a metà.
+ */
+async function generaUnGiorno(c: Contesto, pezzi: PezziContesto) {
+  const contesto = costruisciContestoSettimana(c, pezzi);
+  const chiesti = pezzi.giorni.reduce((n, g) => n + g.pasti.length, 0);
+
+  const chiamata = await chiamaAnthropic(REGOLE_SETTIMANA, contesto, SCHEMA_SETTIMANA, MAX_TOKENS_SETTIMANA);
+  if (!chiamata.ok) throw new Error('il generatore non ha risposto');
+
+  const lettore = creaLettore();
+  const pasti: any[] = [];
+  for await (const pezzo of pezziDiTesto(chiamata.corpo)) {
+    if (pezzo.guasto) throw new Error('il generatore si è interrotto');
+    if (!pezzo.testo) continue;
+    for (const pasto of lettore.aggiungi(pezzo.testo)) {
+      if (pasti.length < chiesti) pasti.push(pasto);
+    }
+  }
+
+  let resta = '';
+  try { resta = String(JSON.parse(lettore.testoIntero())?.resta ?? ''); } catch { /* JSON monco: pazienza */ }
+  return { pasti, resta };
+}
+
+/** Sveglia l'anello successivo e non aspetta che finisca. */
+async function svegliaProssimoPasso(id: string) {
+  await fetch(`${SUPABASE_URL}/functions/v1/cosa-cucino`, {
+    method: 'POST',
+    headers: {
+      apikey: SERVICE_KEY,
+      Authorization: `Bearer ${SERVICE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ modo: 'settimana-passo', lavoro: id }),
+  });
+}
+
+/** UN anello: un giorno generato, scritto, e il testimone passato. */
+async function passoStaffetta(id: string) {
+  let lavoro: any = null;
+  try {
+    lavoro = await leggiLavoro(id);
+    if (!lavoro || lavoro.stato !== 'in_corso') return;
+
+    const passata: GiornoPassata[] = lavoro.passata;
+    // il prossimo giorno che ha davvero qualcosa da cucinare
+    let i = Number(lavoro.prossimo) || 0;
+    while (i < passata.length && !haDaCucinare(passata[i])) i++;
+
+    if (i >= passata.length) {
+      await aggiornaLavoro(id, { stato: 'finito', passo: null, prossimo: passata.length });
+      return;
+    }
+
+    const g = passata[i];
+    await aggiornaLavoro(id, { passo: `Sto scrivendo ${g.day}`, prossimo: i });
+
+    const usate = await consumaUnaGenerazione();
+    if (usate === -1) {
+      await aggiornaLavoro(id, {
+        stato: 'fermo',
+        errore: `Per oggi hai già usato tutte le ${MAX_AL_GIORNO} generazioni. La settimana riprende domani da ${g.day}.`,
+      });
+      return;
+    }
+
+    const c = await leggiContesto();
+    const giorni: GiornoChiesto[] = [{
+      day: g.day,
+      pasti: PASTI_DEL_GIORNO.filter((q) => g[q].modo === 'casa')
+        .map((q) => ({ pasto: q, chi: g[q].chi, nota: g[q].nota })),
+    }];
+
+    const { pasti, resta } = await generaUnGiorno(c, {
+      giorni,
+      giaFatti: (Array.isArray(lavoro.fatti) ? lavoro.fatti : []).slice(-20),
+      restaPrima: String(lavoro.resta ?? ''),
+      fuoriELiberi: [],
+      settimana: passata.flatMap((x) => PASTI_DEL_GIORNO.map((q) =>
+        `${x.day} ${q}: ${({ casa: 'a casa', fuori: 'fuori casa', libero: 'pasto libero', lascia: 'già deciso, non lo tocchiamo' } as any)[x[q].modo]}` +
+        (x[q].modo === 'casa' ? ` — mangia: ${x[q].chi}` : '') +
+        (x[q].nota.trim() ? ` — nota: ${x[q].nota.trim()}` : ''))),
+      ioSlug: String(lavoro.io_slug ?? 'lorena'),
+    });
+
+    // ⚠️ Si scrive quello che è ARRIVATO, non quello che era stato chiesto.
+    // Un pasto che il modello ha saltato non diventa una riga finta: resta
+    // un buco, e il buco si vede.
+    const righe: any[] = [];
+    const testimoni: string[] = [];
+    for (const q of PASTI_DEL_GIORNO) {
+      if (g[q].modo === 'lascia') continue;          // «Lascia» non si tocca mai
+      if (g[q].modo !== 'casa') { righe.push(rigaDiPasto(g, q, null, lavoro.oggi)); continue; }
+      const m = pasti.find((x: any) => x.day === g.day && x.pasto === q);
+      if (!m) continue;
+      righe.push(rigaDiPasto(g, q, m, lavoro.oggi));
+      testimoni.push(compattaPastoServer({ ...m, day: g.day, pasto: q }, g[q].chi));
+    }
+
+    await scriviNelCalendario(righe);
+    try {
+      await aggiungiAllaSpesaServer(pasti.flatMap((m: any) => Array.isArray(m?.manca) ? m.manca : []));
+    } catch (e) { console.error('spesa', e); }   // accessorio: non ferma la staffetta
+
+    const restano = passata.slice(i + 1).filter(haDaCucinare);
+    await aggiornaLavoro(id, {
+      prossimo: i + 1,
+      fatti: [...(Array.isArray(lavoro.fatti) ? lavoro.fatti : []), ...testimoni],
+      resta: resta || lavoro.resta,
+      stato: restano.length ? 'in_corso' : 'finito',
+      passo: restano.length ? `Adesso tocca a ${restano[0].day}` : null,
+      errore: null,
+    });
+
+    if (restano.length) await svegliaProssimoPasso(id);
+  } catch (e) {
+    console.error('staffetta', e);
+    // ⚠️ Un anello che muore ferma la catena e LO DICE. Non riparte da solo:
+    // una catena che si rincorre da sola consuma credito senza che nessuno
+    // guardi. L'app mostra «riprendi».
+    try {
+      await aggiornaLavoro(id, {
+        stato: 'fermo',
+        errore: 'La generazione si è interrotta. Puoi riprendere da dove si è fermata.',
+      });
+    } catch { /* se non riusciamo nemmeno a dirlo, l'app se ne accorge dal tempo fermo */ }
+  }
+}
+
+/** Il telefono chiede la settimana e se ne va. Qui si risponde subito. */
+async function avviaStaffetta(body: Record<string, unknown>): Promise<Response> {
+  const passata = ripulisciPassata(body.passata);
+  if (!passata.length) return errore('Non c’è nessun giorno da pianificare.', 400);
+
+  const daCucinare = passata.filter(haDaCucinare).length;
+  if (!daCucinare) return errore('In questi giorni non si cucina niente: non c’è nulla da generare.', 400);
+
+  const oggi = /^\d{4}-\d{2}-\d{2}$/.test(String(body.oggi ?? ''))
+    ? String(body.oggi) : new Date().toISOString().slice(0, 10);
+
+  // Il margine deve bastare per TUTTA la settimana: meglio fermarsi prima
+  // che a metà lavoro, con mezzo calendario scritto.
+  try {
+    const usate = await generazioniUsateOggi();
+    if (usate + daCucinare > MAX_AL_GIORNO) {
+      return errore(
+        `Per generare questi giorni servono ${daCucinare} generazioni delle ${MAX_AL_GIORNO} di oggi, e ne restano ${Math.max(0, MAX_AL_GIORNO - usate)}. Riprova domani.`,
+        429,
+      );
+    }
+  } catch {
+    return errore('Non riesco a controllare il contatore delle generazioni. Riprova fra poco.', 500);
+  }
+
+  // I giorni in cui non si cucina non hanno bisogno del modello: si scrivono
+  // subito, così il calendario è già vero prima ancora di cominciare.
+  try {
+    const subito = passata.flatMap((g) => PASTI_DEL_GIORNO
+      .filter((q) => g[q].modo === 'fuori' || g[q].modo === 'libero')
+      .map((q) => rigaDiPasto(g, q, null, oggi)));
+    await scriviNelCalendario(subito);
+  } catch (e) {
+    console.error('fuori e liberi', e);
+    return errore('Non riesco a scrivere nel calendario. Riprova fra poco.', 500);
+  }
+
+  let lavoro: any;
+  try {
+    const creato = await scrivi('POST', 'plan_jobs', {
+      passata, oggi, io_slug: String(body.io_slug ?? 'lorena').slice(0, 40),
+      giorni_tot: daCucinare, stato: 'in_corso', passo: 'Sto per cominciare…',
+    });
+    lavoro = Array.isArray(creato) ? creato[0] : creato;
+  } catch (e) {
+    console.error('creazione lavoro', e);
+    return errore('Manca la tabella dei lavori. Esegui tabelle-staffetta.sql su Supabase.', 500);
+  }
+
+  // ⚠️ Da qui in poi il telefono non serve più: si risponde SUBITO e il
+  // lavoro continua in sottofondo.
+  inSottofondo(passoStaffetta(lavoro.id));
+  return json({ lavoro: lavoro.id, giorni: daCucinare });
+}
+
 // ------------------------------------------------------------
 //  Il corpo della richiesta
 // ------------------------------------------------------------
@@ -1104,6 +1512,39 @@ Deno.serve(async (req) => {
 
   // Il piano della settimana è l'altro mestiere di questa function:
   // stessa chiave, stesso contatore, stessa dispensa, prompt diverso.
+  //
+  // Tre modi, e il primo è quello buono:
+  //   settimana-avvia → LA STAFFETTA: prende in carico e risponde subito
+  //   settimana-passo → un anello della staffetta, chiamato da lei stessa
+  //   settimana       → il modo vecchio, in cui è il telefono a guidare.
+  //                     Resta perché l'app lo usa come ripiego quando questa
+  //                     function non è ancora stata reincollata.
+  if (body.modo === 'settimana-avvia') return await avviaStaffetta(body);
+
+  if (body.modo === 'settimana-passo' || body.modo === 'settimana-riprendi') {
+    const id = String(body.lavoro ?? '');
+    if (!/^[0-9a-f-]{36}$/i.test(id)) return errore('Lavoro non valido.', 400);
+
+    // «Riprendi» rimette in corsa una staffetta che si era fermata. Riparte
+    // dal primo giorno mancante — "prossimo" non l'ha mai superato — quindi
+    // i giorni già scritti non si rifanno e non si ripagano.
+    if (body.modo === 'settimana-riprendi') {
+      try {
+        const lavoro = await leggiLavoro(id);
+        if (!lavoro) return errore('Quella settimana non esiste più.', 404);
+        if (lavoro.stato === 'finito') return json({ ok: true, gia: true });
+        await aggiornaLavoro(id, { stato: 'in_corso', errore: null, passo: 'Riprendo…' });
+      } catch (e) {
+        console.error('riprendi', e);
+        return errore('Non riesco a riprendere la settimana. Riprova fra poco.', 500);
+      }
+    }
+
+    // si risponde subito e si lavora dopo: chi ci ha svegliati non aspetta
+    inSottofondo(passoStaffetta(id));
+    return json({ ok: true });
+  }
+
   if (body.modo === 'settimana') return await pianificaSettimana(body);
 
   const pasto  = body.pasto === 'cena' ? 'cena' : 'pranzo';

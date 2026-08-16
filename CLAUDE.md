@@ -460,6 +460,8 @@ collaudare**. In più: si cambia giorno strisciando col pollice.
 
 ⚠️ **Da eseguire su Supabase**: `tabelle-piano-v5-blocco4.sql` (aggiunge
 `plan_meals.a_mano`). Finché non è eseguito, salvare un pasto a mano non funziona.
+⚠️ **E `tabelle-staffetta.sql`** (tabella `plan_jobs`): senza, la settimana si genera
+col modo vecchio — telefono acceso e collegato — invece che da sola sul server.
 
 `tabelle-piano-v5.sql` è stato eseguito e la settimana di prova è stata rimossa;
 `prova-piano-v5.sql` resta nella cartella per eventuali collaudi futuri.
@@ -722,6 +724,52 @@ Conseguenze, tutte in vigore:
   scendere**: si pagherebbe il costo fisso due volte per lo stesso lavoro;
 - **una settimana costa 7 tacche** delle 30 al giorno (~14 centesimi), non più 4.
 
+### La staffetta — la settimana si genera da sola, sul server (16/08/2026)
+
+⚠️ **Serve un passaggio sul database**: `tabelle-staffetta.sql` (tabella `plan_jobs`).
+Finché non è eseguito l'app non se ne accorge nemmeno: `S.staffetta` resta falso e si
+genera col modo vecchio, senza errori.
+
+**Il requisito**, dettato dall'utente: *premo «Genera», poso il telefono, e la settimana
+si completa da sola anche a schermo spento; quando riapro l'app vedo lo stato reale e
+completo.* Non era facoltativo.
+
+**Come funziona.** Il telefono manda `modo:'settimana-avvia'` con la passata intera e se
+ne va. Da lì in poi:
+
+| Anello | Cosa fa |
+|---|---|
+| `settimana-avvia` | scrive subito i pasti fuori/liberi (non serve il modello), crea la riga in `plan_jobs`, **risponde subito** e in sottofondo lancia il primo passo |
+| `settimana-passo` | genera **un giorno**, lo scrive in `plan_meals`, aggiorna la riga di lavoro, **sveglia l'anello dopo** e si spegne |
+| `settimana-riprendi` | rimette in corsa una staffetta ferma, dal primo giorno mancante |
+
+⚠️ **Perché a staffetta e non un unico lavoro in sottofondo**: `EdgeRuntime.waitUntil()`
+tiene viva la funzione dopo la risposta, **ma resta dentro gli stessi 150 secondi**. Una
+settimana intera non ci starebbe mai. Ogni anello riparte col budget pieno.
+`inSottofondo()` prende `EdgeRuntime` da `globalThis` invece di dichiararlo: una
+dichiarazione nostra si scontrerebbe con quella del runtime al deploy.
+
+**Nessun anello si fida del precedente**: rilegge `plan_jobs` dal database. Se un anello
+muore, la catena si ferma, lo stato diventa `fermo` e l'app offre **«Riprendi»**. ⚠️ Non
+riparte da sola: una catena che si rincorre consumerebbe credito senza che nessuno
+guardi. Se muore così male da non riuscire nemmeno a dirlo, l'app se ne accorge dal tempo
+(`sembraFermo()`: più di 4 minuti senza aggiornamenti, mentre un giorno ne impiega ~1,5).
+
+**Lato app non c'è nessun motore**, solo una finestra: `avvisoLavoroHtml()` in cima al
+Piano dice cosa sta facendo il server, `guardaLavoro()` ricontrolla ogni 6 secondi e
+ridisegna il calendario man mano. Se chiudi non cambia niente; se riapri, `loadAll()`
+ritrova il lavoro e ricomincia a guardare da solo.
+
+⚠️ **Il gemello da tenere allineato**: `rigaDiPasto()` nella function fa lo stesso
+mestiere di `righeDaSalvare()` nel frontend — da un pasto alla riga di `plan_meals`.
+Adesso è la function a scrivere i pasti generati; quella del frontend resta per i pasti
+scritti **a mano** e per il modo vecchio. **Se cambia lo schema, si toccano tutte e due.**
+
+Il modo vecchio (`modo:'settimana'`, il telefono che guida) **resta** come ripiego per
+quando la function online non è ancora stata reincollata. Il contesto del prompt è
+scritto una volta sola (`costruisciContestoSettimana()`) e lo usano tutti e due: due
+copie si sarebbero scollate alla prima modifica.
+
 #### ⚠️ La coppia degli avanzi non è più «stesso blocco»: è «stessa informazione»
 
 Prima i blocchi erano da due giorni proprio per tenere insieme «cena di oggi → avanzo a
@@ -881,6 +929,7 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `edge-function-cosa-cucino.ts` | il codice della Edge Function. **Non viene servito da Pages**: sta nel repo solo come copia di riferimento, va incollato nel pannello Supabase |
 | `limite-generatore.sql` | tabella e funzione del tetto giornaliero di generazioni |
 | `tabelle-piano-v5.sql` | la tabella `plan_meals` del calendario, coi campi commentati |
+| `tabelle-staffetta.sql` | la tabella `plan_jobs`: la settimana che il server genera da sé. **Da eseguire** |
 | `prova-piano-v5.sql` | una settimana finta per collaudare il calendario a mano |
 | `COLLAUDO-V5.md` | la checklist di collaudo del calendario. Come tutti i `COLLAUDO-*`, resta **solo sul computer**: è in `.gitignore` |
 | `seed-dati-iniziali.sql` | inventario e ricette di partenza (11/08) |
