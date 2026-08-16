@@ -2929,19 +2929,21 @@ function anteprimaPasto(m){
   </div>`;
 }
 
-/* I blocchi sono di DUE giorni, non tre.
-   Il 13/08/2026 la generazione si rompeva con blocchi da tre: il modello
-   ragionava cosi' a lungo sul magazzino di sei pasti da finire i token
-   prima di scrivere il primo piatto. Due giorni per volta sono un compito
-   piu' piccolo, e restano abbastanza per far stare dentro lo stesso blocco
-   la coppia "cena di oggi → avanzo a pranzo domani".
-   Se anche cosi' un blocco viene troncato, l'app lo rifa' da sola un giorno
-   alla volta: vedi rigeneraGiornoPerGiorno() qui sotto. */
-const blocchiDa = (n) => {
-  const out = [];
-  for (let i = 0; i < n; i += 2) out.push(i + 1 < n ? [i, i+1] : [i]);
-  return out;
-};
+/* UN GIORNO PER CHIAMATA. Misurato il 16/08/2026, cronometro alla mano:
+     - blocco da 2 giorni (4 pasti) → 127 secondi
+     - blocco da 1 giorno  (2 pasti) →  86 secondi
+   Il tetto di Supabase sul piano gratuito e' 150 secondi per chiamata: oltre
+   quello e' la piattaforma a spegnere la funzione, il flusso si tronca a meta'
+   e sul telefono compare "Load failed". Due giorni viaggiavano all'85% del
+   tetto: bastava una dispensa piu' grande per superarlo.
+   ⚠️ Non tornare a due giorni per "fare meno chiamate": il margine non c'e'.
+   Il pensiero non si dimezza dimezzando il lavoro (115s contro 78s): c'e' un
+   costo fisso di ~65 secondi per leggere dispensa e vincoli, quindi sotto il
+   giorno singolo non conviene piu' scendere.
+   La coppia "cena di oggi → avanzo a pranzo domani" non sta piu' dentro la
+   stessa chiamata: la tiene insieme descriviSettimana(), che manda a OGNI
+   chiamata la settimana intera. */
+const blocchiDa = (n) => Array.from({ length:n }, (_, i) => [i]);
 
 async function avviaGenerazione(){
   // Solo i pasti "a casa" si chiedono al generatore: fuori, liberi e
@@ -3061,6 +3063,7 @@ async function generaBlocco(giorni, primo, restanti){
     giorni,
     gia_pianificato: PS.pasti.map(compattaPasto),
     fuori_e_liberi: fuoriELiberi(),
+    settimana: descriviSettimana(),
     resta_prima: PS.resta,
   }, (ev) => {
     if (ev.tipo === 'pasto'){
@@ -3110,12 +3113,38 @@ const chiDelPasto = (day, pasto) => {
   return g ? g[pasto].chi : 'entrambi';
 };
 
-/** Un pasto già deciso, raccontato al blocco successivo in una riga:
-    serve a non spendere due volte lo stesso ingrediente. */
+/** Un pasto già deciso, raccontato alla chiamata successiva in una riga:
+    serve a non spendere due volte lo stesso ingrediente.
+    ⚠️ "avanzo_per" DEVE viaggiare con lui: è il filo della catena
+    cucino-doppio → avanzo. Se non arriva, la chiamata di domani non sa che
+    il pranzo è già stato cucinato ieri sera e inventa un piatto nuovo — e
+    l'avanzo promesso diventa cibo buttato. */
 function compattaPasto(m){
   const ing = (m.ingredienti || []).map(i => `${i.nome} ${i.qta}`).join(', ');
   return `${m.day} ${m.pasto} (mangia: ${chiDelPasto(m.day, m.pasto)}): ${m.piatto}` +
-    (ing ? ` — usa: ${ing}` : '');
+    (ing ? ` — usa: ${ing}` : '') +
+    (m.avanzo_per ? ` — ⚠️ cucinato doppio, l'avanzo va a: ${m.avanzo_per}` : '');
+}
+
+/** Tutti i pasti della settimana, uno per riga: chi mangia, dove, le note.
+ *
+ * ⚠️ Va a OGNI chiamata, anche per i giorni che quella chiamata non scrive.
+ * Da quando si genera un giorno per volta è l'unica cosa che tiene insieme
+ * la settimana: una cena decide la porzione doppia solo se sa chi c'è domani
+ * a pranzo. Senza sguardo in avanti la catena degli avanzi nasce cieca. */
+function descriviSettimana(){
+  const out = [];
+  for (const g of PS.giorni){
+    for (const q of PS_PASTI){
+      const p = g[q];
+      const dove = { casa:'a casa', fuori:'fuori casa', libero:'pasto libero',
+                     lascia:'già deciso, non lo tocchiamo' }[p.modo] || p.modo;
+      out.push(`${g.day} ${dowNome(g.day)} ${q}: ${dove}` +
+        (p.modo === 'casa' ? ` — mangia: ${p.chi}` : '') +
+        (p.nota.trim() ? ` — nota: ${p.nota.trim()}` : ''));
+    }
+  }
+  return out;
 }
 
 /** I pasti in cui non si cucina: dicono al generatore chi non c'è. */

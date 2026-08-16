@@ -30,16 +30,21 @@ const MODELLO       = 'claude-sonnet-5';
 const MAX_TOKENS    = 8000;
 const IMPEGNO       = 'medium';    // low = più veloce/economico · high = più ragionato
 
-// La settimana si scrive a blocchi di 2 giorni: 4 chiamate vere al modello,
-// quindi 4 tacche sul tetto qui sopra, non una.
+// La settimana si scrive UN GIORNO PER CHIAMATA: 7 chiamate vere al modello,
+// quindi 7 tacche sul tetto qui sopra, non una.
 //
-// ⚠️ E' voluto. Contarne una sola lascerebbe le altre senza freno, e il freno
-// e' l'unica cosa fra l'indirizzo pubblico e la carta di credito. Con 30 al
-// giorno restano 7 settimane al giorno e il tetto di spesa non si muove.
+// ⚠️ Dal 16/08/2026, e non e' una scelta di comodo: misurato col cronometro,
+// un blocco da 2 giorni dura 127 secondi contro i 150 che Supabase concede a
+// una chiamata sul piano gratuito. L'85% del tetto: bastava una dispensa piu'
+// grande e la piattaforma spegneva la funzione a meta' lavoro.
 //
-// Il numero qui sotto e' il MASSIMO che una settimana puo' costare: 4 blocchi
-// piu' i ripieghi giorno per giorno, quando un blocco viene troncato.
-const BLOCCHI_SETTIMANA = 8;
+// ⚠️ Contare una tacca sola lascerebbe le altre senza freno, e il freno e'
+// l'unica cosa fra l'indirizzo pubblico e la carta di credito. Con 30 al
+// giorno restano 4 settimane al giorno e il tetto di spesa non si muove.
+//
+// Il numero qui sotto e' il MASSIMO che una settimana puo' costare: 7 giorni
+// piu' qualche ripiego, quando una chiamata torna senza aver scritto tutto.
+const BLOCCHI_SETTIMANA = 10;
 
 // ⚠️ NON ABBASSARE QUESTO NUMERO. Il 13/08/2026 la generazione della settimana
 // si e' rotta proprio qui, con 12000: max_tokens e' un tetto su PENSIERO PIU'
@@ -303,18 +308,24 @@ molte verdure, poca carne, ingredienti pochi e riconoscibili. Porzione singola.
 Se il suo profilo prevede un tocco dolce finale, mettilo sempre.
 
 ### COME SI LEGGONO I DIVIETI — attenzione, è delicato
-Un divieto vale per **tutta la famiglia dell'alimento**, non solo per la parola scritta.
-"pomodoro" comprende pomodorini, datterini, ciliegini, pachino, passata, pelati.
-"cetrioli" comprende i sottaceti di cetriolo.
+Un divieto **senza precisazioni** vale per tutta la famiglia dell'alimento, non solo
+per la parola scritta: "cetrioli" comprende i sottaceti di cetriolo.
 
-Quando il divieto ha una precisazione — per esempio "pomodoro **crudo**" — hai due
-sole possibilità:
-- **non usare affatto** quell'alimento, oppure
-- usarlo nella forma consentita **dicendolo esplicitamente**, sia nel nome del piatto
-  sia negli ingredienti (es. "datterini saltati in padella", non "datterini").
+⚠️ **Un divieto CON una precisazione vieta solo quello che dice**, e il pomodoro è il
+caso che si sbaglia più spesso. Il divieto di Lorena è "pomodoro **crudo**": vieta il
+crudo, **non il pomodoro**.
 
-Non lasciare mai l'ambiguità: se dagli ingredienti non si capisce che l'alimento è
-nella forma consentita, per chi legge è un divieto violato. Nel dubbio, non usarlo.
+- pomodoro **cotto** — sugo, passata, pelati, al forno, in umido, datterini saltati —
+  va benissimo **per tutti e due**. Usalo liberamente.
+- pomodoro **crudo** — insalate, bruschette, fette a crudo — va bene nei pasti che
+  mangia **solo Ciprian**: lì è permesso e non c'è niente da spiegare.
+- nei pasti con Lorena il crudo non si usa: o lo cuoci, o lo togli.
+
+Quando usi il pomodoro cotto in un pasto con Lorena, **dillo esplicitamente** nel nome
+del piatto e negli ingredienti (es. "datterini saltati in padella", non "datterini"):
+chi legge deve vedere che è nella forma consentita.
+**Non evitare il pomodoro per prudenza**: evitarlo sempre è un errore, non una cautela.
+La stessa logica vale per ogni divieto con una precisazione.
 
 **Tutti e due insieme** → **UN SOLO PIATTO BASE per tutti e due.** Due piatti diversi
 alla stessa tavola sono un errore, non una soluzione. Risolvilo così, in quest'ordine:
@@ -481,12 +492,23 @@ Simula i consumi giorno per giorno, come se stessi svuotando davvero la dispensa
 ## 2. I DIVIETI DI CHI MANGIA — non si negoziano mai
 Ogni pasto dice chi lo mangia. Guarda i profili delle persone coinvolte in QUEL pasto.
 - Quello che una persona NON MANGIA non entra nel piatto, in nessuna forma.
-  Un divieto vale per tutta la famiglia dell'alimento: "pomodoro" comprende pomodorini,
-  datterini, ciliegini, pachino, passata, pelati; "cetrioli" comprende i sottaceti.
-- Se il divieto ha una precisazione — per esempio "pomodoro CRUDO" — hai due sole
-  possibilità: non usarlo affatto, oppure usarlo nella forma consentita DICENDOLO
-  esplicitamente nel nome del piatto e negli ingredienti ("datterini saltati in
-  padella", non "datterini"). Nel dubbio non usarlo.
+  Un divieto SENZA precisazioni vale per tutta la famiglia dell'alimento: "cetrioli"
+  comprende i sottaceti di cetriolo.
+- ⚠️ MA UN DIVIETO CON UNA PRECISAZIONE VIETA SOLO QUELLO CHE DICE, e il caso del
+  POMODORO è quello che sbagli più spesso. Il divieto di Lorena è "pomodoro CRUDO":
+  vieta il crudo, NON il pomodoro.
+  - pomodoro COTTO — sugo, passata, pelati, al forno, in umido, datterini saltati,
+    pomodorini confit — VA BENISSIMO per tutti e due. Usalo liberamente.
+  - pomodoro CRUDO — insalate, bruschette, fette a crudo, panzanella — va bene nei
+    pasti che mangia SOLO CIPRIAN. Lì è permesso e non c'è niente da spiegare.
+  - nei pasti con Lorena il pomodoro crudo non si usa: se il piatto lo chiederebbe
+    crudo, o lo cuoci o lo togli.
+  Quando usi il pomodoro cotto in un pasto con Lorena, dillo esplicitamente nel nome
+  del piatto o negli ingredienti ("datterini saltati in padella", non "datterini"):
+  chi legge deve vedere che è nella forma consentita.
+  NON evitare il pomodoro per prudenza: evitarlo sempre è un errore, non una cautela.
+- La stessa logica vale per ogni altro divieto con una precisazione: vieta la forma
+  scritta, non l'alimento intero.
 - Se il profilo chiede pochi ingredienti riconoscibili, il piatto ha pochi ingredienti.
 - Il tocco dolce, se è nel profilo di chi mangia, fa parte del pasto: va nel campo
   "dolce", pescato dalla dispensa, e NON fra gli ingredienti.
@@ -542,13 +564,42 @@ Le scatolette e la roba secca possono aspettare la fine.
 - I campi "prot" e "kcal" sono SOLO di Ciprian. Nei pasti che mangia solo l'altra
   persona scrivi 0 in tutti e due: l'app non mostrerà nessun numero.
 
-## 5. LA CATENA DELLE DOPPIE PORZIONI
+## 5. LA CATENA DELLE DOPPIE PORZIONI — si guarda avanti e indietro
 Dove ha senso, cucina doppio e manda l'avanzo al pasto dopo: scrivilo in "avanzo_per"
 sul pasto che cucina ("→ pranzo di mercoledì") e ripeti il piatto nel pasto che lo
 riceve, dicendo lì in "perche" che è l'avanzo del giorno prima.
+
+⚠️ GUARDA AVANTI. Ti viene data la settimana INTERA — chi mangia, chi è fuori, chi
+ha il pasto libero, le note — anche per i giorni che non stai scrivendo adesso. Serve
+proprio a questo: una cena decide la porzione doppia solo se sa chi c'è domani a
+pranzo. Se domani a pranzo c'è Ciprian da solo, la cena di stasera nasce già con
+la SUA porzione proteica del giorno dopo dentro. Senza guardare avanti la catena
+nasce cieca.
 ⚠️ L'avanzo deve rispettare i vincoli di CHI LO MANGERÀ DOMANI, non di chi cucina
 stasera: se domani a pranzo c'è una persona con divieti diversi, il piatto di stasera
 deve già andare bene per lei, altrimenti non fare la doppia porzione.
+
+⚠️ GUARDA INDIETRO, ed è un OBBLIGO, non un'opzione. Fra i pasti già decisi può
+esserci un "avanzo_per" che punta a un pasto che stai scrivendo adesso. In quel caso
+QUEL PASTO È QUELL'AVANZO: si ripete il piatto del giorno prima, non se ne inventa
+uno nuovo, e in "perche" si scrive che è l'avanzo. Un avanzo promesso e poi non
+raccolto è cibo buttato e una bugia nel piano.
+L'unica eccezione è l'impossibilità vera (chi mangia oggi non può mangiarlo, la
+quantità non basta): allora scrivi il piatto nuovo E DICHIARA IN UNA RIGA, nel campo
+"perche", perché l'avanzo non è stato raccolto.
+
+## 5 bis. I PRANZI DI CIPRIAN DA SOLO — ha un'ora di pausa
+Nei giorni feriali il pranzo che mangia solo Ciprian si fa in una pausa di un'ora:
+deve stare in piedi da solo, in cucina e nella testa. In quest'ordine:
+1. **L'avanzo della cena precedente, da scaldare e basta.** È la via maestra, ed è il
+   motivo per cui la regola 5 esiste. Preferiscilo sempre quando c'è.
+2. Se un avanzo non c'è, un piatto pronto in **15 minuti veri in tutto**, pochi
+   passaggi, poche cose da lavare ("tempo" dice la verità: 15 al massimo).
+3. MAI a pranzo cotture lunghe, forno, brasati, più pentole insieme o piatti che
+   vanno assemblati al momento.
+⚠️ Il target proteico non si sconta per fretta: si risolve a monte. Le sue cene
+devono nascere già con la porzione proteica giusta ANCHE per il pranzo del giorno
+dopo, così l'avanzo arriva completo e non serve aggiungere niente di corsa.
 
 ## 6. VARIETÀ, PERSONA PER PERSONA
 - Profilo con ripetizione BASSA: mai piatti simili ravvicinati, mai la stessa fonte
@@ -851,6 +902,16 @@ async function pianificaSettimana(body: Record<string, unknown>): Promise<Respon
     .slice(0, 20)
     .map((x) => String(x).slice(0, 160));
 
+  // ⚠️ La settimana INTERA, compresi i giorni che NON stiamo scrivendo adesso.
+  // Senza sguardo in avanti la catena "cucino doppio stasera → avanzo domani"
+  // nasce cieca: una cena può decidere la porzione doppia solo sapendo chi c'è
+  // domani a pranzo. Quando c'è, prende il posto di fuori_e_liberi, che dice
+  // molto meno. Da qui in poi si genera un giorno per chiamata: questa è
+  // l'unica cosa che tiene insieme i giorni.
+  const settimana = (Array.isArray(body.settimana) ? body.settimana : [])
+    .slice(0, 14)
+    .map((x) => String(x).slice(0, 200));
+
   // --- il tetto giornaliero ---------------------------------
   // Sul primo blocco controlliamo che il margine basti per TUTTA la
   // settimana: meglio fermarsi prima che a metà lavoro.
@@ -912,9 +973,16 @@ Questa roba è già spesa e questi piatti sono già stati usati: non ripeterli s
 profilo di chi mangia chiede varietà, e non riusare gli ingredienti che hanno consumato.
 ${giaFatti.map((x) => `- ${x}`).join('\n')}
 ` : ''}
-${fuoriELiberi.length ? `## GIORNI IN CUI NON SI CUCINA (già segnati, non produrli)
+${settimana.length ? `## LA SETTIMANA INTERA — serve a guardare avanti
+Questi sono TUTTI i pasti della settimana, compresi quelli che NON stai scrivendo
+adesso: dove si mangia e chi c'è. Guardali prima di decidere le porzioni doppie —
+una cena cucina doppio solo se sa chi ci sarà domani a pranzo — e prima di scegliere
+la fonte proteica, per non ripetere quella di ieri o di domani.
+Scrivi SOLO i pasti che ti vengono chiesti più sotto: gli altri sono contorno.
+${settimana.map((x) => `- ${x}`).join('\n')}
+` : (fuoriELiberi.length ? `## GIORNI IN CUI NON SI CUCINA (già segnati, non produrli)
 ${fuoriELiberi.map((x) => `- ${x}`).join('\n')}
-` : ''}
+` : '')}
 ## I PASTI DA SCRIVERE ADESSO — esattamente ${quantiPasti}, né uno di più né uno di meno
 
 ${giorni.map((g) => `### ${g.day}

@@ -264,6 +264,42 @@ sia fattibile e che siano diverse. Il client ha un ripiego per la function vecch
 ⚠️ **Non passare a tre chiamate parallele** per andare più veloce: si perderebbero
 proprio le garanzie fra proposte, e il costo triplicherebbe l'input.
 
+### Due regole del metodo, chieste il 16/08/2026
+
+Stanno nel prompt della Edge Function, che è il posto dove il metodo vive.
+
+#### ⚠️ Il pomodoro: il divieto è SOLO sul crudo — non evitarlo per prudenza
+
+Il divieto di Lorena è **«pomodoro crudo»**, e il generatore lo trattava come se fosse
+«pomodoro»: lo evitava dappertutto. È un errore, non una cautela — in dispensa c'era un
+cuore di bue fermo a dimostrarlo.
+
+| Forma | Con Lorena a tavola | Nei pasti di solo Ciprian |
+|---|---|---|
+| **cotto** — sugo, passata, pelati, al forno, in umido, datterini saltati | **sì**, liberamente | sì |
+| **crudo** — insalate, bruschette, fette a crudo | **no**: o si cuoce o si toglie | **sì**, senza spiegazioni |
+
+Quando il pomodoro cotto entra in un pasto con Lorena, il piatto o gli ingredienti
+**devono dirlo** («datterini saltati in padella», non «datterini»): chi legge deve
+vedere che è nella forma consentita.
+
+⚠️ **La regola generale che ne esce**: un divieto **senza** precisazioni vale per tutta
+la famiglia dell'alimento; un divieto **con** una precisazione vieta **solo quello che
+dice**. Vale per ogni divieto futuro, non solo per il pomodoro.
+
+#### I pranzi di Ciprian da solo: ha un'ora di pausa
+
+In quest'ordine, ed è la regola 5 bis del prompt:
+
+1. **l'avanzo della cena precedente, da scaldare e basta** — è la via maestra, ed è il
+   motivo per cui esiste la catena delle doppie porzioni;
+2. se un avanzo non c'è, un piatto pronto in **15 minuti veri**, pochi passaggi;
+3. **mai** cotture lunghe, forno, brasati o più pentole a pranzo.
+
+⚠️ **Il target proteico non si sconta per fretta: si risolve a monte.** Le cene di
+Ciprian devono nascere già con la porzione proteica giusta **anche per il pranzo del
+giorno dopo**, così l'avanzo arriva completo. È l'altra metà dello sguardo in avanti.
+
 ### La v7 — il design (12/08/2026)
 
 **⚠️ Regola per ogni schermata futura, v5 compresa: si usano i token, non si
@@ -329,12 +365,13 @@ in fila, `PS.fase` dice quale.
    Il chip «di solito a tavola ci sono» imposta tutti e quattordici i pasti insieme.
    Ogni tocco ridisegna **solo quel pasto** (`ridisegnaPasto`), altrimenti il testo
    della nota che stai scrivendo sparirebbe.
-2. **La generazione.** Quattro blocchi da **due giorni** (1-2, 3-4, 5-6, 7). Ogni
-   blocco è una chiamata alla Edge Function con `modo:'settimana'`, e riceve
-   `gia_pianificato` (i pasti già decisi, ingredienti compresi) e `resta_prima` (cosa
-   resta in dispensa secondo il blocco precedente). **È questo che tiene in piedi la
-   coerenza di magazzino.** Fuori e liberi non si generano: si mandano come contorno
-   informativo (`fuori_e_liberi`), perché dicono chi non c'è.
+2. **La generazione.** **Un giorno per chiamata**, sette chiamate (dal 16/08/2026: prima
+   erano quattro blocchi da due giorni — vedi «Il tetto vero di Supabase»). Ogni
+   chiamata usa `modo:'settimana'` e riceve `gia_pianificato` (i pasti già decisi,
+   ingredienti e `avanzo_per` compresi), `resta_prima` (cosa resta in dispensa secondo
+   la chiamata precedente) e `settimana` (**la passata intera**, anche i giorni non
+   suoi). I primi due tengono in piedi la **coerenza di magazzino**; il terzo tiene in
+   piedi la **catena degli avanzi**. Fuori e liberi non si generano.
 3. **Il riepilogo.** Mostra le righe **esatte** che finiranno in `plan_meals`
    (`righeDaSalvare()`), i totali di Ciprian giorno per giorno riusando
    `totaleGiorno()`, cosa manca e cosa resta. Solo qui si scrive nel database.
@@ -344,11 +381,12 @@ finiscono nella lista della spesa esistente (`aggiungiAllaSpesa(nomi, silenzioso
 pasti che li aspettano hanno `dipende_da_spesa = true`. Il campo data ha `min = oggi`:
 **il passato non si riscrive mai.**
 
-⚠️ **Il tetto: una settimana costa 4 tacche, non 1.** Il brief chiedeva che contasse
-come una sola generazione, ma i blocchi sono quattro chiamate vere: contarne una
-lascerebbe le altre senza freno, e il freno è l'unica cosa fra l'indirizzo pubblico e
-la carta di credito. Con 30/giorno restano 7 settimane al giorno e **il tetto di spesa
-non si muove** (~60 centesimi al giorno nel caso peggiore). Sul primo blocco la
+⚠️ **Il tetto: una settimana costa 7 tacche, non 1** (erano 4 fino al 16/08/2026). Il
+brief chiedeva che contasse come una sola generazione, ma le chiamate al modello sono
+sette vere: contarne una lascerebbe le altre senza freno, e il freno è l'unica cosa fra
+l'indirizzo pubblico e la carta di credito. Con 30/giorno restano **4 settimane al
+giorno** e **il tetto di spesa non si muove** (~60 centesimi al giorno nel caso
+peggiore). Sulla prima chiamata la
 function controlla che il margine basti per tutti (`generazioniUsateOggi()`): meglio
 fermarsi prima che a metà settimana.
 
@@ -368,7 +406,8 @@ Tre correzioni, tutte e tre necessarie:
    costa di per sé. **Non riabbassarlo.** Il massimo di Sonnet 5 è 128000.
 2. **Blocchi da 2 giorni invece di 3** (4 chiamate invece di 3). Compito più piccolo,
    e restano abbastanza per tenere nello stesso blocco la coppia «cena di oggi →
-   avanzo a pranzo domani».
+   avanzo a pranzo domani». ⚠️ **Superato il 16/08/2026**: adesso è **un giorno per
+   chiamata** — vedi «Il tetto vero di Supabase» più sotto.
 3. **Ripiego automatico**: se un blocco viene troncato lo stesso, la function lo dice
    con `troncato:true` nel messaggio `fine` (**non** come errore) e il client rifà da
    solo i pasti mancanti **un giorno alla volta** (`rigeneraGiornoPerGiorno()`). Non
@@ -647,11 +686,53 @@ pensa: tiene caldo il collegamento ed evita almeno le cadute per inattività. **
 basta da solo** — con lo schermo spento il filo cade lo stesso — ed è per questo che la
 difesa vera è il salvataggio blocco per blocco.
 
-⛔ **Resta scoperto un caso solo, ed è dichiarato**: se il filo si taglia in **mezzo** a
-un blocco, quei due giorni non erano finiti e non c'erano da nessuna parte. Per salvare
-anche quelli dovrebbe scrivere la **Edge Function**, il che vuol dire spostare là dentro
-`righeDaSalvare()` e tutto quello che ci sta intorno, con due copie da tenere allineate.
-**È stato valutato e scartato il 16/08/2026**: non riproporlo senza una ragione nuova.
+⛔ Resta scoperto un caso: se il filo si taglia in **mezzo** a un blocco, quel giorno
+non era finito e non c'era da nessuna parte. **Lo chiude la staffetta** (vedi sotto):
+l'utente ha deciso il 16/08/2026 che spostare la generazione sul server **è
+obbligatorio**, non facoltativo.
+
+### ⚠️ Il tetto vero di Supabase: 150 secondi, e ci stavamo dentro per un pelo
+
+**Misurato col cronometro il 16/08/2026**, chiamando la funzione online:
+
+| Chiesto | Pensiero prima del primo piatto | Durata totale | Sui 150 s del piano gratuito |
+|---|---|---|---|
+| 2 giorni (4 pasti) — com'era | 115 s | **127 s** | l'**85%** del tetto |
+| 1 giorno (2 pasti) — com'è ora | 78 s | **86 s** | il 58% |
+
+I limiti ufficiali: **wall clock 150 s sul piano gratuito** (400 s sui piani a
+pagamento), CPU 2 s — ma **l'attesa della risposta di Claude non conta**, è rete.
+⚠️ **Lo stesso tetto vale per i lavori in sottofondo** (`EdgeRuntime.waitUntil`): una
+funzione in background si spegne agli stessi 150 s. È il motivo per cui «spostare tutto
+sul server» **da solo non basta** e la staffetta deve spezzare per giorno.
+
+Conseguenze, tutte in vigore:
+
+- **un giorno per chiamata** (`blocchiDa()`), sette chiamate a settimana. Due giorni
+  viaggiavano all'85% del tetto: bastava una dispensa più grande e **era Supabase a
+  spegnere la funzione**, il flusso si troncava e sul telefono usciva «Load failed».
+  Molto probabilmente è questa la causa vera dei due fallimenti, non solo il telefono;
+- **il pensiero non si dimezza dimezzando il lavoro** (115 s contro 78 s): c'è un costo
+  fisso di ~65 s per leggere dispensa e vincoli. **Sotto il giorno singolo non conviene
+  scendere**: si pagherebbe il costo fisso due volte per lo stesso lavoro;
+- **una settimana costa 7 tacche** delle 30 al giorno (~14 centesimi), non più 4.
+
+#### ⚠️ La coppia degli avanzi non è più «stesso blocco»: è «stessa informazione»
+
+Prima i blocchi erano da due giorni proprio per tenere insieme «cena di oggi → avanzo a
+pranzo domani». Con un giorno per chiamata quella stampella non c'è più, e la sostituisce
+una regola più forte, voluta dall'utente il 16/08/2026:
+
+**ogni chiamata riceve la passata dell'INTERA settimana** — chi mangia, casa/fuori/libero,
+le note — anche per i giorni che non sta scrivendo (`descriviSettimana()` nel frontend,
+campo `settimana` nel corpo, sezione «LA SETTIMANA INTERA» nel prompt). Serve perché **la
+cena di oggi può decidere la porzione doppia solo sapendo se domani a pranzo Ciprian è a
+casa da solo**: senza sguardo in avanti la catena nasce cieca.
+
+E in avanti, nel prompt (regola 5): **se il giorno prima ha marcato un `avanzo_per` per
+oggi, il pasto di oggi È quell'avanzo**, non un piatto nuovo. L'unica eccezione è
+l'impossibilità vera, e va scritta in una riga in `perche`. Perché funzioni,
+`compattaPasto()` **deve** mandare avanti il campo `avanzo_per`: è il filo della catena.
 
 ### Scorrere fra i giorni (13/08/2026)
 
