@@ -577,15 +577,17 @@ numeri solo sui pasti di Ciprian, promemoria freezer sul giorno giusto),
 giorno) e **v5 Blocco 4** (modifica a mano, rigenerazione, «Lascia») — **questi due da
 collaudare**. In più: si cambia giorno strisciando col pollice.
 
-⚠️ **Da eseguire su Supabase**: `tabelle-piano-v5-blocco4.sql` (aggiunge
-`plan_meals.a_mano`). Finché non è eseguito, salvare un pasto a mano non funziona.
-⚠️ **E `tabelle-staffetta.sql`** (tabella `plan_jobs`): senza, la settimana si genera
-col modo vecchio — telefono acceso e collegato — invece che da sola sul server.
-✅ `tabelle-ricette-complete.sql` (contenuto delle ricette e `plan_meals.ricetta_id`)
-**è stato eseguito il 18/08/2026**: non richiederlo di nuovo.
-⚠️ **Resta `tabelle-spesa-blocco5.sql`** (`shopping_list.serve_il`): senza, la lista
-della spesa funziona com'era e non dà errore, ma le righe non sanno dire per quando
-serve una cosa.
+✅ **TUTTI I FILE SQL SONO ESEGUITI** (18/08/2026). Non richiederne nessuno: sono stati
+verificati uno per uno interrogando il database, non chiedendoli all'utente.
+`plan_meals.a_mano` · `plan_meals.ricetta_id` · `recipes.ingredienti/prot/kcal/tempo` ·
+`shopping_list.serve_il` · la tabella `plan_jobs`: ci sono tutti.
+
+⚠️ **Come verificarlo invece di chiederlo**, se un domani viene il dubbio: la chiave
+publishable sta in `index.html` e le policy sono «accesso libero», quindi basta chiedere
+al database se una colonna esiste, senza leggere nessun dato —
+`GET /rest/v1/<tabella>?select=<colonna>&limit=0` con gli header `apikey` e
+`Authorization`. Risponde 200 se la colonna c'è, 400 se manca. È più onesto che
+chiedere due volte la stessa cosa a chi ha già risposto.
 
 `tabelle-piano-v5.sql` è stato eseguito e la settimana di prova è stata rimossa;
 `prova-piano-v5.sql` resta nella cartella per eventuali collaudi futuri.
@@ -942,22 +944,14 @@ col campo «che voglia hai?».
 
 **Aggiornato il 18/08/2026.**
 
-✅ **Già fatti dall'utente, non richiederli di nuovo:**
+✅ **NON C'È NIENTE IN SOSPESO SUL DATABASE.** Tutti i file SQL sono eseguiti e la
+Edge Function è rideployata (18/08/2026) — verificato interrogando il database, vedi
+«TUTTI I FILE SQL SONO ESEGUITI» più sopra per il come. Il codice online e il database
+sono allineati: quello che non funziona, se qualcosa non funziona, è un difetto vero e
+non un passaggio dimenticato.
 
-- `tabelle-ricette-complete.sql` **eseguito** su Supabase (Success);
-- `edge-function-cosa-cucino.ts` **rideployato** — la versione online contiene il terzo
-  mestiere `modo:'ricetta'`.
-
-Tutti e due **prima** del push del piatto a mano (`87f2653`), e verificato che i due
-file non siano stati toccati fra la conferma e la pubblicazione: quello che è stato
-incollato è quello che sta nel repo.
-
-⚠️ **Resta un passaggio solo**: eseguire `tabelle-spesa-blocco5.sql` (colonna
-`shopping_list.serve_il`). Senza, la lista della spesa funziona com'era e **non dà
-errore** — `inserisciInSpesa()` riprova da sola senza la data — ma le righe non sanno
-dire per quando serve una cosa.
-
-**Il collaudo**, in due parti.
+⚠️ **Quello che manca è il COLLAUDO**, ed è l'unica cosa che l'utente può fare e
+nessun altro. Due parti.
 
 *Il piatto a mano*: matita ✎ su un pasto da oggi in poi, scrivere solo un nome, toccare
 «Crea la ricetta». Controllare che i nomi degli ingredienti siano quelli della dispensa,
@@ -1203,9 +1197,9 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `edge-function-cosa-cucino.ts` | il codice della Edge Function. **Non viene servito da Pages**: sta nel repo solo come copia di riferimento, va incollato nel pannello Supabase |
 | `limite-generatore.sql` | tabella e funzione del tetto giornaliero di generazioni |
 | `tabelle-piano-v5.sql` | la tabella `plan_meals` del calendario, coi campi commentati |
-| `tabelle-staffetta.sql` | la tabella `plan_jobs`: la settimana che il server genera da sé. **Da eseguire** |
-| `tabelle-ricette-complete.sql` | il contenuto delle ricette (ingredienti, prot, kcal, tempo) e il filo `plan_meals.ricetta_id`. ✅ eseguito il 18/08 |
-| `tabelle-spesa-blocco5.sql` | `shopping_list.serve_il`: la riga della spesa sa per quando serve. **Da eseguire** |
+| `tabelle-staffetta.sql` | la tabella `plan_jobs`: la settimana che il server genera da sé. ✅ eseguito |
+| `tabelle-ricette-complete.sql` | il contenuto delle ricette (ingredienti, prot, kcal, tempo) e il filo `plan_meals.ricetta_id`. ✅ eseguito |
+| `tabelle-spesa-blocco5.sql` | `shopping_list.serve_il`: la riga della spesa sa per quando serve. ✅ eseguito |
 | `prova-piano-v5.sql` | una settimana finta per collaudare il calendario a mano |
 | `COLLAUDO-V5.md` | la checklist di collaudo del calendario. Come tutti i `COLLAUDO-*`, resta **solo sul computer**: è in `.gitignore` |
 | `seed-dati-iniziali.sql` | inventario e ricette di partenza (11/08) |
