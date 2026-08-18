@@ -581,6 +581,8 @@ collaudare**. In più: si cambia giorno strisciando col pollice.
 `plan_meals.a_mano`). Finché non è eseguito, salvare un pasto a mano non funziona.
 ⚠️ **E `tabelle-staffetta.sql`** (tabella `plan_jobs`): senza, la settimana si genera
 col modo vecchio — telefono acceso e collegato — invece che da sola sul server.
+⚠️ **E `tabelle-ricette-complete.sql`** (il contenuto delle ricette e
+`plan_meals.ricetta_id`): senza, «Crea la ricetta» sul pasto a mano non funziona.
 
 `tabelle-piano-v5.sql` è stato eseguito e la settimana di prova è stata rimossa;
 `prova-piano-v5.sql` resta nella cartella per eventuali collaudi futuri.
@@ -589,7 +591,8 @@ col modo vecchio — telefono acceso e collegato — invece che da sola sul serv
 su Supabase** (Edge Functions → cosa-cucino → Deploy) — la seconda volta il 13/08,
 per la correzione di `max_tokens`; **la terza il 16/08**, per il piatto unico nei pasti
 condivisi, per i nomi degli ingredienti copiati dalla dispensa e per il **battito** che
-tiene caldo il collegamento. Finché non è reincollato, quelle regole non sono attive: il
+tiene caldo il collegamento; **la quarta il 18/08**, per il terzo mestiere `modo:'ricetta'`
+che completa un piatto scritto a mano. Finché non è reincollato, quelle regole non sono attive: il
 frontend da solo non le può imporre.
 Collaudo del Blocco 2: `COLLAUDO-V5-BLOCCO2.md`.
 
@@ -929,62 +932,97 @@ col campo «che voglia hai?».
 - **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.
 - **Stile: la passata ricca è approvata** nella versione attualmente online.
 
-#### ▶️ PROSSIMO PASSO — il giudizio sulla testata (secondo giro), poi il piatto a mano
+#### ▶️ PROSSIMO PASSO — collaudare il piatto a mano
 
-**Aggiornato il 18/08/2026.** Il Blocco 3 di `PROMPT-FIX-E-GRAFICA.md` è fatto. La
-pulizia (token, componenti, icone, stati vuoti) è **promossa**. La firma è al **secondo
-tentativo**: il primo è stato bocciato perché troppo timido — vedi «La firma: la
-testata» più sopra, con i tre motivi.
+**Aggiornato il 18/08/2026.**
 
-⛔ **Qui ci si ferma**: serve il giudizio visivo con screenshot da PC e da iPhone.
+⚠️ **Due passaggi manuali prima di provare**, e senza di loro il bottone non funziona:
 
-- se la testata piace → la grafica è chiusa;
-- se non piace **neanche questa** → allora si prova l'altra strada del brief, cioè le
-  illustrazioni degli stati vuoti. ⚠️ **Non si sommano**: la regola è una cosa sola
-  fatta benissimo, e due firme insieme sono zero firme.
+1. **Su Supabase**: eseguire `tabelle-ricette-complete.sql` (colonne `recipes.ingredienti
+   /prot/kcal/tempo` e `plan_meals.ricetta_id`). Finché non è fatto, il resto dell'app
+   funziona lo stesso — `recipes` si legge con `select('*')` apposta — ma «Crea la
+   ricetta» fallisce e `spiegaErrore()` dice quale file eseguire.
+2. **Reincollare `edge-function-cosa-cucino.ts`** su Supabase (Edge Functions →
+   cosa-cucino → Deploy, Verify JWT resta OFF): il modo `ricetta` non esiste nella
+   versione online.
 
-Dopo il giudizio: **il piatto inserito a mano con le ricette collegate** (vedi il
-riquadro qui sotto). L'utente ha deciso il 18/08 che viene **dopo** la grafica, apposta
-perché nasca già dentro il design system invece di doverci rientrare a forza.
+Poi il collaudo: scrivere un pasto a mano, toccare «Crea la ricetta», e controllare che
+i nomi degli ingredienti siano quelli della dispensa, che i numeri arrivino, e che il
+TOT del giorno smetta di dirsi parziale.
 
-#### 📌 IN CODA — il piatto a mano deve nascere completo (chiesto il 18/08/2026)
+#### La grafica è CHIUSA (18/08/2026) — non si riapre da soli
 
-Quando un piatto scritto a mano ottiene la sua ricetta (creata col bottone o collegata
-dal ricettario) deve nascere **completo come quelli del generatore**: ingredienti coi
-**nomi della dispensa** (`stessoNome()`, e il prompt che li impone alla lettera),
-grammi per persona, e i numeri **già scritti** — proteine e kcal.
+Giudizio dell'utente sul secondo giro: **«promossa per questo giro — meglio del primo,
+non definitiva»**. Il cantiere è chiuso: niente illustrazioni come firma, la firma
+**resta la testata**, e ogni schermata futura eredita i token.
 
-⚠️ **Il collegamento fra piatto a mano e ricetta oggi NON ESISTE**: nel pannello
-«Scrivo io» (`apriModificaPasto()`) non c'è nessun bottone per creare o collegare una
-ricetta. È tutto da costruire, non da correggere.
+⚠️ **Si riapre solo su una critica puntuale dell'utente.** Non rimettere mano alla
+grafica di propria iniziativa, e non riproporre le illustrazioni come firma: due firme
+insieme sono zero firme.
 
-**Verificato il 18/08 — come entra oggi un pasto a mano nei totali di Ciprian**, perché
-il lavoro parta dai fatti e non da un'impressione:
+#### Il piatto a mano nasce completo (18/08/2026)
 
-| Caso | Cosa fa il TOT del giorno |
-|---|---|
-| pasto di **sola Lorena** | **non entra**: `totaleGiorno()` filtra su `mangiaCiprian(r)`, e il pannello nasconde proprio i due campi. Giusto così |
-| **Ciprian**/**Entrambi**, numeri scritti | entra coi numeri, identico a uno del generatore |
-| **Ciprian**/**Entrambi**, campi vuoti | entra valendo **zero**, e il totale **si dichiara parziale** |
+Un pasto scritto a mano nasceva col solo nome, e **un pasto senza numeri bucava i totali
+di Ciprian in due posti**: il TOT del piano (`plan_meals`) e «finora oggi» (`meals_log`).
+Tre blocchi.
 
-⚠️ **Il buco 1, da chiudere insieme al resto**: «parziale» scatta solo se mancano
-**tutti e due** i numeri — la condizione in `totaleGiorno()` è `r.prot == null &&
-r.kcal == null`. Se scrivi solo le proteine e lasci vuote le kcal, il pasto entra con
-le proteine giuste, somma **zero kcal**, e **il totale non si dichiara più parziale**:
-le calorie del giorno risultano più basse del vero senza che niente lo segnali. Ed è il
-caso più probabile di tutti — le proteine uno se le ricorda, le kcal no.
+**Blocco 1 — la ricetta ha un contenuto.** `tabelle-ricette-complete.sql` aggiunge a
+`recipes` i campi `ingredienti` (jsonb), `prot`, `kcal`, `tempo`, e a `plan_meals` il
+campo `ricetta_id`.
 
-⚠️ **Il buco 2**: il TOT e «finora oggi» sono **due numeri con due fonti diverse**. Il
-TOT legge `plan_meals`, «finora oggi» legge `meals_log`. Un pasto a mano entra subito
-nel primo, ma nel secondo **solo quando lo confermi** («Ho cucinato questo» o il «Sì»
-della verifica). E i numeri che allora finiscono nel diario sono quelli del piano: se
-mancavano lì, mancano anche qui. **Un pasto a mano senza macro non buca un totale, ne
-buca due**, e il secondo se lo porta dietro nei giorni dopo.
+⚠️ **Tutto quello che sta in `recipes` è PER UNA PERSONA.** Una ricetta è una cosa sola,
+il pasto invece cambia con quanti sono a tavola. Tenere qui la porzione singola è ciò
+che permette di riusare la stessa ricetta per uno o per due **senza che l'app moltiplichi
+niente da sé**: a dimensionare il pasto è il generatore, che sa già farlo. Raddoppiare
+«un cucchiaio di olio» o «mezza cipolla» darebbe risultati sbagliati, e la regola di
+questa casa è che si calcola solo quando il calcolo è sicuro.
 
-**Vincoli dettati dall'utente, invariati:** visualizzazione **identica** — i numeri
-compaiono solo dove compaiono già (totali e pasti di Ciprian), sui pasti di sola Lorena
-nessuno, come da metodo. **Niente conteggio interattivo, niente database alimenti**
-(vedi le decisioni chiuse più sotto).
+**Blocco 2 — il bottone «Crea la ricetta».** Sta nel pannello «Scrivo io», subito sotto
+il nome del piatto. ⚠️ **Parte solo se lo si tocca**: costa **una tacca** delle 30
+generazioni del giorno, come una proposta. Mai automatico, mai al salvataggio.
+
+Il terzo mestiere della Edge Function (`modo:'ricetta'`, `REGOLE_RICETTA`,
+`SCHEMA_RICETTA`) restituisce **due misure dello stesso piatto in una chiamata sola**:
+
+- `ricetta_*` → per **una** persona, va nel ricettario;
+- `pasto_*` → dimensionato su **chi mangia davvero** quel giorno, va nel calendario.
+
+⚠️ **Le tre regole anti-doppione** stanno in `ricettaPerNome()` + `haContenuto()`, e il
+confronto è `stessoNome()` come in tutto il resto dell'app:
+
+1. esiste una ricetta con quel nome **e con dentro qualcosa** → si **collega** quella e
+   **non la si tocca**: qualcuno l'aveva approvata. Viene anche mandata al generatore
+   perché la riusi invece di riscriverla a modo suo;
+2. esiste ma è **vuota** (il vecchio ricettario conosceva solo i nomi) → si **riempie
+   quella riga**, e il nome resta il suo: si riempie il contenuto, non si ribattezza;
+3. non esiste → se ne crea una.
+
+⚠️ `eraPiena` si legge **prima** di scrivere: nel caso 2 la riempiamo noi, e dopo
+sembrerebbe che ci fosse già — il messaggio finale direbbe una bugia.
+
+⚠️ **Il bottone riempie il modulo, NON salva il pasto.** Salvare resta un gesto
+dell'utente, così può guardare cosa è stato scritto e correggerlo prima.
+⚠️ **E non mette nessun cuore.** Scrivere la ricetta di un piatto non vuol dire che quel
+piatto piace: se i ♥ si mettessero da soli smetterebbero di voler dire qualcosa. È la
+stessa regola di `conRicetta:false` nella verifica del mattino.
+
+⚠️ `ricetta_id` si scrive nel pasto **solo se c'è davvero**: mandarlo sempre, anche
+vuoto, farebbe fallire il salvataggio su un database in cui il file SQL non è ancora
+stato eseguito — e scrivere un pasto a mano funzionava già da prima, non deve smettere.
+
+**Blocco 3 — «parziale» basta un numero solo.** ⚠️ Fino a oggi la dichiarazione di
+totale parziale scattava solo se mancavano **tutti e due** i numeri (`prot == null &&
+kcal == null`). Ma il caso più probabile è l'altro: **le proteine uno se le ricorda, le
+kcal no.** Con la «e» quel pasto entrava con le proteine giuste, sommava **zero calorie**
+e il totale **taceva**. Ora è `||`, e vale su **tutte e tre** le funzioni che contano:
+
+- `totaleGiorno()` — il TOT del piano;
+- `totaleFinora()` — «finora oggi» dal diario;
+- `fisseDelGiorno()` — dove c'era anche un `every()` al posto di un `some()`, cioè
+  servivano *tutte* le registrazioni senza *entrambi* i numeri prima di dirlo.
+
+**La regola che ne esce, e vale ovunque si sommino numeri**: un buco che non si dichiara
+è peggio del buco. Un numero non deve mai sembrare più completo di quello che è.
 
 #### Quello che era in coda da prima
 
@@ -1106,6 +1144,7 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `limite-generatore.sql` | tabella e funzione del tetto giornaliero di generazioni |
 | `tabelle-piano-v5.sql` | la tabella `plan_meals` del calendario, coi campi commentati |
 | `tabelle-staffetta.sql` | la tabella `plan_jobs`: la settimana che il server genera da sé. **Da eseguire** |
+| `tabelle-ricette-complete.sql` | il contenuto delle ricette (ingredienti, prot, kcal, tempo) e il filo `plan_meals.ricetta_id`. **Da eseguire** |
 | `prova-piano-v5.sql` | una settimana finta per collaudare il calendario a mano |
 | `COLLAUDO-V5.md` | la checklist di collaudo del calendario. Come tutti i `COLLAUDO-*`, resta **solo sul computer**: è in `.gitignore` |
 | `seed-dati-iniziali.sql` | inventario e ricette di partenza (11/08) |

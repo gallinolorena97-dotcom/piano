@@ -805,6 +805,24 @@ select.field{appearance:none;-webkit-appearance:none;
 .mano-riga{display:flex;gap:7px;align-items:center;margin-top:6px}
 .mano-riga .field{flex:1;min-width:0;margin-top:0}
 .mano-riga .field[data-ing-qta]{flex:0 0 92px}
+/* «Crea la ricetta» dentro il pannello a mano. Sta subito sotto il nome
+   del piatto, e ha tre facce: l'invito, l'attesa, il fatto. */
+.mano-ricetta{margin:12px 0 4px}
+.mano-ricetta .hint{margin-top:5px}
+/* l'attesa: la stessa pentola dell'attesa grande, in piccolo e di fianco */
+.mano-ric-att{
+  display:flex;align-items:center;gap:10px;
+  background:var(--lavanda-soft);border-radius:var(--r-m);padding:8px 12px;
+  font-size:13.5px;line-height:1.4;color:var(--viola-testo);
+}
+.mano-ric-att svg{flex:0 0 auto}
+/* il fatto: menta, come tutte le conferme dell'app */
+.mano-ric-ok{
+  display:flex;align-items:center;gap:8px;
+  background:var(--menta-soft);border-radius:var(--r-m);padding:9px 12px;
+  font-size:13.5px;line-height:1.4;color:var(--menta-ink);
+}
+
 /* gli avvisi in cima alla tab Piano */
 .avviso-lista{margin:7px 0 0;padding-left:19px;font-size:13.5px;line-height:1.5}
 .avviso-lista li{margin-bottom:2px}
@@ -1677,6 +1695,8 @@ function spiegaErrore(e){
   // una COLONNA che manca è una migrazione non eseguita, non una tabella
   if (/column .*a_mano|a_mano.* column/i.test(m))
     return 'Manca una colonna nel database. Esegui tabelle-piano-v5-blocco4.sql su Supabase e riprova.';
+  if (/ricetta_id|ingredienti.* column|column .*ingredienti/i.test(m))
+    return 'Manca una colonna nel database. Esegui tabelle-ricette-complete.sql su Supabase e riprova.';
   if (/Could not find the table|schema cache|does not exist/i.test(m)){
     const t = (m.match(/public\.([a-z_]+)/i) || [])[1];
     const quale = { recipe_votes:'tabelle-voti-v7.sql', profiles:'tabelle-profili-v6.sql',
@@ -1712,7 +1732,11 @@ async function loadAll(){
       sb.from('plan_meals').select('*').gte('day', daISO).lte('day', aISO)
         .order('day', { ascending:true }),
       sb.from('inventory_items').select('id,name,qty,cat'),
-      sb.from('recipes').select('id,name,pref'),
+      // ⚠️ '*' e non l'elenco delle colonne: da quando una ricetta ha un
+      // CONTENUTO (ingredienti, prot, kcal, tempo) chiedere le colonne per
+      // nome romperebbe l'intera app finché tabelle-ricette-complete.sql
+      // non è stato eseguito. Con '*' arriva quello che c'è.
+      sb.from('recipes').select('*'),
       sb.from('settings').select('key,value'),
       sb.from('shopping_list').select('id,name,done').order('created_at', { ascending:true }),
       sb.from('profiles').select('*').order('slug', { ascending:true }),
@@ -1870,8 +1894,12 @@ function fisseDelGiorno(iso, slug){
       prot: sommaProt(vere),
       kcal: sommaKcal(vere),
       reale: true,
-      // registrata senza numeri: entra come 0 e il totale lo deve dire
-      senzaNumeri: vere.every(m => m.prot == null && m.kcal == null),
+      // Registrata senza numeri: entra come 0 e il totale lo deve dire.
+      // ⚠️ some(…||…), non every(…&&…): basta che UNA registrazione abbia
+      // UN numero mancante perché quella voce sia incompleta. Con «every»
+      // e «&&» servivano tutte le registrazioni e tutti e due i numeri
+      // vuoti prima di dirlo — cioè quasi mai.
+      senzaNumeri: vere.some(m => m.prot == null || m.kcal == null),
     };
   });
 }
@@ -2357,7 +2385,14 @@ function totaleGiorno(righe, iso){
 
   let prot = 0, kcal = 0, senzaNumeri = 0;
   for (const r of suoi){
-    if (r.prot == null && r.kcal == null) senzaNumeri++;
+    // ⚠️ BASTA UN NUMERO SOLO CHE MANCHI. Fino al 18/08/2026 qui c'era una
+    // «e» al posto della «o», e il totale si dichiarava parziale solo se
+    // mancavano tutti e due. Ma il caso più probabile è proprio l'altro:
+    // le proteine uno se le ricorda, le kcal no. Con la «e» quel pasto
+    // entrava con le proteine giuste, sommava ZERO calorie e il totale
+    // taceva: le kcal del giorno risultavano più basse del vero senza che
+    // niente lo segnalasse. Un buco che non si dichiara è peggio del buco.
+    if (r.prot == null || r.kcal == null) senzaNumeri++;
     prot += Number(r.prot) || 0;
     kcal += Number(r.kcal) || 0;
   }
@@ -2411,8 +2446,12 @@ function totaleFinora(iso, slug){
   // che li hanno già assorbiti: contarli di nuovo sarebbe il doppio conteggio
   const resto = S.diario.filter(m => m.day === iso && !gestiti.has(m.pasto));
 
+  // ⚠️ Stessa regola del TOT del piano, e deve restare la stessa: basta un
+  // numero solo che manchi perché «finora oggi» sia un parziale. Le due
+  // fonti sono diverse (il piano e il diario) ma la promessa a chi legge è
+  // una: un numero non deve mai sembrare più completo di quello che è.
   const senzaNumeri = fisse.filter(f => f.senzaNumeri).length
-                    + resto.filter(m => m.prot == null && m.kcal == null).length;
+                    + resto.filter(m => m.prot == null || m.kcal == null).length;
 
   return {
     prot: sommaProt(fisse) + sommaProt(resto),
@@ -2583,6 +2622,9 @@ function apriModificaPasto(iso, quale, dentro){
 
   const box = document.createElement('div');
   box.className = 'mano-box' + (chi0 === 'lorena' ? ' senza-numeri' : '');
+  // se il pasto aveva già una ricetta, il filo si porta dietro: salvare una
+  // modifica non deve scollegarla
+  box.dataset.ricettaId = r?.ricetta_id || '';
   box.innerHTML = `
     <div class="q-label" style="margin-top:0">Scrivo io ${esc(quale)} di ${esc(labelData(iso))}</div>
 
@@ -2594,6 +2636,11 @@ function apriModificaPasto(iso, quale, dentro){
       ${PS_CHI.map(c => `<button data-chi="${c}" aria-pressed="${chi0 === c}"
         >${esc(nomeChiBreve(c))}</button>`).join('')}
     </div>
+
+    <!-- ⚠️ Il bottone sta QUI, sotto il nome e prima degli ingredienti:
+         è il punto in cui uno ha appena scritto «polpette» e non ha voglia
+         di scrivere altro. E parte solo se lo si tocca. -->
+    <div class="mano-ricetta" data-ricetta-zona>${zonaRicettaHtml(r)}</div>
 
     <div class="q-label">Ingredienti <span>— facoltativi</span></div>
     <div class="mano-ing">${ing.map(rigaIngrediente).join('')}</div>
@@ -2639,10 +2686,156 @@ function apriModificaPasto(iso, quale, dentro){
     }
     const via = ev.target.closest('[data-togli-ing]');
     if (via){ via.closest('.mano-riga').remove(); return; }
+    if (ev.target.closest('[data-crea-ricetta]')){ creaLaRicetta(box, quale); return; }
     if (ev.target.closest('[data-annulla]')){ box.remove(); return; }
     if (ev.target.closest('[data-salva]')) salvaPastoAMano(iso, quale, box);
   });
 }
+
+/**
+ * «Crea la ricetta»: completa il piatto scritto a mano.
+ *
+ * Fa tre cose, in quest'ordine, e ognuna può fallire senza portarsi
+ * dietro le altre:
+ *   1. chiede al generatore le DUE misure del piatto — la ricetta per una
+ *      persona e il pasto per chi mangia davvero. È l'unico passaggio che
+ *      costa: una tacca, la stessa moneta delle proposte;
+ *   2. scrive la ricetta nel ricettario senza fare doppioni (le tre regole
+ *      sono spiegate sopra ricettaPerNome);
+ *   3. riempie il modulo. ⚠️ NON salva il pasto: quello resta un gesto
+ *      tuo, così puoi guardare cosa ha scritto e correggerlo prima.
+ */
+async function creaLaRicetta(box, quale){
+  const campoPiatto = box.querySelector('[data-piatto]');
+  const nome = campoPiatto.value.trim();
+  if (!nome){
+    toast('Scrivi prima come si chiama il piatto.');
+    campoPiatto.focus();
+    return;
+  }
+
+  const chi = box.querySelector('.chips[data-campo="chi"] button[aria-pressed="true"]')?.dataset.chi
+            || 'entrambi';
+  const scritti = [...box.querySelectorAll('.mano-riga')].map(riga => ({
+    nome: riga.querySelector('[data-ing-nome]').value.trim(),
+    qta:  riga.querySelector('[data-ing-qta]').value.trim(),
+  })).filter(i => i.nome);
+
+  // La ricetta che c'è già: se è piena la mando al generatore perché la
+  // riusi invece di riscriverla a modo suo. Qualcuno l'aveva approvata.
+  const trovata = ricettaPerNome(nome);
+  // ⚠️ Si guarda ADESSO se era piena: nel caso 2 la riempiamo noi fra poco,
+  // e dopo sembrerebbe che ci fosse già — il messaggio direbbe una bugia.
+  const eraPiena = haContenuto(trovata);
+  const gia = eraPiena
+    ? { ingredienti:trovata.ingredienti, prot:trovata.prot, kcal:trovata.kcal }
+    : null;
+
+  const zona = box.querySelector('[data-ricetta-zona]');
+  const prima = zona.innerHTML;
+  zona.innerHTML = zonaRicettaHtml(null, 'lavoro');
+  box.querySelectorAll('button, input').forEach(x => x.disabled = true);
+
+  let dati = null, problema = null;
+  try{
+    await flussoNdjson({
+      modo:'ricetta',
+      nome, chi, pasto:quale,
+      ingredienti: scritti,
+      ricetta: gia,
+    }, (ev) => {
+      if (ev.errore) problema = ev.errore;
+      if (ev.tipo === 'ricetta') dati = ev.ricetta;
+      // ev.tipo === 'battito': non c'è niente da fare, serve solo a tenere
+      // vivo il collegamento mentre il modello pensa in silenzio
+    });
+  }catch(e){
+    // ⚠️ Il messaggio della function è già in italiano e già chiaro («per
+    // oggi hai finito le generazioni»): non va riscritto. spiegaErrore()
+    // serve ai guasti veri — la rete caduta, una tabella che manca.
+    problema = guastoDiRete(String(e?.message || '')) ? spiegaErrore(e) : (e?.message || '');
+  }
+
+  box.querySelectorAll('button, input').forEach(x => x.disabled = false);
+
+  if (!dati){
+    zona.innerHTML = prima;
+    toast(problema || 'Il generatore non ha scritto la ricetta. Riprova.', null, 'errore');
+    return;
+  }
+
+  // --- 2 · il ricettario, senza doppioni -------------------
+  let idRicetta = trovata?.id || null;
+  const contenuto = {
+    ingredienti: Array.isArray(dati.ricetta_ingredienti) ? dati.ricetta_ingredienti : [],
+    prot: numeroONull(dati.ricetta_prot),
+    kcal: numeroONull(dati.ricetta_kcal),
+    tempo: numeroONull(dati.tempo),
+  };
+
+  try{
+    if (eraPiena){
+      // caso 1: c'era già ed era piena. Non si tocca: l'aveva scritta
+      // qualcuno, e non la si riscrive a modo nostro.
+    }else if (trovata){
+      // caso 2: c'era, ma era solo un nome del vecchio ricettario. Il nome
+      // resta il suo: riempiamo il contenuto, non ribattezziamo la riga.
+      const { error } = await sb.from('recipes').update(contenuto).eq('id', trovata.id);
+      if (error) throw error;
+      Object.assign(trovata, contenuto);
+    }else{
+      // caso 3: non c'era
+      const { data, error } = await sb.from('recipes')
+        .insert({ name: dati.piatto || nome, ...contenuto }).select().single();
+      if (error) throw error;
+      S.rec.push(data);
+      S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
+      idRicetta = data.id;
+    }
+  }catch(e){
+    // ⚠️ Il ricettario è l'operazione accessoria: se fallisce lui, il
+    // modulo si riempie lo stesso. Il lavoro fatto non si butta.
+    esitoErrore(e);
+  }
+  // ⚠️ Nessun cuore. Scrivere la ricetta di un piatto non vuol dire che
+  // quel piatto piace: se i ♥ si mettessero da soli smetterebbero di
+  // voler dire qualcosa. È la stessa regola della verifica del mattino.
+  renderRec();
+
+  // --- 3 · il modulo, riempito ------------------------------
+  campoPiatto.value = dati.piatto || nome;
+  box.dataset.ricettaId = idRicetta || '';
+
+  const righe = Array.isArray(dati.pasto_ingredienti) ? dati.pasto_ingredienti : [];
+  if (righe.length){
+    box.querySelector('.mano-ing').innerHTML =
+      righe.map(i => rigaIngrediente({ nome:i.nome, qta:i.qta })).join('');
+  }
+  // i numeri sono di Ciprian: in un pasto di sola Lorena restano vuoti
+  if (chi !== 'lorena'){
+    const p = numeroONull(dati.pasto_prot), k = numeroONull(dati.pasto_kcal);
+    if (p != null) box.querySelector('[data-prot]').value = p;
+    if (k != null) box.querySelector('[data-kcal]').value = k;
+  }
+  if (dati.dolce) box.querySelector('[data-dolce]').value = dati.dolce;
+  if (dati.nota && !box.querySelector('[data-nota]').value)
+    box.querySelector('[data-nota]').value = dati.nota;
+
+  zona.innerHTML = zonaRicettaHtml({ ricetta_id: idRicetta });
+
+  const manca = Array.isArray(dati.manca) ? dati.manca.filter(Boolean) : [];
+  if (manca.length) await aggiungiAllaSpesa(manca, true);
+  toast(eraPiena
+    ? `Collegata la ricetta «${trovata.name}» che avevi già.${manca.length ? ' Quello che manca è in lista spesa.' : ''}`
+    : `Ricetta pronta.${manca.length ? ' Quello che manca è in lista spesa.' : ''} Controlla e salva il pasto.`);
+}
+
+/** Un intero utile, oppure niente. Lo zero del generatore vuol dire «non
+    lo riguarda»: non è un numero da scrivere, è un numero che non c'è. */
+const numeroONull = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+};
 
 const rigaIngrediente = (i) => `<div class="mano-riga">
   <input class="field mini" data-ing-nome placeholder="ingrediente"
@@ -2689,6 +2882,12 @@ async function salvaPastoAMano(iso, quale, box){
     dipende_da_spesa: false,
     nota: box.querySelector('[data-nota]').value.trim() || null,
   };
+
+  // ⚠️ Il filo verso il ricettario si scrive SOLO se c'è davvero. Mandarlo
+  // sempre, anche vuoto, farebbe fallire il salvataggio su un database in
+  // cui tabelle-ricette-complete.sql non è ancora stato eseguito — e
+  // scrivere un pasto a mano funzionava già da prima: non deve smettere.
+  if (box.dataset.ricettaId) riga.ricetta_id = box.dataset.ricettaId;
 
   box.querySelectorAll('button, input').forEach(x => x.disabled = true);
   try{
@@ -4864,6 +5063,63 @@ async function annullaCucinato(modifiche, ricetta, pasto, silenzioso){
     esitoErrore(e);
   }
 }
+
+/* ============================================================
+   IL PIATTO SCRITTO A MANO DIVENTA UNA RICETTA
+   ============================================================
+   Un pasto scritto a mano nasceva col solo nome, e un pasto senza numeri
+   buca i totali di Ciprian in DUE posti: il TOT del piano e «finora oggi»
+   del diario. Il bottone «Crea la ricetta» lo completa.
+
+   ⚠️ PARTE SOLO SE LO SI TOCCA. Costa una tacca delle generazioni del
+   giorno, come una proposta: mai automatico, mai al salvataggio.
+
+   ⚠️ E NON FA MAI DOPPIONI. Tre casi, in quest'ordine:
+     1. c'è già una ricetta con quel nome E con dentro qualcosa
+        → si collega quella e non la si tocca: qualcuno l'aveva approvata;
+     2. c'è una ricetta con quel nome ma VUOTA (il vecchio ricettario, che
+        conosceva solo i nomi) → si riempie quella riga;
+     3. non c'è niente → se ne crea una.
+   Il confronto è stessoNome(), lo stesso di tutta l'app: «polpette» e
+   «Polpette» sono la stessa ricetta, e «latte» non è «latte di cocco».
+   ============================================================ */
+
+/** Il riquadro del bottone dentro il pannello «Scrivo io». Cambia faccia
+    a seconda di dove siamo, e ogni faccia dice una cosa sola. */
+function zonaRicettaHtml(r, stato){
+  if (stato === 'lavoro') return `
+    <div class="mano-ric-att">
+      <svg class="attesa-pentola" viewBox="0 0 180 136" width="86" height="65" aria-hidden="true">
+        <use href="#ill-pentola"/></svg>
+      <span>Sto scrivendo la ricetta: ingredienti, grammi e numeri.
+        Ci vuole meno di un minuto.</span>
+    </div>`;
+
+  const ric = r?.ricetta_id ? S.rec.find(x => x.id === r.ricetta_id) : null;
+  if (haContenuto(ric)) return `
+    <div class="mano-ric-ok">
+      ${ico('cuore',15)} <span>Da <b>${esc(ric.name)}</b>, che è già nel ricettario.</span>
+    </div>`;
+
+  return `
+    <button class="btn ghost small" data-crea-ricetta>${ico('cucino',16)} Crea la ricetta</button>
+    <p class="hint">Scrivo io ingredienti coi nomi della tua dispensa, i grammi
+      e i numeri, e la metto nel ricettario. Vale una delle generazioni di oggi,
+      quindi parte solo se lo tocchi.</p>`;
+}
+
+/** La ricetta che corrisponde a questo nome, se c'è. Prima le piene: se
+    per sbaglio esistono un doppione pieno e uno vuoto, vince quella che
+    ha dentro qualcosa. */
+function ricettaPerNome(nome){
+  const uguali = S.rec.filter(r => stessoNome(r.name, nome));
+  return uguali.find(haContenuto) || uguali[0] || null;
+}
+
+/** Una ricetta «piena» è una da cui si può rifare il piatto. Il solo nome
+    e il voto non bastano: quelli li aveva già il vecchio ricettario. */
+const haContenuto = (r) =>
+  !!r && Array.isArray(r.ingredienti) && r.ingredienti.length > 0;
 
 /** Salva (o promuove a ♥) la ricetta. Restituisce di che cosa tener conto per l'annulla. */
 async function salvaRicetta(p){

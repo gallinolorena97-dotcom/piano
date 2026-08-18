@@ -55,6 +55,12 @@ const BLOCCHI_SETTIMANA = 10;
 // serve solo a lasciare spazio. Il massimo di Sonnet 5 e' 128000.
 const MAX_TOKENS_SETTIMANA = 32000;
 
+// Completare un piatto scritto a mano e' un compito piu' piccolo di un
+// giorno intero, ma non minuscolo: bisogna leggere tutta la dispensa,
+// rispettare i divieti e scrivere DUE misure dello stesso piatto. Vale la
+// stessa avvertenza di sopra — e' un tetto, non una spesa.
+const MAX_TOKENS_RICETTA = 16000;
+
 // ------------------------------------------------------------
 //  Segreti e indirizzi (li mette Supabase, non si scrivono a mano)
 // ------------------------------------------------------------
@@ -756,6 +762,130 @@ const SCHEMA_SETTIMANA = {
   additionalProperties: false,
 };
 
+// ============================================================
+//  IL TERZO MESTIERE — COMPLETARE UN PIATTO SCRITTO A MANO
+//
+//  Chi scrive un pasto a mano scrive un nome («polpette al sugo») e
+//  quasi mai i grammi e i numeri. Ma un pasto senza numeri buca i totali
+//  della giornata di Ciprian in DUE posti — il TOT del piano e «finora
+//  oggi» del diario — e li buca in silenzio se uno dei due numeri c'è e
+//  l'altro no.
+//
+//  Qui il piatto viene completato una volta sola, e ne escono DUE cose
+//  che vanno tenute distinte perché servono a scopi diversi:
+//
+//    la RICETTA  → sempre per UNA persona. È la cosa che resta e che si
+//                  riusa. Va nel ricettario.
+//    il PASTO    → dimensionato su chi mangia DAVVERO quel giorno.
+//                  Va nel calendario.
+//
+//  ⚠️ Le due misure le decide il modello, non l'app: l'app non
+//  moltiplica mai una quantità per due. Raddoppiare «1 cucchiaio di
+//  olio» o «mezza cipolla» dà risultati sbagliati, e la regola di questa
+//  casa è che si calcola solo quando il calcolo è sicuro.
+// ============================================================
+const REGOLE_RICETTA = `Sei l'aiuto cucina di una casa in cui vivono due persone diverse.
+
+Qualcuno ha scritto a mano che cosa si mangia — di solito solo il nome del piatto —
+e il tuo compito è COMPLETARLO. Non devi proporre un piatto tuo: il piatto è già
+deciso, tu lo scrivi per intero.
+
+## COSA DEVI PRODURRE — due misure dello stesso piatto
+
+1. LA RICETTA, sempre e solo **per UNA persona**. È quella che resta nel ricettario e
+   verrà riusata altre volte, magari per un numero diverso di persone. Le quantità qui
+   sono la porzione di una persona sola, sempre, anche se oggi mangiano in due.
+2. IL PASTO DI OGGI, dimensionato su **chi mangia davvero** (te lo dico più sotto). Se
+   mangiano in due, le quantità sono per due. Se mangia Ciprian da solo, sono la sua
+   porzione, che è abbondante.
+
+Non fare la seconda moltiplicando la prima e basta: certe cose raddoppiano (la pasta,
+la carne), altre no (un cucchiaio di olio, mezza cipolla, il sale).
+
+## LE REGOLE CHE NON SI TOCCANO
+
+1. **I NOMI DEGLI INGREDIENTI SI COPIANO DALLA DISPENSA, LETTERA PER LETTERA.**
+   Se in dispensa c'è «Uova», scrivi «Uova» e non «uovo»; se c'è «Panini burger»,
+   scrivi «Panini burger» e non «panino per burger». Niente sinonimi, niente singolari
+   al posto dei plurali, niente aggettivi in più. È da questi nomi che l'app scala le
+   scorte e capisce se manca qualcosa: se li cambi, scala la cosa sbagliata o niente.
+   Vale per la ricetta e per il pasto.
+   Solo le cose che in dispensa NON ci sono le scrivi come vuoi, in modo riconoscibile
+   al supermercato, e le elenchi anche in "manca".
+
+2. **I DIVIETI DELLE PERSONE NON SI NEGOZIANO.** Te li trovi scritti più sotto, persona
+   per persona. Un divieto SENZA precisazioni vieta tutta la famiglia dell'alimento in
+   ogni forma; un divieto CON una precisazione (per esempio «pomodoro crudo») vieta
+   tutta la famiglia — pomodoro, pomodorini, datterini, passata, pelati — **in quella
+   forma lì**, e lascia libere le altre forme. Quando entra in un pasto la forma
+   consentita, il piatto o gli ingredienti DEVONO dirlo: «datterini saltati in
+   padella», non «datterini».
+   Se il piatto scritto a mano contiene qualcosa di vietato per chi lo mangia, NON
+   cambiare il piatto: scrivilo lo stesso e dillo in "nota".
+
+3. **I NUMERI SONO DI CIPRIAN E DI NESSUN ALTRO.** "pasto_prot" e "pasto_kcal" sono la
+   porzione di Ciprian in questo pasto: se Ciprian in questo pasto non mangia, valgono
+   0 tutti e due. "ricetta_prot" e "ricetta_kcal" sono invece la porzione di UNA
+   persona, sempre.
+   Stimali con onestà: meglio un numero ragionevole che nessun numero, perché senza
+   numeri il totale della giornata si dichiara parziale e non serve più a niente.
+
+4. **UN PIATTO SOLO QUANDO MANGIANO INSIEME.** Se a tavola ci sono tutti e due, il
+   piatto è uno. Le differenze ammesse sono varianti dello stesso piatto: grammature
+   diverse, e un'aggiunta proteica a lato per Ciprian se il piatto base non basta al
+   suo obiettivo (uova, skyr, grana, tonno) — che scrivi negli ingredienti del pasto
+   con "per": "ciprian". Il tocco dolce di Lorena ha il campo "dolce" suo.
+
+5. **NON RIBATTEZZARE IL PIATTO.** Il nome che ti arriva l'ha scelto una persona. In
+   "piatto" riscrivilo pulito (maiuscola iniziale, senza errori evidenti) ma **non
+   cambiarlo**: «polpette» resta «Polpette», non diventa «Polpette di manzo al sugo
+   con purè». Se aggiungi un contorno, quello sta negli ingredienti.
+
+6. **SE LA RICETTA ESISTE GIÀ, È QUELLA.** Quando ti passo una ricetta già scritta,
+   quella è la verità: riusala com'è per "ricetta_ingredienti", "ricetta_prot" e
+   "ricetta_kcal", e limitati a dimensionare il pasto di oggi. Non riscriverla a modo
+   tuo — qualcuno l'aveva già approvata.
+
+7. **"manca"**: solo le cose che servono e che in dispensa non ci sono. Se non manca
+   niente, lista vuota. Non inventare mancanze per prudenza.
+
+Campi che non servono: stringa vuota "" per i testi, 0 per i numeri, [] per le liste.
+Scrivi in italiano semplice e concreto. Niente tono da dieta, niente premi, niente colpe.`;
+
+const INGREDIENTE_RICETTA = {
+  type: 'object',
+  properties: {
+    nome: { type: 'string' },
+    qta:  { type: 'string' },
+  },
+  required: ['nome', 'qta'],
+  additionalProperties: false,
+};
+
+const SCHEMA_RICETTA = {
+  type: 'object',
+  properties: {
+    piatto:              { type: 'string' },
+    // la ricetta: SEMPRE per una persona sola
+    ricetta_ingredienti: { type: 'array', items: INGREDIENTE_RICETTA },
+    ricetta_prot:        { type: 'integer' },
+    ricetta_kcal:        { type: 'integer' },
+    // il pasto di oggi: dimensionato su chi mangia davvero
+    pasto_ingredienti:   { type: 'array', items: INGREDIENTE_PIANO },
+    pasto_prot:          { type: 'integer' },   // solo Ciprian, 0 se non lo riguarda
+    pasto_kcal:          { type: 'integer' },   // idem
+    dolce:               { type: 'string' },
+    nota:                { type: 'string' },
+    tempo:               { type: 'integer' },
+    manca:               { type: 'array', items: { type: 'string' } },
+    proteina_principale: { type: 'string' },
+  },
+  required: ['piatto','ricetta_ingredienti','ricetta_prot','ricetta_kcal',
+             'pasto_ingredienti','pasto_prot','pasto_kcal','dolce','nota','tempo',
+             'manca','proteina_principale'],
+  additionalProperties: false,
+};
+
 // ------------------------------------------------------------
 //  LA CHIAMATA A CLAUDE — una sola, condivisa dai due mestieri
 // ------------------------------------------------------------
@@ -1317,6 +1447,105 @@ async function generaUnGiorno(c: Contesto, pezzi: PezziContesto) {
   return { pasti, resta };
 }
 
+/**
+ * Completa un piatto scritto a mano. UNA chiamata al modello, quindi UNA
+ * tacca del tetto giornaliero: il bottone parte solo se lo si tocca, e chi
+ * lo tocca sa che sta spendendo.
+ *
+ * Risponde in NDJSON come gli altri mestieri — non perché servano i pezzi
+ * man mano (la risposta è una sola) ma per il BATTITO: il modello può
+ * pensare a lungo in silenzio, e su un telefono un collegamento muto è un
+ * collegamento che cade.
+ */
+async function completaPiatto(body: Record<string, unknown>): Promise<Response> {
+  const nome = String(body.nome ?? '').trim().slice(0, 200);
+  if (!nome) return errore('Dimmi prima come si chiama il piatto.', 400);
+
+  const chi = ['ciprian', 'entrambi', 'lorena'].includes(String(body.chi))
+    ? String(body.chi) : 'entrambi';
+  const pasto = body.pasto === 'cena' ? 'cena' : 'pranzo';
+
+  const scritti = Array.isArray(body.ingredienti)
+    ? (body.ingredienti as any[]).slice(0, 30)
+        .map((i) => `${String(i?.nome ?? '').slice(0, 80)}${i?.qta ? ` — ${String(i.qta).slice(0, 40)}` : ''}`)
+        .filter((s) => s.trim())
+    : [];
+
+  // La ricetta che esiste già, se c'è: la manda il client dopo averla
+  // trovata con stessoNome(), e qui è LEGGE. Serve a non riscrivere a modo
+  // proprio una cosa che qualcuno aveva già approvato.
+  const gia = body.ricetta && typeof body.ricetta === 'object'
+    ? body.ricetta as Record<string, unknown> : null;
+
+  try {
+    const usate = await consumaUnaGenerazione();
+    if (usate === -1) {
+      return errore(
+        `Per oggi hai già usato tutte le ${MAX_AL_GIORNO} generazioni disponibili. Riprova domani.`,
+        429,
+      );
+    }
+  } catch {
+    return errore('Non riesco a controllare il contatore delle generazioni. Riprova fra poco.', 500);
+  }
+
+  let c: Contesto;
+  try { c = await leggiContesto(); }
+  catch { return errore('Non riesco a leggere la dispensa. Riprova fra poco.', 500); }
+
+  const chiMangia = chi === 'entrambi'
+    ? 'TUTTI E DUE, Ciprian e Lorena'
+    : (chi === 'ciprian' ? 'SOLO Ciprian' : 'SOLO Lorena');
+
+  const contesto = `## DISPENSA DI OGGI
+⚠️ I nomi degli ingredienti si copiano da qui, lettera per lettera.
+
+${descriviDispensa(c.inv)}
+
+## LE PERSONE
+${c.profili.length
+  ? c.profili.map((p) => descriviProfilo(p)).join('\n\n')
+  : '- (profili non configurati: considera una sola persona)'}
+
+## IL PIATTO DA COMPLETARE
+Nome scritto a mano: ${nome}
+Pasto: ${pasto}
+Chi mangia: ${chiMangia}
+${scritti.length
+  ? `Ingredienti già scritti a mano (tienili tutti, semmai completali):\n${scritti.map((s) => `- ${s}`).join('\n')}`
+  : 'Ingredienti già scritti a mano: nessuno, li scrivi tu.'}
+
+${gia
+  ? `## QUESTA RICETTA ESISTE GIÀ — è la verità, riusala com'è
+Per una persona: ${JSON.stringify(gia.ingredienti ?? [])}
+Proteine: ${gia.prot ?? '(non si sa)'} · Calorie: ${gia.kcal ?? '(non si sa)'}
+Copia questi valori in "ricetta_ingredienti", "ricetta_prot" e "ricetta_kcal", e
+limitati a dimensionare il pasto di oggi su chi mangia.`
+  : '## QUESTA RICETTA NON ESISTE ANCORA\nScrivila tu, per una persona.'}`;
+
+  return flussoNdjson(async (manda) => {
+    const battito = setInterval(() => manda({ tipo: 'battito' }), 10_000);
+    try {
+      const chiamata = await chiamaAnthropic(REGOLE_RICETTA, contesto, SCHEMA_RICETTA, MAX_TOKENS_RICETTA);
+      if (!chiamata.ok) { manda({ errore: 'Il generatore non risponde. Riprova fra un minuto.' }); return; }
+
+      let testo = '';
+      for await (const pezzo of pezziDiTesto(chiamata.corpo)) {
+        if (pezzo.guasto) { manda({ errore: 'Il generatore si è interrotto. Riprova.' }); return; }
+        if (pezzo.testo) testo += pezzo.testo;
+      }
+
+      let ric: unknown;
+      try { ric = JSON.parse(testo); }
+      catch { manda({ errore: 'Il generatore ha risposto a metà. Riprova.' }); return; }
+
+      manda({ tipo: 'ricetta', ricetta: ric });
+    } finally {
+      clearInterval(battito);
+    }
+  });
+}
+
 /** Sveglia l'anello successivo e non aspetta che finisca. */
 async function svegliaProssimoPasso(id: string) {
   await fetch(`${SUPABASE_URL}/functions/v1/cosa-cucino`, {
@@ -1519,6 +1748,9 @@ Deno.serve(async (req) => {
   //   settimana       → il modo vecchio, in cui è il telefono a guidare.
   //                     Resta perché l'app lo usa come ripiego quando questa
   //                     function non è ancora stata reincollata.
+  //
+  // E poi c'è «ricetta», il terzo mestiere: completare UN piatto scritto
+  // a mano. Sta più sotto perché non c'entra con la settimana.
   if (body.modo === 'settimana-avvia') return await avviaStaffetta(body);
 
   if (body.modo === 'settimana-passo' || body.modo === 'settimana-riprendi') {
@@ -1546,6 +1778,10 @@ Deno.serve(async (req) => {
   }
 
   if (body.modo === 'settimana') return await pianificaSettimana(body);
+
+  // Il terzo mestiere: completare un piatto scritto a mano. Parte solo
+  // quando qualcuno tocca «Crea la ricetta», mai da sé.
+  if (body.modo === 'ricetta') return await completaPiatto(body);
 
   const pasto  = body.pasto === 'cena' ? 'cena' : 'pranzo';
   const chi    = ['io', 'io_e_x', 'solo_x'].includes(String(body.chi)) ? String(body.chi) : 'io';
