@@ -326,6 +326,86 @@ scritto a mano dentro una regola.
   Rigenerabili con lo script in `scratchpad/icona.ps1` — è disegnata con primitive
   geometriche, non convertita da un'immagine.
 
+### La grafica completata (18/08/2026) — l'inventario e i buchi chiusi
+
+Fatto l'inventario chiesto da `PROMPT-FIX-E-GRAFICA.md`: **il v7 c'era quasi tutto**,
+schermate v5 comprese (calendario, passata e verifica usano già i token). Quello che
+mancava, e che è stato chiuso:
+
+**I token, che coprivano solo metà delle cose.** Nel corpo del CSS c'erano **41 colori
+scritti a mano**: sette sfumature (due coppie copiaincollate identiche), `#fff` nove
+volte, il verde-testo `#1F6B4F` cinque volte, il velo del menu, tre ombre. Ora esistono
+`--menta-ink` (il gemello mancante di `--pesca-ink`), `--su-pieno`, `--corallo-chiaro`,
+`--segno`, `--velo`, `--luce`, le ombre `--ombra-pillola/-nav/-btn`, le nove
+`--grad-*` e le due `--font-*`. **Nel corpo del CSS oggi ci sono zero colori a mano**:
+è il modo per accorgersene se ne rientra uno.
+
+⚠️ **L'eccezione che resta**: i colori dentro i `data-URI` SVG (lo scarabocchio, le
+stelline, la freccia del menù a tendina, il bordo della testata). Un data-URI **non
+legge le variabili CSS**: `--segno` esiste ed è la verità, ma il valore va cambiato
+anche a mano lì dentro. Dove capita c'è l'avvertenza sul posto.
+
+**Le emoji al posto delle icone.** `✎` era scritto tre volte **mentre `i-matita`
+esisteva già**, `❄` due volte con `i-freezer` già disegnata, e `🍱` era l'unica emoji a
+colori dell'app. Un'emoji la disegna il sistema: cambia forma fra iPhone e computer e
+non prende il colore che le si dà. Ora ci sono sei icone in più (`i-rigenera`, `i-ok`,
+`i-chiudi`, `i-piu`, `i-cuore`, `i-avanzo`) e **una funzione sola, `ico(nome, misura)`**:
+se serve un simbolo si passa da lì. Il tratto di **tutte** le icone è ora dichiarato
+1.8 sul `<g>` (erano 1.8 solo per le tab e solo grazie al CSS della nav, 1.9 per
+quattro, 2 per il menu).
+
+**Gli stati vuoti**: erano 3 illustrati su 14, e **Cucino non ne aveva proprio uno** —
+si apriva la tab e sotto il modulo c'era il nulla. Ora Dispensa e Ricette hanno
+`ill-dispensa` e `ill-ricette` (stesso stile delle tre approvate) e Cucino ha il suo,
+con la pentola ferma: ⚠️ `.vuoto-ill .vapore path{animation:none}` — la stessa pentola
+serve all'attesa, ma in uno stato vuoto non sta bollendo niente.
+
+**I doppioni tolti**: un solo bottone-testo (`.btn-testo`, era scritto a mano tre
+volte), una sola forma per le quattro etichettine maiuscole, il promemoria freezer
+disegnato in un modo solo (era `.row freezer` in un punto e `.nota freezer` in un
+altro, nella stessa scheda).
+
+⚠️ **`.ps-avviso` è diventato `.avviso` con due toni, e non sono intercambiabili**:
+`.attenzione` (pesca) = qualcosa non torna e tocca a te; `.info` (lavanda) = ti sto
+raccontando cosa succede. Prima era uno solo, color allarme, e finiva addosso anche a
+«sto scrivendo la settimana»: a furia di vedere l'ambra per cose normali non la si
+guarda più quando serve davvero.
+
+⚠️ **I tre bottoni della verifica** (Sì · No, altro · Saltato) stavano dentro `.chips`,
+cioè il componente con cui si **sceglie** fra opzioni, e servivano tre eccezioni CSS
+per farli sembrare altro. Sono **azioni**: ora sono bottoni veri, col «Sì» primario.
+
+**Gli elementi che il browser lasciava nudi**: la freccia del menù a tendina era due
+triangolini fatti con due sfumature incrociate — ora è una freccia del set, tratto 1.8.
+Le frecce su/giù dei campi numero sono via. ⚠️ **L'icona del calendario resta** (si
+tinge soltanto): toglierla renderebbe le date impossibili da inserire su iPhone.
+
+#### La firma: la testata (18/08/2026) — ⛔ in attesa del giudizio
+
+`PROMPT-FIX-E-GRAFICA.md` chiedeva **una cosa sola fatta benissimo**, a scelta fra le
+illustrazioni degli stati vuoti e il trattamento della testata. Scelta la **testata**,
+per tre motivi: è l'unica cosa che si vede da ogni schermata; le illustrazioni
+esistevano già ed erano state approvate; e `.arco-testata` era **codice morto** — il
+trattamento della testata era stato disegnato e mai attaccato.
+
+Tre mosse che sono una cosa sola:
+
+1. **Il marchio.** Il barattolo col germoglio è già la faccia dell'app (sta sull'icona
+   dell'iPhone) ma dentro l'app non compariva da nessuna parte. Ora apre la testata.
+   ⚠️ Se cambia `favicon.svg`, cambia anche `#i-marchio`: il senso è che siano la
+   stessa cosa.
+2. **Il bordo a mano.** La riga sotto la testata non è più un filo dritto da 1px: è lo
+   **stesso scarabocchio ondulato** che l'app già disegna sotto i titoletti di sezione
+   (`.q-label::after`), steso per tutta la larghezza, stesso passo e stesso tratto. Il
+   segno che l'app usava in piccolo diventa il suo bordo — non si può prendere questa
+   testata e appiccicarla a un'altra app.
+3. **Gli obiettivi in una pillola**, non più una riga di testo grigia che non sembrava
+   toccabile. È vuota davvero quando non c'è niente da dire (`.h-targets:empty`).
+
+⚠️ Il vecchio `.arco-testata` è stato **cancellato**, e non va rimesso: era un'onda
+*piena* color superficie, e il fondo dell'app è sfumato — avrebbe lasciato una macchia.
+Il bordo nuovo è un **segno**, non una superficie.
+
 ### La v5 — il calendario (12/08/2026, Blocco 1)
 
 La tab **Piano** non legge più `plan_days`: legge **`plan_meals`**, una riga per pasto.
@@ -810,9 +890,22 @@ col campo «che voglia hai?».
 - **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.
 - **Stile: la passata ricca è approvata** nella versione attualmente online.
 
-#### ▶️ PROSSIMO PASSO — collaudare, e poi il Blocco 5
+#### ▶️ PROSSIMO PASSO — il giudizio sulla firma, poi il piatto a mano
 
-Brief: `PROMPT-V5-PIANO.md`. Il brief diceva di fermarsi dopo il Blocco 3; **l'utente ha
+**Aggiornato il 18/08/2026.** Il Blocco 3 di `PROMPT-FIX-E-GRAFICA.md` è stato spinto:
+inventario, token completati, componenti mancanti, icone al posto delle emoji, stati
+vuoti, e **la firma sulla testata**. ⛔ **Qui ci si ferma**: il brief chiede il giudizio
+visivo con screenshot da PC e da iPhone **prima** di fare altro.
+
+- se la testata piace → si va avanti nello stesso stile;
+- se non piace → si prova l'altra strada (le illustrazioni), **senza sommarle**: la
+  regola del brief è una cosa sola fatta benissimo, non dieci effetti sparsi.
+
+Dopo il giudizio: **il piatto inserito a mano con le ricette collegate** — l'utente ha
+deciso il 18/08 che viene **dopo** la grafica, apposta perché nasca già dentro il
+design system invece di doverci rientrare a forza.
+
+Poi, quello che era in coda da prima. Brief: `PROMPT-V5-PIANO.md`. Il brief diceva di fermarsi dopo il Blocco 3; **l'utente ha
 deciso il 13/08 di proseguire col Blocco 4**, che è quindi scritto ma **non collaudato**.
 
 Prima di andare avanti: `COLLAUDO-V5-BLOCCO3.md` e `COLLAUDO-V5-BLOCCO4.md`, ed eseguire

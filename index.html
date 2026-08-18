@@ -55,11 +55,20 @@
   --lavanda-soft:#EFEBFC;
   --menta:#B8E8D4;
   --menta-soft:#E4F6EE;
+  --menta-ink:#1F6B4F;       /* il testo scuro sul menta: il gemello di --pesca-ink */
   --viola:#6B5BD2;           /* azioni primarie e numeri chiave */
   --viola-scuro:#5546B4;
   /* Il viola pieno su lavanda chiaro dà 4.43: sotto la soglia AA.
      Questo è il viola da usare quando il TESTO sta su --lavanda-soft. */
   --viola-testo:#5F4FC9;
+  /* Il segno a mano: lo scarabocchio sotto i titoletti e il bordo della
+     testata. ⚠️ Vive anche dentro i data-URI qui sotto, che NON leggono le
+     variabili: se cambia qui, va cambiato anche là (cerca %23A992E8). */
+  --segno:#A992E8;
+
+  /* Il testo e i segni che stanno SOPRA un fondo pieno (viola, ink).
+     Esiste per non riscrivere #fff nove volte. */
+  --su-pieno:#FFFFFF;
 
   /* segnali */
   --pesca:#F5C89A;
@@ -68,9 +77,28 @@
   --corallo:#F0A79E;
   --corallo-soft:#FCEAE7;
   --corallo-ink:#9C382C;
+  --corallo-chiaro:#FFD9D2;  /* l'azione dentro il toast d'errore, che ha fondo scuro */
   --ghiaccio:#C9D2F7;
   --ghiaccio-soft:#EBEFFD;
   --ghiaccio-ink:#39459E;
+
+  /* ------------------------------------------------------------
+     Le sfumature. Erano sette scritte a mano dentro le regole, con due
+     coppie identiche copiaincollate: ora hanno un nome che dice il RUOLO,
+     così due posti che fanno la stessa cosa non possono più scollarsi.
+     ------------------------------------------------------------ */
+  --grad-testata:linear-gradient(120deg,#F6EFFC 0%,var(--surface) 46%,#FDF4E9 100%);
+  --grad-fascia:linear-gradient(104deg,#E7DBFB 0%,#F9EBD8 66%,#EAF6EF 100%);
+  --grad-fascia-tenue:linear-gradient(104deg,#F3EDFB 0%,#FAF3EA 66%,#F0F7F3 100%);
+  --grad-pillola:linear-gradient(96deg,#EDE4FA 0%,#F7F0FB 55%,#E9F5EF 100%);
+  --grad-diario:linear-gradient(104deg,#E4F6EE 0%,#F6F0FB 70%,#FBEEDD 100%);
+  --grad-panel:linear-gradient(168deg,var(--surface) 62%,#F7F0FB 100%);
+  --grad-azioni:linear-gradient(180deg,#F7F1FA,#F3EAF7);
+  --grad-alone-a:linear-gradient(140deg,#E3D6FA,#CFEEE0);
+  --grad-alone-b:linear-gradient(200deg,#FBE3CB,#F6E9FB);
+  /* la luce sulle testate colorate: un velo bianco, non un colore nuovo */
+  --luce:rgba(255,255,255,.62);
+  --grad-luce:radial-gradient(circle at 40% 35%, rgba(255,255,255,.75), rgba(255,255,255,0) 70%);
 
   /* forma */
   --r-s:10px;
@@ -78,6 +106,17 @@
   --r-l:20px;
   --ombra-1:0 1px 2px rgba(43,36,64,.05), 0 2px 8px rgba(43,36,64,.05);
   --ombra-2:0 4px 12px rgba(43,36,64,.08), 0 12px 28px rgba(43,36,64,.07);
+  /* le intestazioni appiccicate: galleggiano sopra ciò che scorre sotto */
+  --ombra-pillola:0 2px 8px rgba(43,36,64,.07);
+  /* la barra di navigazione in basso: l'ombra sale, non scende */
+  --ombra-nav:0 -2px 14px rgba(43,36,64,.06);
+  --ombra-btn:0 2px 6px rgba(107,91,210,.28);
+  --velo:rgba(43,36,64,.32);
+
+  /* Due famiglie sole. Erano scritte a mano nove volte, e otto avevano
+     perso il ripiego 'Iowan Old Style': ora il ripiego è uno. */
+  --font-titolo:'Fraunces','Iowan Old Style',Georgia,serif;
+  --font-ui:'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 
   /* movimento: breve, mai appariscente */
   --t:180ms cubic-bezier(.4,0,.2,1);
@@ -102,7 +141,7 @@ html,body{margin:0;padding:0}
 body{
   background:var(--bg);
   color:var(--ink);
-  font:400 16px/1.5 'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  font:400 16px/1.5 var(--font-ui);
   -webkit-text-size-adjust:100%;
   padding-bottom:calc(96px + var(--safe-b));   /* spazio per la barra in basso */
 }
@@ -121,27 +160,72 @@ button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer;border:0;background:none}
 :focus-visible{outline:3px solid var(--viola);outline-offset:2px;border-radius:6px}
 
-h1,h2,h3{font-family:'Fraunces','Iowan Old Style',Georgia,serif;font-weight:600;margin:0}
+h1,h2,h3{font-family:var(--font-titolo);font-weight:600;margin:0}
 
 /* ============================================================
-   3 · TESTATA — titolo, sottotitolo, menu. Niente altro.
+   3 · TESTATA — LA FIRMA DELL'APP
+   ============================================================
+   È l'unica cosa che si vede da OGNI schermata, e finora era la più
+   spoglia: un titolo, un hamburger, una riga di testo grigia.
+
+   Tre mosse, e sono una cosa sola:
+
+   1 · IL MARCHIO. Il barattolo col germoglio è già la faccia dell'app —
+       sta sull'icona dell'iPhone — ma dentro l'app non compariva da
+       nessuna parte. Ora apre la testata: chi apre l'icona e chi apre
+       l'app vedono la stessa cosa.
+
+   2 · IL BORDO A MANO. La riga sotto la testata non è più un filo dritto
+       da 1px: è lo stesso scarabocchio ondulato che l'app già disegna
+       sotto i titoletti di sezione (.q-label::after), steso per tutta la
+       larghezza. Il segno che l'app usava in piccolo diventa il suo
+       bordo. È l'opposto del gradiente da template: non si può prendere
+       questa testata e appiccicarla a un'altra app, perché è fatta con
+       la calligrafia di questa.
+
+   3 · GLI OBIETTIVI IN UNA PILLOLA. Erano una riga di testo grigia con
+       una freccina: non sembrava toccabile, e invece apre il profilo.
+       Ora è una pillola su lavanda, col nome di chi sei in evidenza.
    ============================================================ */
 header{
   position:-webkit-sticky;position:sticky;top:0;z-index:40;
-  background:linear-gradient(120deg,#F6EFFC 0%,var(--surface) 46%,#FDF4E9 100%);
-  border-bottom:1px solid var(--linea);
-  padding:calc(12px + var(--safe-t)) 16px 12px;
+  background:var(--grad-testata);
+  padding:calc(12px + var(--safe-t)) 16px 15px;
 }
-.h-top{display:flex;align-items:center;gap:12px;max-width:860px;margin:0 auto}
+/* Il bordo a mano. Il disegno è la stessa onda di .q-label::after, con
+   lo stesso passo (12px per mezza onda) e lo stesso tratto: la piastrella
+   è larga un'onda intera, così si ripete senza saldature visibili.
+   ⚠️ Il colore è --segno, ma qui è scritto a mano (%23A992E8) perché i
+   data-URI non leggono le variabili: se cambia il token, cambia anche qui. */
+header::after{
+  content:'';position:absolute;left:0;right:0;bottom:0;height:9px;
+  pointer-events:none;
+  background:repeat-x left bottom/24px 9px
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='9'%3E%3Cpath d='M0 5.4q6-5.6 12 0t12 0' fill='none' stroke='%23A992E8' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.h-top{display:flex;align-items:center;gap:11px;max-width:860px;margin:0 auto}
+/* il barattolo: sta su un suo riquadro morbido, come un'etichetta */
+.h-marchio{
+  flex:0 0 38px;width:38px;height:38px;border-radius:12px;
+  background:var(--lavanda-soft);
+  display:flex;align-items:center;justify-content:center;
+}
 .h-title{font-size:21px;letter-spacing:-.2px;flex:1;line-height:1.15}
 .h-title em{font-style:normal;color:var(--viola)}
 .h-targets{
-  display:block;text-align:left;padding:5px 0 0;margin:0 auto;max-width:860px;
-  font-size:13.5px;font-weight:500;color:var(--muted);
-  transition:color var(--t);
+  display:inline-flex;align-items:center;gap:6px;
+  margin:9px 0 0;padding:6px 13px;border-radius:99px;
+  background:var(--lavanda-soft);border:1px solid var(--lavanda);
+  font-size:13px;font-weight:600;color:var(--viola-testo);
+  min-height:34px;text-align:left;
+  transition:background var(--t),border-color var(--t);
 }
-.h-targets::after{content:' ›';font-weight:700;color:var(--viola)}
-.h-targets:hover{color:var(--ink)}
+/* la riga esiste solo se c'è qualcosa da dire: senza profili resta vuota
+   e una pillola vuota sarebbe una macchia senza significato */
+.h-targets:empty{display:none}
+.h-targets::after{content:'›';font-weight:700;font-size:16px;line-height:1}
+.h-targets:hover{background:var(--lavanda);border-color:var(--viola)}
+.h-riga{max-width:860px;margin:0 auto;display:flex}
 .h-btn{
   width:44px;height:44px;flex:0 0 44px;border-radius:var(--r-m);
   background:var(--lavanda-soft);color:var(--viola);
@@ -155,7 +239,7 @@ header{
    4 · MENU — si apre dalla testata
    ============================================================ */
 #menuVelo{
-  position:fixed;inset:0;z-index:50;background:rgba(43,36,64,.32);
+  position:fixed;inset:0;z-index:50;background:var(--velo);
   animation:sfuma var(--t);
 }
 #menuVelo[hidden]{display:none}
@@ -185,7 +269,7 @@ nav.tabs{
   display:flex;background:var(--surface);
   border-top:1px solid var(--linea);
   padding:6px 4px calc(6px + var(--safe-b));
-  box-shadow:0 -2px 14px rgba(43,36,64,.06);
+  box-shadow:var(--ombra-nav);
 }
 nav.tabs button{
   flex:1;min-height:52px;padding:6px 2px;
@@ -238,13 +322,13 @@ section[hidden]{display:none}
   content:'';position:absolute;z-index:0;pointer-events:none;
   width:230px;height:230px;right:-70px;top:-92px;
   border-radius:48% 52% 44% 56% / 56% 44% 56% 44%;
-  background:linear-gradient(140deg,#E3D6FA,#CFEEE0);
+  background:var(--grad-alone-a);
 }
 .decorato::after{
   content:'';position:absolute;z-index:0;pointer-events:none;
   width:120px;height:120px;left:-46px;bottom:-52px;
   border-radius:52% 48% 56% 44% / 48% 56% 44% 52%;
-  background:linear-gradient(200deg,#FBE3CB,#F6E9FB);opacity:.95;
+  background:var(--grad-alone-b);opacity:.95;
 }
 
 /* stelline: un piccolo gruppo, sempre in un angolo vuoto */
@@ -255,12 +339,11 @@ section[hidden]{display:none}
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='66' height='44'%3E%3Cg fill='%23C7B9F2'%3E%3Cpath d='M12 4c1.4 5 2.6 6.2 7.6 7.6-5 1.4-6.2 2.6-7.6 7.6-1.4-5-2.6-6.2-7.6-7.6C9.4 10.2 10.6 9 12 4z'/%3E%3Cpath d='M45 14c1 3.6 1.9 4.5 5.5 5.5-3.6 1-4.5 1.9-5.5 5.5-1-3.6-1.9-4.5-5.5-5.5 3.6-1 4.5-1.9 5.5-5.5z' opacity='.8'/%3E%3Ccircle cx='30' cy='33' r='3'/%3E%3C/g%3E%3C/svg%3E");
 }
 
-/* arco morbido come divisore di testata */
-.arco-testata{
-  position:absolute;left:0;right:0;bottom:-1px;height:18px;z-index:0;pointer-events:none;
-  background:no-repeat center bottom/100% 18px
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='18' preserveAspectRatio='none'%3E%3Cpath d='M0 18C90 2 150 2 200 9s110 9 200-7v16z' fill='%23FFFCFA'/%3E%3C/svg%3E");
-}
+/* ⚠️ Qui c'era .arco-testata: un'onda piena color superficie, pensata come
+   divisore della testata e mai attaccata a niente. Non poteva funzionare:
+   il fondo dell'app è sfumato, e un'onda riempita di un colore piatto
+   avrebbe lasciato una macchia. Al suo posto c'è il bordo della testata
+   nella sezione 3, che è un SEGNO e non una superficie. */
 
 /* ============================================================
    6 · MESSAGGI E STATI
@@ -277,7 +360,7 @@ section[hidden]{display:none}
   padding:26px 20px;color:var(--muted);font-size:15px;text-align:center;
   box-shadow:var(--ombra-1);
 }
-.empty b{color:var(--ink);font-family:'Fraunces',Georgia,serif;font-weight:600}
+.empty b{color:var(--ink);font-family:var(--font-titolo);font-weight:600}
 /* stato vuoto illustrato */
 .vuoto-ill{padding:22px 20px 26px}
 .vuoto-ill svg{display:block;margin:0 auto 6px}
@@ -295,6 +378,11 @@ section[hidden]{display:none}
   35%  {opacity:.95; transform:translateY(0)}
   100% {opacity:0;   transform:translateY(-9px)}
 }
+
+/* ⚠️ La stessa pentola serve all'attesa E allo stato vuoto di Cucino, ma
+   in uno stato vuoto il vapore non deve muoversi: lì non sta bollendo
+   niente, e un'animazione infinita su una schermata ferma stanca e basta. */
+.vuoto-ill .vapore path{animation:none;opacity:.9}
 
 /* scheletro luccicante: l'attesa deve sembrare progettata, non rotta */
 .sk{
@@ -315,7 +403,7 @@ section[hidden]{display:none}
    7 · SUPERFICI, FORM, BOTTONI
    ============================================================ */
 .panel{
-  background:linear-gradient(168deg,var(--surface) 62%,#F7F0FB 100%);border:1px solid var(--linea);border-radius:var(--r-l);
+  background:var(--grad-panel);border:1px solid var(--linea);border-radius:var(--r-l);
   padding:16px;margin-bottom:14px;box-shadow:var(--ombra-1);
 }
 .field{
@@ -326,12 +414,30 @@ section[hidden]{display:none}
 .field::placeholder{color:var(--muted);opacity:.75}
 .field:focus{outline:none;border-color:var(--viola);box-shadow:0 0 0 4px var(--lavanda-soft)}
 textarea.field{resize:vertical;line-height:1.5}
+/* La freccia del menù a tendina era due triangolini fatti con due
+   sfumature incrociate: un ripiego che non somigliava a nessuna delle
+   icone dell'app. Ora è una vera freccia, stesso tratto (1.8) e stessi
+   angoli tondi del resto del set. */
 select.field{appearance:none;-webkit-appearance:none;
-  background-image:linear-gradient(45deg,transparent 50%,var(--viola) 50%),
-                   linear-gradient(135deg,var(--viola) 50%,transparent 50%);
-  background-position:calc(100% - 18px) 52%,calc(100% - 13px) 52%;
-  background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:38px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236B5BD2' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-position:calc(100% - 13px) center;background-size:16px 16px;
+  background-repeat:no-repeat;padding-right:38px;
 }
+
+/* ⚠️ I comandi che mette il browser dentro i campi: se non li si tocca,
+   restano l'unica cosa "di serie" in mezzo a tutto il resto disegnato.
+   - le frecce su/giù dei numeri se ne vanno: i campi hanno già
+     inputmode="numeric" e sul telefono non compaiono comunque;
+   - l'icona del calendario RESTA (toglierla renderebbe le date
+     impossibili da inserire su iPhone): si tinge e basta. */
+.field[type="number"]{-moz-appearance:textfield}
+.field::-webkit-outer-spin-button,
+.field::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
+.field::-webkit-calendar-picker-indicator{
+  opacity:.55;cursor:pointer;padding:4px;border-radius:6px;
+  transition:opacity var(--t),background var(--t);
+}
+.field::-webkit-calendar-picker-indicator:hover{opacity:1;background:var(--lavanda-soft)}
 .form-row{display:flex;gap:9px;margin-top:10px}
 .form-row .field{flex:1;min-width:0}
 
@@ -349,9 +455,9 @@ select.field{appearance:none;-webkit-appearance:none;
 }
 
 .btn{
-  background:var(--viola);color:#fff;border-radius:var(--r-m);
+  background:var(--viola);color:var(--su-pieno);border-radius:var(--r-m);
   padding:13px 18px;min-height:48px;font-size:15.5px;font-weight:600;white-space:nowrap;
-  box-shadow:0 2px 6px rgba(107,91,210,.28);
+  box-shadow:var(--ombra-btn);
   transition:background var(--t),transform var(--t),box-shadow var(--t);
 }
 .btn:hover{background:var(--viola-scuro)}
@@ -364,6 +470,23 @@ select.field{appearance:none;-webkit-appearance:none;
 .btn.small{padding:9px 13px;min-height:40px;font-size:14px}
 .btn:disabled{opacity:.5;pointer-events:none}
 
+/* ------------------------------------------------------------
+   LE ICONE DENTRO AL TESTO
+   Prendono il colore da chi le contiene, non si schiacciano mai e
+   non allargano la riga. Un bottone che ha icona E parole diventa
+   una riga sola centrata: così l'icona non "casca" sotto il testo
+   quando la parola va stretta.
+   ------------------------------------------------------------ */
+.ico{flex:0 0 auto;vertical-align:-.18em}
+.btn,.btn-testo,.gg-azione,.prop-actions button,.nota.manca button,.ver-scelte button,
+.pref button,.pf-tag button,.icon-btn,.sp-box{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+}
+.btn,.prop-actions button,.ver-scelte button{gap:8px}
+/* nei riquadri (freezer, avanzo) l'icona apre la riga e il testo le scorre
+   accanto: se andasse a capo, tornerebbe sotto l'icona e non sotto il testo */
+.nota > .ico,.row-text > .ico{margin-right:5px}
+
 .icon-btn{
   color:var(--muted);font-size:20px;line-height:1;
   width:36px;height:36px;flex:0 0 36px;border-radius:var(--r-s);
@@ -375,10 +498,36 @@ select.field{appearance:none;-webkit-appearance:none;
 .icon-btn.modifica{color:var(--viola)}
 .icon-btn.modifica:hover{background:var(--lavanda-soft);color:var(--viola-testo)}
 
+/* Il bottone che sembra una frase: «+ aggiungi una nota», «Più tardi».
+   Era scritto a mano in tre punti, con tre misure e tre colori diversi.
+   Ora è uno, e ha il bersaglio di tocco che gli altri hanno già. */
+.btn-testo{
+  display:inline-flex;align-items:center;min-height:44px;padding:2px 0;
+  background:none;border:none;
+  color:var(--viola-testo);font-size:13px;font-weight:600;text-align:left;
+  transition:color var(--t);
+}
+.btn-testo:hover{color:var(--viola-scuro)}
+/* la variante che non deve tirare l'occhio: rinviare non è l'azione buona */
+.btn-testo.discreto{color:var(--muted);text-decoration:underline}
+.btn-testo.discreto:hover{color:var(--ink)}
+
 .q-label{
   font-size:11.5px;font-weight:700;letter-spacing:1.1px;color:var(--muted);
   text-transform:uppercase;margin:18px 0 9px;
 }
+
+/* L'etichettina maiuscola sopra un dato: PRANZO, DOLCE, CENA.
+   Erano quattro definizioni quasi identiche (10 contro 10.5 px, .9 contro
+   1 di spaziatura) sparse in quattro schermate: stesso mestiere, quattro
+   risultati appena diversi. Ora la FORMA è una sola e ogni posto tiene
+   soltanto il proprio margine.
+   ⚠️ Il colore sta a parte apposta: dentro i riquadri colorati (freezer,
+   dolce) l'etichetta deve prendere il colore del riquadro, non il grigio. */
+.pasto-quale,.ps-quale,.ver-eti,.nota-eti{
+  font-size:10px;font-weight:700;letter-spacing:.9px;text-transform:uppercase;
+}
+.pasto-quale,.ps-quale,.ver-eti{color:var(--muted)}
 .q-label:first-child{margin-top:0}
 .q-label span{color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none}
 
@@ -403,12 +552,12 @@ select.field{appearance:none;-webkit-appearance:none;
 }
 .day.today{border-color:var(--viola);box-shadow:0 0 0 2px var(--lavanda),var(--ombra-2)}
 .day-band{
-  background:linear-gradient(104deg,#E7DBFB 0%,#F9EBD8 66%,#EAF6EF 100%);padding:11px 16px;
+  background:var(--grad-fascia);padding:11px 16px;
   display:flex;align-items:center;gap:9px;flex-wrap:wrap;border-bottom:1px solid var(--linea);
 }
-.day-label{font-family:'Fraunces',Georgia,serif;font-weight:600;color:var(--ink);font-size:16px;flex:1}
+.day-label{font-family:var(--font-titolo);font-weight:600;color:var(--ink);font-size:16px;flex:1}
 .badge-oggi{
-  background:var(--viola);color:#fff;font-size:10.5px;font-weight:700;
+  background:var(--viola);color:var(--su-pieno);font-size:10.5px;font-weight:700;
   letter-spacing:.8px;padding:4px 9px;border-radius:99px;
 }
 .day-tag{font-size:12.5px;color:var(--pesca-ink);font-weight:600;
@@ -459,8 +608,8 @@ select.field{appearance:none;-webkit-appearance:none;
   z-index:24;
   display:flex;gap:5px;overflow-x:auto;overflow-y:hidden;
   padding:7px 6px;margin:0 0 14px;
-  background:linear-gradient(96deg,#EDE4FA 0%,#F7F0FB 55%,#E9F5EF 100%);
-  border-radius:999px;box-shadow:0 2px 8px rgba(43,36,64,.07);
+  background:var(--grad-pillola);
+  border-radius:999px;box-shadow:var(--ombra-pillola);
   scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;
   scrollbar-width:none;
 }
@@ -475,7 +624,7 @@ select.field{appearance:none;-webkit-appearance:none;
   scroll-snap-align:center;transition:background var(--t),border-color var(--t);
 }
 .gg-dow{font-size:10px;font-weight:700;letter-spacing:.9px;color:var(--muted);text-transform:uppercase}
-.gg-num{font-family:'Fraunces',Georgia,serif;font-size:17px;font-weight:600;color:var(--ink);line-height:1.1}
+.gg-num{font-family:var(--font-titolo);font-size:17px;font-weight:600;color:var(--ink);line-height:1.1}
 /* il pallino dice se quel giorno ha un piano, e di che tipo */
 .gg-pt{width:6px;height:6px;border-radius:50%;background:var(--menta);margin-top:1px}
 .gg.bozza .gg-pt{background:transparent;border:1.5px solid var(--lavanda)}
@@ -484,9 +633,9 @@ select.field{appearance:none;-webkit-appearance:none;
 .gg.oggi{border-color:var(--viola)}
 .gg[aria-pressed="true"]{background:var(--viola);border-color:var(--viola)}
 .gg[aria-pressed="true"] .gg-num,
-.gg[aria-pressed="true"] .gg-dow{color:#fff}
-.gg[aria-pressed="true"] .gg-pt{background:#fff;border-color:#fff}
-.gg[aria-pressed="true"].vuoto .gg-pt{background:transparent;border:1.5px solid #fff}
+.gg[aria-pressed="true"] .gg-dow{color:var(--su-pieno)}
+.gg[aria-pressed="true"] .gg-pt{background:var(--su-pieno);border-color:var(--su-pieno)}
+.gg[aria-pressed="true"].vuoto .gg-pt{background:transparent;border:1.5px solid var(--su-pieno)}
 
 /* ------------------------------------------------------------
    8-ter · V5 · I TRE TRATTAMENTI DEL GIORNO
@@ -495,7 +644,7 @@ select.field{appearance:none;-webkit-appearance:none;
    in cucina i numeri devono restare leggibili.
    ------------------------------------------------------------ */
 .day.bozza{border-style:dashed;border-color:var(--linea-forte);box-shadow:none}
-.day.bozza .day-band{background:linear-gradient(104deg,#F3EDFB 0%,#FAF3EA 66%,#F0F7F3 100%)}
+.day.bozza .day-band{background:var(--grad-fascia-tenue)}
 .day.passato .day-band{background:var(--surface-2)}
 .badge-bozza,.badge-passato{
   font-size:10.5px;font-weight:700;letter-spacing:.8px;padding:3px 9px;border-radius:99px;
@@ -515,29 +664,29 @@ select.field{appearance:none;-webkit-appearance:none;
 .pasto{padding:13px 16px}
 .pasto + .pasto,.row + .pasto{border-top:1px solid var(--bg)}
 .pasto-top{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-bottom:6px}
-.pasto-quale{
-  font-size:10.5px;font-weight:700;letter-spacing:.9px;color:var(--muted);text-transform:uppercase;
-}
 .pasto-chi{
   font-size:12.5px;font-weight:600;color:var(--viola-testo);
   background:var(--lavanda-soft);padding:3px 10px;border-radius:99px;
 }
 .pasto-tempo{font-size:12.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
 .pasto-piatto{
-  font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:17px;line-height:1.3;
+  font-family:var(--font-titolo);font-weight:600;font-size:17px;line-height:1.3;
   color:var(--ink);
 }
 .pasto-num{margin-top:5px;font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}
 .pasto-num b{color:var(--viola);font-weight:700}
 .pasto-niente{color:var(--muted);font-style:italic;font-size:14.5px}
 .pasto.fuori .pasto-piatto,.pasto.libero .pasto-piatto{
-  font-family:'Outfit',sans-serif;font-size:15.5px;font-weight:600;color:var(--muted);
+  font-family:var(--font-ui);font-size:15.5px;font-weight:600;color:var(--muted);
 }
 /* etichetta dentro i riquadri (dolce, avanzo, spesa, freezer) */
-.nota-eti{
-  display:block;font-size:10px;font-weight:700;letter-spacing:1px;
-  text-transform:uppercase;margin-bottom:3px;opacity:.85;
-}
+.nota-eti{display:flex;align-items:center;gap:5px;margin-bottom:3px;opacity:.85}
+/* Il promemoria di scongelamento è un riquadro come gli altri: prima
+   era una riga a sé, disegnata in un modo tutto suo dentro la stessa
+   scheda in cui lo stesso concetto era già un riquadro. */
+.pasto.promemoria{padding-top:9px;padding-bottom:9px}
+.pasto.promemoria .nota{margin-top:0}
+
 /* Il tocco dolce ha un riquadro suo: non si mescola agli ingredienti */
 .nota.dolce{background:var(--lavanda-soft);color:var(--viola-testo)}
 .row-per{color:inherit;opacity:.85;font-size:13.5px}
@@ -556,14 +705,11 @@ select.field{appearance:none;-webkit-appearance:none;
 .ps-gg-testa{
   background:var(--surface-2);padding:8px 13px;border-bottom:1px solid var(--linea);
   display:flex;align-items:center;gap:8px;
-  font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:14.5px;color:var(--ink);
+  font-family:var(--font-titolo);font-weight:600;font-size:14.5px;color:var(--ink);
 }
 .ps-pasto{padding:9px 13px 11px}
 .ps-pasto + .ps-pasto{border-top:1px solid var(--bg)}
-.ps-quale{
-  font-size:10px;font-weight:700;letter-spacing:.9px;color:var(--muted);
-  text-transform:uppercase;margin-bottom:6px;
-}
+.ps-quale{margin-bottom:6px}
 .ps-scelte{display:flex;flex-direction:column;gap:5px}
 /* i tre modi e le tre persone: sempre una riga sola, mai a capo */
 .chips.mini{gap:5px;flex-wrap:nowrap}
@@ -575,10 +721,7 @@ select.field{appearance:none;-webkit-appearance:none;
 /* Fuori e Libero non si cucinano: le persone restano scelte, ma
    il pasto si spegne un po' per dire che non produrra' un piatto. */
 .ps-pasto.non-casa .chips[data-campo="chi"]{opacity:.72}
-.ps-nota{
-  margin-top:7px;background:none;border:none;padding:2px 0;
-  color:var(--viola-testo);font-size:12.5px;font-weight:600;
-}
+.ps-nota{margin-top:7px;font-size:12.5px}
 .field.mini{margin-top:6px;padding:9px 12px;font-size:15px}
 
 /* il riepilogo prima di salvare */
@@ -590,10 +733,25 @@ select.field{appearance:none;-webkit-appearance:none;
   color:var(--viola);font-size:12.5px;font-weight:700;white-space:nowrap;
   font-variant-numeric:tabular-nums;
 }
-.ps-avviso{
-  background:var(--pesca-soft);color:var(--pesca-ink);border-radius:var(--r-m);
-  padding:11px 13px;font-size:14px;line-height:1.45;margin-top:12px;
+/* ⚠️ IL RIQUADRO D'AVVISO — due toni, e non sono intercambiabili.
+   Era uno solo, color pesca, e finiva addosso anche a «sto scrivendo la
+   settimana», che allarme non è: a furia di vedere l'ambra per cose
+   normali non la si guarda più quando serve davvero.
+     .attenzione = qualcosa non torna e tocca a te   (pesca)
+     .info       = ti sto raccontando cosa succede   (lavanda)  */
+.avviso{
+  border-radius:var(--r-m);padding:11px 13px;
+  font-size:14px;line-height:1.45;margin-top:12px;
+  border:1px solid transparent;
 }
+.avviso.attenzione{
+  background:var(--pesca-soft);color:var(--pesca-ink);border-color:var(--pesca);
+}
+.avviso.info{
+  background:var(--lavanda-soft);color:var(--viola-testo);border-color:var(--lavanda);
+}
+.avviso b{color:inherit}
+.avviso .form-row{margin-top:10px}
 /* l'avanzamento: quanti blocchi sono fatti, senza percentuali finte */
 .ps-avanza{display:flex;gap:6px;justify-content:center;margin:0 0 12px}
 .ps-tacca{height:5px;flex:1 1 0;border-radius:99px;background:var(--linea)}
@@ -614,7 +772,7 @@ select.field{appearance:none;-webkit-appearance:none;
 /* un pasto scritto da una persona lo dice: non è una bozza del generatore */
 .badge-amano{
   font-size:10px;font-weight:700;letter-spacing:.7px;padding:3px 8px;border-radius:99px;
-  background:var(--menta-soft);color:#1F6B4F;border:1px solid var(--menta);
+  background:var(--menta-soft);color:var(--menta-ink);border:1px solid var(--menta);
 }
 .pasto-top .icon-btn{margin-left:auto;flex:0 0 32px;width:32px;height:32px;font-size:16px}
 .pasto.vuoto-pasto .pasto-top{margin-bottom:2px}
@@ -628,12 +786,7 @@ select.field{appearance:none;-webkit-appearance:none;
 .mano-riga{display:flex;gap:7px;align-items:center;margin-top:6px}
 .mano-riga .field{flex:1;min-width:0;margin-top:0}
 .mano-riga .field[data-ing-qta]{flex:0 0 92px}
-.mano-piu{
-  background:none;border:none;padding:8px 0 2px;
-  color:var(--viola-testo);font-size:13px;font-weight:600;
-}
 /* gli avvisi in cima alla tab Piano */
-.avviso-scorte b,.avviso-corto b{color:inherit}
 .avviso-lista{margin:7px 0 0;padding-left:19px;font-size:13.5px;line-height:1.5}
 .avviso-lista li{margin-bottom:2px}
 
@@ -650,25 +803,35 @@ select.field{appearance:none;-webkit-appearance:none;
 .ver-testa{display:flex;align-items:flex-start;gap:10px;margin-bottom:4px}
 .ver-testa > div{flex:1}
 .ver-testa b{
-  display:block;font-family:'Fraunces',Georgia,serif;font-weight:600;
+  display:block;font-family:var(--font-titolo);font-weight:600;
   font-size:16.5px;color:var(--ink);line-height:1.3;
 }
 .ver-quando{display:block;font-size:13px;color:var(--muted);margin-top:2px}
-.ver-rinvia{
-  background:none;border:none;padding:2px 0;flex:0 0 auto;
-  color:var(--muted);font-size:13px;font-weight:600;text-decoration:underline;
-}
+.ver-rinvia{flex:0 0 auto}
 .ver-pasto{border-top:1px solid var(--menta);padding:11px 0 13px;margin-top:9px}
-.ver-eti{
-  font-size:10px;font-weight:700;letter-spacing:.9px;color:var(--muted);
-  text-transform:uppercase;margin:9px 0 5px;
-}
-/* i bottoni della verifica stanno su superficie, non sul fondo menta,
-   altrimenti si confondono con lo sfondo del riquadro */
+.ver-eti{margin:9px 0 5px}
+/* I bottoni della verifica stanno su superficie, non sul fondo menta,
+   altrimenti si confondono con lo sfondo del riquadro. */
 .verifica .chips.mini button{background:var(--surface)}
-.ver-scelte{margin-top:9px}
-.ver-scelte button{font-weight:600;color:var(--ink)}
-.ver-scelte button[data-ris="si"]{border-color:var(--viola);color:var(--viola-testo)}
+
+/* ⚠️ Sì · No, altro · Saltato sono AZIONI, non una selezione: stavano
+   dentro .chips, cioè il componente con cui si sceglie fra opzioni, e
+   servivano tre eccezioni per farli sembrare altro. Ora sono bottoni veri,
+   con la stessa gerarchia del resto dell'app: il «Sì» è il primario. */
+.ver-scelte{display:flex;gap:7px;margin-top:9px}
+.ver-scelte button{
+  flex:1 1 0;min-width:0;min-height:44px;padding:10px 6px;
+  border:1.5px solid var(--lavanda);background:var(--surface);border-radius:var(--r-m);
+  font-size:13.5px;font-weight:600;color:var(--viola);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:background var(--t),border-color var(--t),color var(--t);
+}
+.ver-scelte button:hover{background:var(--lavanda-soft)}
+.ver-scelte button[data-ris="si"]{
+  background:var(--viola);border-color:var(--viola);color:var(--su-pieno);
+}
+.ver-scelte button[data-ris="si"]:hover{background:var(--viola-scuro)}
+.ver-scelte button:disabled{opacity:.45;pointer-events:none}
 .ver-altro{margin-top:10px}
 /* il pannello di "Ho cucinato questo" quando si apre dentro la verifica */
 .ver-pasto .cuc-box{margin-top:12px;background:var(--surface);border-radius:var(--r-m);padding:12px}
@@ -691,9 +854,9 @@ select.field{appearance:none;-webkit-appearance:none;
   display:flex;align-items:center;gap:9px;
   font-size:11.5px;font-weight:700;letter-spacing:1.1px;color:var(--viola-testo);
   text-transform:uppercase;margin:0 0 10px;padding:11px 14px;
-  background:linear-gradient(96deg,#EDE4FA 0%,#F7F0FB 55%,#E9F5EF 100%);
+  background:var(--grad-pillola);
   border-radius:999px;
-  box-shadow:0 2px 8px rgba(43,36,64,.07);
+  box-shadow:var(--ombra-pillola);
 }
 .cat-head span{color:var(--muted);font-weight:500;letter-spacing:0}
 #spBody .cat-head{margin-top:0}
@@ -743,7 +906,7 @@ select.field{appearance:none;-webkit-appearance:none;
   transition:all var(--t);
 }
 .pref button[aria-pressed="true"][data-p="fav"]{background:var(--corallo-soft);border-color:var(--corallo);color:var(--corallo-ink)}
-.pref button[aria-pressed="true"][data-p="ok"]{background:var(--menta-soft);border-color:var(--menta);color:#1F6B4F}
+.pref button[aria-pressed="true"][data-p="ok"]{background:var(--menta-soft);border-color:var(--menta);color:var(--menta-ink)}
 .pref button[aria-pressed="true"][data-p="no"]{background:var(--surface-2);border-color:var(--linea-forte);color:var(--muted);text-decoration:line-through}
 
 /* ============================================================
@@ -759,22 +922,22 @@ select.field{appearance:none;-webkit-appearance:none;
    e il testo ha spazio riservato a destra, così non ci finisce mai sopra. */
 .prop-head{
   position:relative;overflow:hidden;padding:15px 16px;border-bottom:1px solid var(--linea);
-  background:linear-gradient(112deg,#E7DBFB 0%,#F9EBD8 62%,#EAF6EF 100%);
+  background:var(--grad-fascia);
 }
 .prop-head > *{position:relative;z-index:1}
 .prop-head::before{
   content:'';position:absolute;z-index:0;pointer-events:none;
   width:190px;height:190px;right:-72px;top:-78px;
   border-radius:46% 54% 52% 48% / 52% 48% 52% 48%;
-  background:rgba(255,255,255,.62);
+  background:var(--luce);
 }
 .prop-head::after{
   content:'';position:absolute;z-index:0;pointer-events:none;
   left:-30px;bottom:-40px;width:96px;height:96px;border-radius:50%;
-  background:radial-gradient(circle at 40% 35%, rgba(255,255,255,.75), rgba(255,255,255,0) 70%);
+  background:var(--grad-luce);
 }
 .prop-head .stelline{right:8px;top:6px;opacity:.8}
-.prop-name{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:18.5px;
+.prop-name{font-family:var(--font-titolo);font-weight:600;font-size:18.5px;
   color:var(--ink);line-height:1.25;margin:0;padding-right:56px}
 .prop-num{
   margin-top:8px;font-size:13.5px;color:var(--muted);font-weight:500;
@@ -792,23 +955,23 @@ select.field{appearance:none;-webkit-appearance:none;
 .ing-q{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
 .nota{margin-top:11px;font-size:14.5px;border-radius:var(--r-m);padding:10px 12px;line-height:1.45}
 .nota.freezer{background:var(--ghiaccio-soft);color:var(--ghiaccio-ink)}
-.nota.avanzo{background:var(--menta-soft);color:#1F6B4F}
+.nota.avanzo{background:var(--menta-soft);color:var(--menta-ink)}
 .nota.manca{background:var(--pesca-soft);color:var(--pesca-ink)}
 .nota.perche{background:none;padding:10px 2px 0;color:var(--muted);font-style:italic}
 .nota.manca button{
-  display:block;margin-top:8px;border:1.5px solid var(--pesca);background:var(--surface);
+  display:inline-flex;align-items:center;gap:6px;margin-top:8px;border:1.5px solid var(--pesca);background:var(--surface);
   color:var(--pesca-ink);border-radius:var(--r-s);padding:8px 12px;
   font-size:13px;font-weight:700;min-height:40px;
 }
 .prop-actions{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--linea);
-  background:linear-gradient(180deg,#F7F1FA,#F3EAF7)}
+  background:var(--grad-azioni)}
 .prop-actions button{
   flex:1;padding:11px 6px;min-height:46px;border-radius:var(--r-m);font-size:13.5px;font-weight:600;
   border:1.5px solid var(--lavanda);background:var(--surface);color:var(--viola);
   transition:all var(--t);
 }
 .prop-actions button:hover{background:var(--lavanda-soft)}
-.prop-actions button[data-act="cucinato"]{background:var(--viola);color:#fff;border-color:var(--viola)}
+.prop-actions button[data-act="cucinato"]{background:var(--viola);color:var(--su-pieno);border-color:var(--viola)}
 .prop-actions button[data-act="cucinato"]:hover{background:var(--viola-scuro)}
 .prop-actions button:disabled{opacity:.45}
 .pers-box{padding:12px 16px;border-top:1px solid var(--linea);background:var(--surface-2)}
@@ -822,7 +985,7 @@ select.field{appearance:none;-webkit-appearance:none;
 .cuc-ora{display:block;margin-top:4px;font-size:13px;color:var(--muted)}
 .cuc-ora.assente{font-style:italic}
 .cuc-esito{margin-top:7px;font-size:14px;border-radius:var(--r-s);padding:7px 10px}
-.cuc-esito.ok{background:var(--menta-soft);color:#1F6B4F}
+.cuc-esito.ok{background:var(--menta-soft);color:var(--menta-ink)}
 .cuc-esito.zero{background:var(--pesca-soft);color:var(--pesca-ink)}
 .cuc-esito.testo{background:var(--ghiaccio-soft);color:var(--ghiaccio-ink)}
 .cuc-esito.neutro{background:none;padding:3px 0;color:var(--muted);font-style:italic}
@@ -831,7 +994,7 @@ select.field{appearance:none;-webkit-appearance:none;
   border:1.5px solid currentColor;background:var(--surface);border-radius:var(--r-s);
   padding:8px 12px;font-size:13.5px;font-weight:600;min-height:40px;
 }
-.cuc-esito.zero .cuc-scelte button[aria-pressed="true"]{background:var(--pesca-ink);color:#fff;border-color:var(--pesca-ink)}
+.cuc-esito.zero .cuc-scelte button[aria-pressed="true"]{background:var(--pesca-ink);color:var(--su-pieno);border-color:var(--pesca-ink)}
 
 /* ============================================================
    12 · PROFILO
@@ -844,7 +1007,7 @@ select.field{appearance:none;-webkit-appearance:none;
 }
 .pf-tag.vieta{border-color:var(--corallo);color:var(--corallo-ink);background:var(--corallo-soft)}
 .pf-tag.evita{border-color:var(--pesca);color:var(--pesca-ink);background:var(--pesca-soft)}
-.pf-tag.ama{border-color:var(--menta);color:#1F6B4F;background:var(--menta-soft)}
+.pf-tag.ama{border-color:var(--menta);color:var(--menta-ink);background:var(--menta-soft)}
 .pf-tag button{font-size:18px;line-height:1;padding:2px 4px;color:inherit;opacity:.7;min-width:28px}
 .pf-tag button:hover{opacity:1}
 .pf-vuota{font-size:14px;color:var(--muted);font-style:italic;margin-top:8px}
@@ -857,10 +1020,10 @@ select.field{appearance:none;-webkit-appearance:none;
   overflow:hidden;margin-bottom:12px;box-shadow:var(--ombra-1);
 }
 .dg-band{
-  background:linear-gradient(104deg,#E4F6EE 0%,#F6F0FB 70%,#FBEEDD 100%);padding:10px 16px;display:flex;align-items:baseline;gap:9px;
+  background:var(--grad-diario);padding:10px 16px;display:flex;align-items:baseline;gap:9px;
   border-bottom:1px solid var(--linea);
 }
-.dg-data{flex:1;font-family:'Fraunces',Georgia,serif;font-weight:600;color:var(--ink);font-size:15.5px}
+.dg-data{flex:1;font-family:var(--font-titolo);font-weight:600;color:var(--ink);font-size:15.5px}
 .dg-tot{font-size:13.5px;font-weight:700;color:var(--viola);font-variant-numeric:tabular-nums}
 .dg-riga{display:flex;gap:10px;padding:11px 16px;align-items:baseline;font-size:15px;min-height:48px}
 .dg-riga + .dg-riga{border-top:1px solid var(--bg)}
@@ -876,7 +1039,7 @@ select.field{appearance:none;-webkit-appearance:none;
 .sp-item + .sp-item{border-top:1px solid var(--bg)}
 .sp-box{
   width:26px;height:26px;flex:0 0 26px;border:2px solid var(--viola);border-radius:8px;
-  display:flex;align-items:center;justify-content:center;color:#fff;font-size:16px;font-weight:700;
+  display:flex;align-items:center;justify-content:center;color:var(--su-pieno);font-size:16px;font-weight:700;
   transition:background var(--t);
 }
 .sp-item.fatto .sp-box{background:var(--viola)}
@@ -888,7 +1051,7 @@ select.field{appearance:none;-webkit-appearance:none;
    ============================================================ */
 #toast{
   position:fixed;left:14px;right:14px;bottom:calc(88px + var(--safe-b));z-index:60;
-  background:var(--ink);color:#fff;border-radius:var(--r-m);padding:14px 16px;
+  background:var(--ink);color:var(--su-pieno);border-radius:var(--r-m);padding:14px 16px;
   display:flex;align-items:center;gap:14px;font-size:14.5px;
   max-width:520px;margin:0 auto;box-shadow:var(--ombra-2);
   animation:sali 220ms cubic-bezier(.2,.8,.3,1);
@@ -899,7 +1062,7 @@ select.field{appearance:none;-webkit-appearance:none;
 #toast button{color:var(--lavanda);font-weight:700;font-size:14.5px;padding:6px;min-height:40px}
 /* un errore si vede che è un errore, senza urlare */
 #toast.errore{background:var(--corallo-ink)}
-#toast.errore button{color:#FFD9D2}
+#toast.errore button{color:var(--corallo-chiaro)}
 @media (min-width:760px){ #toast{bottom:24px} }
 </style>
 </head>
@@ -909,36 +1072,77 @@ select.field{appearance:none;-webkit-appearance:none;
      Stesso tratto (1.8) e stessi angoli arrotondati per tutte. -->
 <svg style="display:none" aria-hidden="true">
   <defs>
-    <g id="i-piano" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <g id="i-piano" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
       <rect x="3" y="5" width="18" height="16" rx="3"/><path d="M3 10h18M8 3v4M16 3v4"/>
     </g>
-    <g id="i-dispensa" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <g id="i-dispensa" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
       <rect x="4" y="3" width="16" height="18" rx="3"/><path d="M4 11h16M9 6.5v2M9 14.5v2"/>
     </g>
-    <g id="i-ricette" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <g id="i-ricette" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
       <path d="M5 4.5A2 2 0 0 1 7 3h12v15H7a2 2 0 0 0-2 2z"/><path d="M9 8h6M9 12h4"/>
     </g>
-    <g id="i-cucino" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <g id="i-cucino" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
       <path d="M4 9h16v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M20 11h1.5a1.5 1.5 0 0 1 0 3H20"/>
       <path d="M9 6c0-1 1-1.4 1-2.5M13 6c0-1 1-1.4 1-2.5"/>
     </g>
-    <g id="i-spesa" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+    <g id="i-spesa" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
       <path d="M4 8h16l-1.4 10a2 2 0 0 1-2 1.8H7.4a2 2 0 0 1-2-1.8z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>
     </g>
-    <g id="i-menu" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="2">
+    <g id="i-menu" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8">
       <path d="M4 7h16M4 12h16M4 17h16"/>
     </g>
-    <g id="i-matita" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9">
+    <g id="i-matita" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
       <path d="M15.5 5.5l3 3M4 20l1-4L16.2 4.8a1.8 1.8 0 0 1 2.5 0l.5.5a1.8 1.8 0 0 1 0 2.5L8 19z"/>
     </g>
-    <g id="i-frigo" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9">
+    <g id="i-frigo" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
       <rect x="5" y="2.5" width="14" height="19" rx="3"/><path d="M5 10h14M8.5 6v2M8.5 13v2.5"/>
     </g>
-    <g id="i-freezer" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.9">
+    <g id="i-freezer" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8">
       <path d="M12 3v18M4.2 7.5l15.6 9M19.8 7.5l-15.6 9"/>
     </g>
-    <g id="i-scorta" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.9">
+    <g id="i-scorta" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
       <path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M4 7l2-4h12l2 4M10 12h4"/>
+    </g>
+
+    <!-- IL MARCHIO — il barattolo col germoglio, lo stesso di
+         apple-touch-icon.png e favicon.svg, rifatto nelle proporzioni di
+         24px: stesse forme, stessi colori, tratti un po' più spessi
+         perché a questa misura servono. ⚠️ Se cambia l'icona dell'app,
+         cambia anche questo: il senso è proprio che siano la stessa cosa. -->
+    <g id="i-marchio">
+      <rect x="7.2" y="2.6" width="9.6" height="3.4" rx="1.7" fill="#5546B4"/>
+      <rect x="4.6" y="6.4" width="14.8" height="15" rx="4.6" fill="#6B5BD2"/>
+      <circle cx="12" cy="14.4" r="4.1" fill="#B8E8D4"/>
+      <g stroke="#3E9C77" stroke-width="1.5" stroke-linecap="round" fill="none">
+        <path d="M12 11.6v5.6"/><path d="M12 13.6l2.1-1.8"/><path d="M12 15.9l-2.1-1.8"/>
+      </g>
+    </g>
+
+    <!-- ⚠️ Queste sei erano emoji scritte nel testo (↻ ✓ × ♥ 🍱 e il ✎ che
+         qui esisteva già ma non veniva usato). Un'emoji la disegna il
+         sistema, non noi: cambia forma fra iPhone e computer, non prende
+         il colore giusto e 🍱 arrivava perfino a colori suoi. Stesso
+         tratto 1.8 e stessi angoli tondi di tutte le altre. -->
+    <g id="i-rigenera" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
+      <path d="M19.5 12a7.5 7.5 0 1 1-2.4-5.5"/><path d="M19.8 4.2v4h-4"/>
+    </g>
+    <g id="i-ok" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
+      <path d="M5 12.8l4.4 4.2L19 6.8"/>
+    </g>
+    <g id="i-chiudi" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
+      <path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>
+    </g>
+    <g id="i-piu" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
+      <path d="M12 5v14M5 12h14"/>
+    </g>
+    <!-- il cuore delle ricette: pieno, perché è un voto e non un contorno -->
+    <g id="i-cuore" fill="currentColor" stroke="none">
+      <path d="M12 20.3l-1.3-1.2C6.1 15 3.2 12.3 3.2 9a4.7 4.7 0 0 1 4.7-4.7c1.6 0 3.1.7 4.1 1.9a5.4 5.4 0 0 1 4.1-1.9A4.7 4.7 0 0 1 20.8 9c0 3.3-2.9 6-7.5 10.1z"/>
+    </g>
+    <!-- l'avanzo: il contenitore che si porta al lavoro, non un'emoji -->
+    <g id="i-avanzo" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8">
+      <rect x="3.2" y="8.5" width="17.6" height="11" rx="2.4"/>
+      <path d="M3.2 12.6h17.6M12 8.5v11M8.4 8.5l1.2-3.4h4.8l1.2 3.4"/>
     </g>
 
     <!-- Attesa della generazione: pentola che fuma. Nessun personaggio,
@@ -1030,17 +1234,76 @@ select.field{appearance:none;-webkit-appearance:none;
       <path d="M44 84h92" stroke="#8B7CE0" stroke-width="3.4" stroke-linecap="round" opacity=".85"/>
       <ellipse cx="90" cy="119" rx="46" ry="6" fill="#D9CDEF" opacity=".7"/>
     </g>
+
+    <!-- Dispensa vuota: la mensola coi barattoli. Quello di mezzo è il
+         barattolo col germoglio dell'icona dell'app: è la stessa cosa
+         vista da dentro. Stesso stile delle altre tre illustrazioni:
+         alone morbido dietro, oggetto in viola, accenti menta e pesca. -->
+    <g id="ill-dispensa">
+      <path d="M22 60c0-24 26-38 62-38s70 12 70 38-24 44-66 44S22 84 22 60z"
+            fill="#EFE4FA" opacity=".85"/>
+      <g fill="#C7B9F2" opacity=".9">
+        <path d="M150 20c1.2 4.4 2.2 5.4 6.6 6.6-4.4 1.2-5.4 2.2-6.6 6.6-1.2-4.4-2.2-5.4-6.6-6.6 4.4-1.2 5.4-2.2 6.6-6.6z"/>
+        <path d="M25 34c.9 3.2 1.6 3.9 4.8 4.8-3.2.9-3.9 1.6-4.8 4.8-.9-3.2-1.6-3.9-4.8-4.8 3.2-.9 3.9-1.6 4.8-4.8z"/>
+        <circle cx="162" cy="50" r="3.2"/><circle cx="18" cy="56" r="2.6"/>
+      </g>
+      <!-- barattolo piccolo di sinistra -->
+      <rect x="36" y="56" width="32" height="48" rx="11" fill="#C7B9F2"/>
+      <rect x="38.5" y="47" width="27" height="11" rx="5.5" fill="#8B7CE0"/>
+      <circle cx="52" cy="82" r="9" fill="#F0A79E" opacity=".9"/>
+      <!-- il barattolo col germoglio: quello dell'icona -->
+      <rect x="75" y="38" width="38" height="66" rx="14" fill="#6B5BD2"/>
+      <rect x="78" y="27" width="32" height="12" rx="6" fill="#5546B4"/>
+      <circle cx="94" cy="73" r="16" fill="#B8E8D4"/>
+      <g stroke="#3E9C77" stroke-width="4.6" stroke-linecap="round" fill="none">
+        <path d="M94 62v22"/><path d="M94 70l8-6.6"/><path d="M94 79l-8-6.6"/>
+      </g>
+      <!-- barattolo basso di destra -->
+      <rect x="120" y="66" width="30" height="38" rx="10" fill="#F5C89A"/>
+      <rect x="122.5" y="57" width="25" height="11" rx="5.5" fill="#B9722A" opacity=".55"/>
+      <path d="M126 88h18" stroke="#B9722A" stroke-width="3.4" stroke-linecap="round" opacity=".5"/>
+      <!-- la mensola -->
+      <rect x="18" y="104" width="144" height="11" rx="5.5" fill="#5546B4"/>
+      <ellipse cx="90" cy="122" rx="52" ry="6" fill="#D9CDEF" opacity=".7"/>
+    </g>
+
+    <!-- Ricette vuote: il quaderno aperto, col cuore che è il voto ♥
+         dell'app. Stessa famiglia delle altre. -->
+    <g id="ill-ricette">
+      <path d="M22 62c0-24 26-38 62-38s70 12 70 38-24 44-66 44S22 86 22 62z"
+            fill="#EFE4FA" opacity=".85"/>
+      <g fill="#C7B9F2" opacity=".9">
+        <path d="M28 28c1.2 4.4 2.2 5.4 6.6 6.6-4.4 1.2-5.4 2.2-6.6 6.6-1.2-4.4-2.2-5.4-6.6-6.6 4.4-1.2 5.4-2.2 6.6-6.6z"/>
+        <circle cx="156" cy="44" r="3.2"/><circle cx="150" cy="86" r="2.4"/>
+      </g>
+      <!-- il cuore sopra: è il voto, disegnato come nell'app -->
+      <path d="M90 20c3.4-5 12.6-4.6 15.4 1.6 2.6 5.8-3.6 12-15.4 19.6-11.8-7.6-18-13.8-15.4-19.6C77.4 15.4 86.6 15 90 20z"
+            fill="#F0A79E"/>
+      <!-- le due pagine -->
+      <path d="M26 56c20-8 42-7 62 5v56c-20-12-42-13-62-5z" fill="#FFFCFA"
+            stroke="#6B5BD2" stroke-width="6.5" stroke-linejoin="round"/>
+      <path d="M154 56c-20-8-42-7-62 5v56c20-12 42-13 62-5z" fill="#FFFCFA"
+            stroke="#6B5BD2" stroke-width="6.5" stroke-linejoin="round"/>
+      <g stroke="#C7B9F2" stroke-width="4.4" stroke-linecap="round">
+        <path d="M40 70h32M40 82h26M40 94h32"/>
+        <path d="M108 70h32M114 82h26M108 94h32"/>
+      </g>
+      <ellipse cx="90" cy="125" rx="50" ry="6" fill="#D9CDEF" opacity=".7"/>
+    </g>
   </defs>
 </svg>
 
 <header>
   <div class="h-top">
+    <span class="h-marchio" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="24" height="24"><use href="#i-marchio"/></svg>
+    </span>
     <h1 class="h-title">Piano &amp; <em>Dispensa</em></h1>
     <button class="h-btn" id="menuBtn" type="button" aria-label="Apri il menu" aria-expanded="false">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><use href="#i-menu"/></svg>
     </button>
   </div>
-  <button class="h-targets" id="targets" type="button">&nbsp;</button>
+  <div class="h-riga"><button class="h-targets" id="targets" type="button"></button></div>
 </header>
 
 <nav class="tabs" role="tablist">
@@ -1061,7 +1324,7 @@ select.field{appearance:none;-webkit-appearance:none;
 <div id="menuPanel" hidden role="dialog" aria-modal="true" aria-label="Menu">
   <div class="menu-testa">
     <h2>Menu</h2>
-    <button class="icon-btn" id="menuChiudi" aria-label="Chiudi">×</button>
+    <button class="icon-btn" id="menuChiudi" aria-label="Chiudi"><svg class="ico" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><use href="#i-chiudi"/></svg></button>
   </div>
 
   <div class="menu-sez">Su questo telefono sono</div>
@@ -1177,7 +1440,16 @@ select.field{appearance:none;-webkit-appearance:none;
       <button class="btn" id="cuGen" style="width:100%;margin-top:12px">Genera 3 proposte</button>
     </div>
 
-    <div id="cuBody"></div>
+    <!-- Prima di generare qualcosa questo riquadro era vuoto per davvero:
+         si apriva la tab e sotto il modulo non c'era niente. -->
+    <div id="cuBody">
+      <div class="empty vuoto-ill">
+        <svg viewBox="0 0 180 136" width="150" height="113" aria-hidden="true"><use href="#ill-pentola"/></svg>
+        <b>Ancora nessuna proposta.</b>
+        <p>Dimmi quanto tempo hai e premi «Genera 3 proposte»: guardo cosa
+           c'è in dispensa e ne esco con tre piatti veri.</p>
+      </div>
+    </div>
     </div><!-- /cuProposte -->
 
     <div id="cuDiario" hidden>
@@ -1290,6 +1562,17 @@ const $  = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
 const esc = (t) => String(t ?? '').replace(/[&<>"']/g, c =>
   ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/** Un'icona del set, scritta una volta sola.
+    Prima ogni simbolo dell'interfaccia era un carattere infilato nel
+    testo (✎ ❄ ↻ ✓ × ♥ 🍱): li disegna il sistema, quindi cambiano forma
+    fra iPhone e computer e non prendono il colore che gli si dà.
+    Qui arrivano dal blocco <defs> in cima al file, prendono il colore
+    dal testo che le contiene (currentColor) e sono uguali dappertutto.
+    ⚠️ È decorativa: chi la usa deve mettere l'aria-label sul bottone. */
+const ico = (nome, misura = 18) =>
+  `<svg class="ico" viewBox="0 0 24 24" width="${misura}" height="${misura}"
+        aria-hidden="true"><use href="#i-${nome}"/></svg>`;
 
 const CAT_LABEL = { frigo:'FRIGO', freezer:'CONGELATORE', dispensa:'DISPENSA' };
 const CAT_ORDER = ['frigo','freezer','dispensa'];
@@ -1462,7 +1745,7 @@ function renderTargets(){
   const k = S.settings.kcal_target, pr = S.settings.protein_target;
   $('#targets').textContent = (k || pr)
     ? `${k ? k + ' kcal' : ''}${k && pr ? '  ·  ' : ''}${pr ? pr + ' g proteine' : ''}`
-    : ' ';
+    : '';   // vuota davvero, non uno spazio: la pillola si nasconde da sola
   // qui la testata cambia altezza davvero (su schermi stretti la riga va a
   // capo): rimisuro subito, senza dipendere solo dall'osservatore
   misuraTestata();
@@ -1646,7 +1929,7 @@ function renderPlan(){
      </div>
      <div id="pnCard">${cardGiorno(S.giornoSel)}</div>
      <div class="form-row">
-       <button class="btn ghost" id="pnGenera" style="flex:1">↻ Genera un'altra settimana</button>
+       <button class="btn ghost" id="pnGenera" style="flex:1">${ico("rigenera",17)} Genera un'altra settimana</button>
      </div>`;
 
   renderVerifica();
@@ -1733,7 +2016,7 @@ function renderVerifica(){
         <b>${esc(quandoRelativo(v.day) === 'ieri' ? 'Ieri hai mangiato questo?' : 'Hai mangiato questo?')}</b>
         <span class="ver-quando">${esc(labelData(v.day))}</span>
       </div>
-      <button class="ver-rinvia" data-rinvia>Più tardi</button>
+      <button class="btn-testo discreto ver-rinvia" data-rinvia>Più tardi</button>
     </div>
     ${v.righe.map(r => verificaPasto(r, v.day)).join('')}
   </section>`;
@@ -1756,7 +2039,7 @@ function verificaPasto(r, day){
         >${esc(nomeChiBreve(c))}</button>`).join('')}
     </div>
 
-    <div class="chips mini ver-scelte">
+    <div class="ver-scelte">
       <button data-ris="si">Sì</button>
       <button data-ris="altro">No, altro</button>
       <button data-ris="saltato">Saltato</button>
@@ -1904,7 +2187,7 @@ function cardGiorno(iso){
       ${isToday ? '<span class="badge-oggi">OGGI</span>' : ''}
       ${etichetta}
       ${iso > oggiISO() ? `<button class="gg-azione" data-rigenera
-          aria-label="Rigenera ${esc(labelData(iso))}">↻ Rigenera</button>` : ''}
+          aria-label="Rigenera ${esc(labelData(iso))}">${ico("rigenera",14)} Rigenera</button>` : ''}
     </div>
     <div class="day-rows">
       ${st === 'passato' ? corpoPassato(iso, righe) : corpoPiano(iso, righe)}
@@ -1926,7 +2209,7 @@ function corpoPiano(iso, righe){
         <span class="pasto-quale">${quale}</span>
         ${modificabile(iso)
           ? `<button class="icon-btn modifica" data-modifica="${quale}"
-               aria-label="Scrivi a mano ${quale}">✎</button>` : ''}
+               aria-label="Scrivi a mano ${quale}">${ico("matita",17)}</button>` : ''}
       </div>
       <div class="pasto-niente">— niente in programma —</div>
     </div>`);
@@ -1940,14 +2223,15 @@ function corpoPiano(iso, righe){
 function promemoriaDi(iso){
   return S.piano
     .filter(r => r.scongelare_il === iso && r.scongelamento)
-    .map(r => `<div class="row freezer">
-      <div class="row-text">❄ ${esc(r.scongelamento)}
-        <span class="row-per">— per ${esc(r.pasto)} di ${esc(quandoRelativo(r.day))}</span></div>
-    </div>`);
+    .map(r => `<div class="pasto promemoria">${riquadro("freezer", "Da scongelare oggi",
+      `${r.scongelamento} — per ${r.pasto} di ${quandoRelativo(r.day)}`, "freezer")}</div>`);
 }
 
-const riquadro = (stile, eti, testo) =>
-  `<div class="nota ${stile}"><span class="nota-eti">${esc(eti)}</span>${esc(testo)}</div>`;
+/* Il riquadro dentro un pasto: dolce, avanzo, scongelamento, spesa.
+   L'icona è facoltativa e serve a far riconoscere il riquadro prima di
+   averlo letto: sono sempre le stesse quattro cose. */
+const riquadro = (stile, eti, testo, nomeIco) =>
+  `<div class="nota ${stile}"><span class="nota-eti">${nomeIco ? ico(nomeIco, 13) : ""}${esc(eti)}</span>${esc(testo)}</div>`;
 
 const frecciaAvanzo = (t) => /^→/.test(String(t).trim()) ? t : `→ ${t}`;
 
@@ -1963,7 +2247,7 @@ function bloccoPasto(r){
       ${r.tempo ? `<span class="pasto-tempo">${esc(String(r.tempo))} min</span>` : ''}
       ${modificabile(r.day)
         ? `<button class="icon-btn modifica" data-modifica="${esc(r.pasto)}"
-             aria-label="Modifica a mano ${esc(r.pasto)}">✎</button>` : ''}
+             aria-label="Modifica a mano ${esc(r.pasto)}">${ico("matita",17)}</button>` : ''}
     </div>`;
 
   // Fuori e Libero non hanno un piatto da cucinare, ma restano segnati.
@@ -1991,11 +2275,12 @@ function bloccoPasto(r){
     ${num}
     ${ingredientiHtml(r)}
     ${r.dolce ? riquadro('dolce', 'Tocco dolce', r.dolce) : ''}
-    ${r.avanzo_per ? riquadro('avanzo', 'Avanzo', frecciaAvanzo(r.avanzo_per)) : ''}
+    ${r.avanzo_per ? riquadro("avanzo", "Avanzo", frecciaAvanzo(r.avanzo_per), "avanzo") : ""}
     ${r.scongelamento ? riquadro('freezer', 'Da scongelare', r.scongelamento +
-        (r.scongelare_il ? ` — te lo ricordo ${quandoRelativo(r.scongelare_il)}` : '')) : ''}
+        (r.scongelare_il ? ` — te lo ricordo ${quandoRelativo(r.scongelare_il)}` : ''),
+        'freezer') : ''}
     ${r.dipende_da_spesa ? riquadro('manca', 'Dipende dalla spesa',
-        'Questo pasto aspetta un acquisto: guarda la lista della spesa.') : ''}
+        'Questo pasto aspetta un acquisto: guarda la lista della spesa.', 'spesa') : ''}
     ${r.nota   ? `<div class="nota perche">${esc(r.nota)}</div>`   : ''}
     ${r.perche ? `<div class="nota perche">${esc(r.perche)}</div>` : ''}
   </div>`;
@@ -2145,7 +2430,7 @@ function corpoPassato(iso, righe){
       <div class="pasto-niente">Niente segnato per questo giorno.</div>
     </div>` +
     (previsti.length
-      ? `<div class="row note"><div class="row-text">Era in programma:</div></div>` +
+      ? `<div class="pasto"><div class="ver-eti">Era in programma</div></div>` +
         previsti.map(r => `<div class="pasto">
           <div class="pasto-top"><span class="pasto-quale">${esc(r.pasto)}</span></div>
           <div class="pasto-piatto">${esc(r.piatto ||
@@ -2277,7 +2562,7 @@ function apriModificaPasto(iso, quale, dentro){
 
     <div class="q-label">Ingredienti <span>— facoltativi</span></div>
     <div class="mano-ing">${ing.map(rigaIngrediente).join('')}</div>
-    <button class="mano-piu" data-piu>+ aggiungi un ingrediente</button>
+    <button class="btn-testo" data-piu>+ aggiungi un ingrediente</button>
 
     <div data-numeri>
       <div class="q-label">Per ${esc(nomeDiChi('ciprian'))} <span>— facoltative</span></div>
@@ -2329,7 +2614,7 @@ const rigaIngrediente = (i) => `<div class="mano-riga">
          value="${esc(i.nome || '')}" autocomplete="off">
   <input class="field mini" data-ing-qta placeholder="quanto"
          value="${esc(i.qta || '')}" autocomplete="off">
-  <button class="icon-btn" data-togli-ing aria-label="Togli">×</button>
+  <button class="icon-btn" data-togli-ing aria-label="Togli">${ico("chiudi",17)}</button>
 </div>`;
 
 async function salvaPastoAMano(iso, quale, box){
@@ -2584,7 +2869,7 @@ function avvisoScorteHtml(){
   const dal = guai[0].giorni[0];
   const ultimo = S.piano.map(r => r.day).sort().slice(-1)[0];
 
-  return `<div class="ps-avviso avviso-scorte" data-dal="${esc(dal)}"
+  return `<div class="avviso attenzione avviso-scorte" data-dal="${esc(dal)}"
        data-quanti="${giorniFra(dal, ultimo) + 1}">
     <b>Da ${esc(quandoRelativo(dal))} in poi il piano conta su cose che non hai più.</b>
     <ul class="avviso-lista">
@@ -2721,7 +3006,7 @@ function avvisoLavoroHtml(){
   const avanzamento = tot ? `${Math.min(fatti, tot)} ${fatti === 1 ? 'giorno' : 'giorni'} su ${tot}` : '';
 
   if (lav.stato === 'fermo' || sembraFermo(lav)){
-    return `<div class="ps-avviso avviso-scorte">
+    return `<div class="avviso attenzione">
       <b>La settimana si è fermata${avanzamento ? ` dopo ${esc(avanzamento)}` : ''}.</b>
       <p style="margin:6px 0 0">${esc(lav.errore ||
         'Il collegamento col generatore si è interrotto.')} Quello che è già scritto
@@ -2733,7 +3018,7 @@ function avvisoLavoroHtml(){
     </div>`;
   }
 
-  return `<div class="ps-avviso avviso-corto">
+  return `<div class="avviso info">
     <b>Sto scrivendo la settimana${avanzamento ? `: ${esc(avanzamento)}` : ''}.</b>
     <p style="margin:6px 0 0">${esc(lav.passo || 'Ci sto lavorando…')}
       <br><b>Puoi chiudere l'app</b>: va avanti da sé, i giorni compaiono qui man mano.</p>
@@ -2751,7 +3036,7 @@ function pianoCortoHtml(){
   const quanti = giorniFra(dal, voluto) + 1;
   if (quanti < 1) return '';
 
-  return `<div class="ps-avviso avviso-corto" data-dal="${esc(dal)}" data-quanti="${quanti}">
+  return `<div class="avviso info avviso-corto" data-dal="${esc(dal)}" data-quanti="${quanti}">
     Il piano arriva fino a <b>${esc(labelData(ultimo))}</b>: mancano
     ${quanti} ${quanti === 1 ? 'giorno' : 'giorni'} alla settimana piena.
     <div class="form-row">
@@ -3031,7 +3316,7 @@ function psPasto(g, quale, i){
     ${p.aperta || p.nota
       ? `<input class="field mini" data-nota autocomplete="off"
            placeholder="una nota per questo pasto" value="${esc(p.nota)}">`
-      : `<button class="ps-nota" data-nota-apri>+ aggiungi una nota</button>`}
+      : `<button class="btn-testo ps-nota" data-nota-apri>+ aggiungi una nota</button>`}
   </div>`;
 }
 
@@ -3570,11 +3855,11 @@ function vistaRiepilogo(){
         Quelli che li aspettano sono segnati «dipende dalla spesa».</p>
     </div>` : ''}
 
-    ${buchi > 0 ? `<div class="ps-avviso">Per ${buchi} ${buchi === 1 ? 'pasto' : 'pasti'}
+    ${buchi > 0 ? `<div class="avviso attenzione">Per ${buchi} ${buchi === 1 ? 'pasto' : 'pasti'}
       il generatore non ha scritto niente: ${buchi === 1 ? 'quello resta' : 'quelli restano'}
       vuoto nel calendario. Puoi rigenerare la settimana o riempirlo a mano più avanti.</div>` : ''}
 
-    ${sovrascritti.length ? `<div class="ps-avviso">Attenzione: ${sovrascritti.length}
+    ${sovrascritti.length ? `<div class="avviso attenzione">Attenzione: ${sovrascritti.length}
       ${sovrascritti.length === 1 ? 'giorno è già pianificato e verrà sostituito' : 'giorni sono già pianificati e verranno sostituiti'}
       (${esc(sovrascritti.map(d => labelData(d)).join(', '))}).</div>` : ''}
 
@@ -3716,8 +4001,12 @@ function renderInv(){
   const items = q ? S.inv.filter(i => i.name.toLowerCase().includes(q)) : S.inv;
 
   if (!S.inv.length){
-    box.innerHTML = `<div class="empty" style="margin-top:12px"><b>Inventario vuoto.</b><br>
-      Usa il modulo qui sopra per aggiungere la prima voce.</div>`;
+    box.innerHTML = `<div class="empty vuoto-ill" style="margin-top:12px">
+      <svg viewBox="0 0 180 138" width="176" height="135" aria-hidden="true"><use href="#ill-dispensa"/></svg>
+      <b>La dispensa è vuota.</b>
+      <p>Scrivi qui sopra cosa hai in casa: è da qui che il generatore
+         parte per proporti i piatti.</p>
+    </div>`;
     return;
   }
   if (!items.length){
@@ -3732,7 +4021,7 @@ function renderInv(){
     // appiccicosa "sua" e la fa cambiare entrando nella sezione dopo
     return `<section class="cat">
       <div class="cat-head">
-        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="#i-${CAT_ICONA[cat]}"/></svg>
+        ${ico(CAT_ICONA[cat],17)}
         ${CAT_LABEL[cat]} <span>· ${sub.length}</span>
       </div>
       <div class="list">${sub.map(rigaInv).join('')}</div>
@@ -3747,9 +4036,9 @@ function rigaInv(i){
     ${v ? '<span class="tag-verifica">VERIFICA</span>' : ''}
     <div class="item-qty editable" data-act="qty">${esc(i.qty)}</div>
     <button class="icon-btn modifica" data-act="qty" aria-label="Modifica la quantità di ${esc(i.name)}">
-      <svg viewBox="0 0 24 24" width="19" height="19" aria-hidden="true"><use href="#i-matita"/></svg>
+      ${ico("matita",19)}
     </button>
-    <button class="icon-btn" data-act="del" aria-label="Elimina ${esc(i.name)}">×</button>
+    <button class="icon-btn" data-act="del" aria-label="Elimina ${esc(i.name)}">${ico("chiudi",17)}</button>
   </div>`;
 }
 
@@ -3830,7 +4119,7 @@ function apriEditorQty(cell, item){
 /* ============================================================
    TAB 3 — RICETTE
    ============================================================ */
-const PREF_LABEL = { fav:'♥', ok:'OK', no:'NO' };
+const PREF_LABEL = { fav:ico("cuore",16), ok:"OK", no:"NO" };
 
 /** Il voto di una persona su una ricetta (null = non ha votato). */
 const votoDi = (idRicetta, slug) => (S.voti[idRicetta] || {})[slug] ?? null;
@@ -3843,9 +4132,12 @@ const votanti = () => S.profili.length
 function renderRec(){
   const box = $('#recBody');
   if (!S.rec.length){
-    box.innerHTML = `<div class="empty"><b>Nessuna ricetta.</b><br>
-      Aggiungine una col modulo qui sopra, oppure salvale
-      da «Ho cucinato questo» nella tab Cucino.</div>`;
+    box.innerHTML = `<div class="empty vuoto-ill">
+      <svg viewBox="0 0 180 138" width="176" height="135" aria-hidden="true"><use href="#ill-ricette"/></svg>
+      <b>Nessuna ricetta.</b>
+      <p>Aggiungine una qui sopra, oppure salvale da «Ho cucinato questo»
+         nella tab Cucino: quelle col cuore tornano più spesso.</p>
+    </div>`;
     return;
   }
   const chi = votanti();
@@ -3853,7 +4145,7 @@ function renderRec(){
     <div class="rec-item" data-id="${r.id}">
       <div class="rec-testa">
         <div class="item-name">${esc(r.name)}</div>
-        <button class="icon-btn" data-act="del" aria-label="Elimina ${esc(r.name)}">×</button>
+        <button class="icon-btn" data-act="del" aria-label="Elimina ${esc(r.name)}">${ico("chiudi",17)}</button>
       </div>
       ${chi.map(c => `<div class="voto-riga ${c.slug === S.io ? 'mio' : ''}">
         <span class="voto-chi">${esc(c.nome)}</span>
@@ -4156,16 +4448,16 @@ function cardProposta(p, i){
       ${lista(p.ingredienti_io)}
       ${perX ? `<div class="ing-head">${esc(`Per ${altroProfilo()?.nome || 'l\'altra persona'}`)}</div>
         ${lista(p.ingredienti_x)}` : ''}
-      ${vuoto(p.scongelamento) ? '' : `<div class="nota freezer">❄ ${esc(p.scongelamento)}</div>`}
-      ${vuoto(p.avanzo)        ? '' : `<div class="nota avanzo">🍱 ${esc(p.avanzo)}</div>`}
+      ${vuoto(p.scongelamento) ? '' : `<div class="nota freezer">${ico("freezer",16)} ${esc(p.scongelamento)}</div>`}
+      ${vuoto(p.avanzo)        ? '' : `<div class="nota avanzo">${ico("avanzo",16)} ${esc(p.avanzo)}</div>`}
       ${(p.manca || []).length ? `<div class="nota manca">Ti manca: ${esc(p.manca.join(', '))}
-        <button data-act="spesa">+ Aggiungi alla spesa</button></div>` : ''}
+        <button data-act="spesa">${ico("piu",15)} Aggiungi alla spesa</button></div>` : ''}
       ${p.perche ? `<div class="nota perche">${esc(p.perche)}</div>` : ''}
     </div>
     <div class="prop-actions">
-      <button data-act="altra">↻ Un'altra</button>
-      <button data-act="pers">✎ Personalizza</button>
-      <button data-act="cucinato">✓ Ho cucinato questo</button>
+      <button data-act="altra">${ico("rigenera",16)} Un'altra</button>
+      <button data-act="pers">${ico("matita",16)} Personalizza</button>
+      <button data-act="cucinato">${ico("ok",16)} Ho cucinato questo</button>
     </div>
   </article>`;
 }
@@ -4214,7 +4506,9 @@ $('#cuBody').addEventListener('click', async (ev) => {
     btn.disabled = true;
     const aggiunti = await aggiungiAllaSpesa(p.manca || []);
     btn.disabled = false;
-    btn.textContent = aggiunti ? '✓ Aggiunti alla spesa' : '+ Aggiungi alla spesa';
+    btn.innerHTML = aggiunti
+      ? `${ico("ok",15)} Aggiunti alla spesa`
+      : `${ico("piu",15)} Aggiungi alla spesa`;
   }
 });
 
@@ -4738,7 +5032,7 @@ function listaProfilo(p, campo, titolo, stile, spiega){
     <div class="pf-lista" data-lista="${campo}">
       ${voci.length
         ? voci.map(v => `<span class="pf-tag ${stile}">${esc(v)}
-            <button data-togli="${esc(v)}" aria-label="Togli">×</button></span>`).join('')
+            <button data-togli="${esc(v)}" aria-label="Togli">${ico("chiudi",15)}</button></span>`).join('')
         : '<span class="pf-vuota">— niente —</span>'}
     </div>
     <div class="form-row">
@@ -4883,7 +5177,7 @@ function renderDiario(){
           m.prot != null ? `${m.prot} g P` : '',
           m.kcal != null ? `${m.kcal} kcal` : '',
         ].filter(Boolean).join(' · ')}</div>
-        <button class="icon-btn" data-act="del" aria-label="Elimina">×</button>
+        <button class="icon-btn" data-act="del" aria-label="Elimina">${ico("chiudi",17)}</button>
       </div>`).join('')}
     </article>`;
   }).join('');
@@ -4980,9 +5274,9 @@ function renderSpesa(){
 
 function rigaSpesa(v){
   return `<div class="sp-item ${v.done ? 'fatto' : ''}" data-id="${v.id}">
-    <div class="sp-box" data-act="tog">${v.done ? '✓' : ''}</div>
+    <div class="sp-box" data-act="tog">${v.done ? ico("ok",15) : ""}</div>
     <div class="sp-nome" data-act="tog">${esc(v.name)}</div>
-    <button class="icon-btn" data-act="del" aria-label="Togli">×</button>
+    <button class="icon-btn" data-act="del" aria-label="Togli">${ico("chiudi",17)}</button>
   </div>`;
 }
 
