@@ -223,7 +223,10 @@ type Contesto = {
 
 async function leggiContesto(): Promise<Contesto> {
   const [inv, rec, setRows] = await Promise.all([
-    leggi('inventory_items', 'name,qty,cat'),
+    // ⚠️ '*' e non l'elenco: kcal_100g e prot_100g sono facoltative e su
+    // un progetto in cui tabelle-nutrienti.sql non è stato eseguito non
+    // esistono. Chiederle per nome romperebbe TUTTO il generatore.
+    leggi('inventory_items', '*'),
     leggi('recipes', 'id,name,pref'),
     leggi('settings', 'key,value'),
   ]);
@@ -253,9 +256,21 @@ async function leggiContesto(): Promise<Contesto> {
 
 /** La dispensa raccontata per categorie, come la vede il modello. */
 function descriviDispensa(inv: Contesto['inv']): string {
+  // ⚠️ I valori per 100 g esistono solo dove qualcuno li ha scritti a mano:
+  // sono facoltativi apposta, e la regola «niente database alimenti» resta.
+  // Dove ci sono, però, il modello NON deve stimare: ha il numero vero.
+  const nutrienti = (i: any) => {
+    const p = i.prot_100g, k = i.kcal_100g;
+    if (p == null && k == null) return '';
+    const pezzi = [p != null ? `${p} g proteine` : '', k != null ? `${k} kcal` : '']
+      .filter(Boolean).join(' · ');
+    return `  [per 100 g: ${pezzi} — DICHIARATI, usali e non stimare]`;
+  };
   const perCat = (c: string) => {
     const righe = inv.filter((i) => i.cat === c);
-    return righe.length ? righe.map((i) => `- ${i.name} — ${i.qty}`).join('\n') : '- (vuoto)';
+    return righe.length
+      ? righe.map((i) => `- ${i.name} — ${i.qty}${nutrienti(i)}`).join('\n')
+      : '- (vuoto)';
   };
   return `FRIGO\n${perCat('frigo')}\n\nCONGELATORE\n${perCat('freezer')}\n\nDISPENSA\n${perCat('dispensa')}`;
 }
@@ -322,6 +337,11 @@ Proponi piatti costruiti sulla SUA dispensa reale, non ricette generiche.
   polpo 100 g -> ~15 g (è "diluito": va SEMPRE abbinato a un'altra fonte proteica).
 - Ogni proposta dichiara i grammi di proteine e le kcal stimate.
   I pesi degli ingredienti sono a crudo o sgocciolati.
+- ⚠️ QUANDO IN DISPENSA UNA VOCE PORTA I VALORI PER 100 g, quelli sono la
+  verità: usali e non stimare. Li ha scritti chi ha in mano la confezione,
+  e sono piu' giusti di qualunque tua media. Dove non ci sono, stima come
+  hai sempre fatto — ma allora e' una stima, e i numeri valgono per quello
+  che sono.
 
 ## 2. CALORIE
 Circa 2200 kcal al giorno. Un pasto principale sta fra 600 e 900 kcal.
@@ -616,6 +636,9 @@ Le scatolette e la roba secca possono aspettare la fine.
   55-70 g proteine · hamburger 300 g -> ~57 g · pesce fresco 300 g -> 50-60 g ·
   tonno sgocciolato 100 g -> ~28 g · uovo -> 6-7 g · grana 20 g -> 7 g ·
   polpo 100 g -> ~15 g (è "diluito": va SEMPRE abbinato a un'altra fonte proteica).
+- ⚠️ Queste sono MEDIE. Quando in dispensa una voce porta i valori per 100 g, quelli
+  sono la verità: usali al posto delle medie e non stimare. Li ha scritti chi aveva in
+  mano la confezione.
 - Nei giorni in cui Ciprian mangia fuori o ha un pasto libero il totale scende, ed è
   giusto così: NON compensare mai nei giorni vicini caricando di proteine gli altri
   pasti. Un pasto libero fa parte del metodo, non è uno sgarro da recuperare.
@@ -829,6 +852,8 @@ la carne), altre no (un cucchiaio di olio, mezza cipolla, il sale).
    persona, sempre.
    Stimali con onestà: meglio un numero ragionevole che nessun numero, perché senza
    numeri il totale della giornata si dichiara parziale e non serve più a niente.
+   ⚠️ Se in dispensa una voce porta i valori per 100 g, quelli sono la verità: usali e
+   non stimare. Li ha scritti chi aveva in mano la confezione.
 
 4. **UN PIATTO SOLO QUANDO MANGIANO INSIEME.** Se a tavola ci sono tutti e due, il
    piatto è uno. Le differenze ammesse sono varianti dello stesso piatto: grammature
@@ -993,30 +1018,72 @@ async function* pezziDiTesto(corpo: ReadableStream<Uint8Array>): AsyncGenerator<
   const decodificatore = new TextDecoder();
   let resto = '';
 
-  while (true) {
-    const { done, value } = await sorgente.read();
-    if (done) break;
-    resto += decodificatore.decode(value, { stream: true });
+  // ⚠️ I token si contano QUI, in un punto solo, perché di qui passa ogni
+  // chiamata al modello di tutti e tre i mestieri. Contarli dentro i
+  // singoli mestieri vorrebbe dire dimenticarsene al quarto.
+  //
+  // Come arrivano, e non è ovvio:
+  //   message_start → input_tokens, che è già il totale definitivo;
+  //   message_delta → output_tokens, che è il totale CUMULATIVO fin qui.
+  // Quindi l'uscita si SOSTITUISCE a ogni delta, non si somma: sommarla
+  // gonfierebbe la stima di parecchie volte.
+  let entrata = 0, uscita = 0;
 
-    const righe = resto.split('\n');
-    resto = righe.pop() ?? '';
+  try {
+    while (true) {
+      const { done, value } = await sorgente.read();
+      if (done) break;
+      resto += decodificatore.decode(value, { stream: true });
 
-    for (const riga of righe) {
-      if (!riga.startsWith('data:')) continue;
-      const corpoRiga = riga.slice(5).trim();
-      if (!corpoRiga || corpoRiga === '[DONE]') continue;
+      const righe = resto.split('\n');
+      resto = righe.pop() ?? '';
 
-      let ev: Record<string, any>;
-      try { ev = JSON.parse(corpoRiga); } catch { continue; }
+      for (const riga of righe) {
+        if (!riga.startsWith('data:')) continue;
+        const corpoRiga = riga.slice(5).trim();
+        if (!corpoRiga || corpoRiga === '[DONE]') continue;
 
-      if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
-        yield { testo: String(ev.delta.text ?? '') };
-      } else if (ev.type === 'message_delta' && ev.delta?.stop_reason) {
-        yield { stop: String(ev.delta.stop_reason) };
-      } else if (ev.type === 'error') {
-        yield { guasto: true };
+        let ev: Record<string, any>;
+        try { ev = JSON.parse(corpoRiga); } catch { continue; }
+
+        if (ev.type === 'message_start' && ev.message?.usage) {
+          entrata = Number(ev.message.usage.input_tokens) || 0;
+        } else if (ev.type === 'message_delta' && ev.usage?.output_tokens != null) {
+          uscita = Number(ev.usage.output_tokens) || 0;
+        }
+
+        if (ev.type === 'content_block_delta' && ev.delta?.type === 'text_delta') {
+          yield { testo: String(ev.delta.text ?? '') };
+        } else if (ev.type === 'message_delta' && ev.delta?.stop_reason) {
+          yield { stop: String(ev.delta.stop_reason) };
+        } else if (ev.type === 'error') {
+          yield { guasto: true };
+        }
       }
     }
+  } finally {
+    // Nel `finally` apposta: vale anche se chi legge smette a metà o se il
+    // flusso si rompe. Quello che è stato speso è stato speso lo stesso, e
+    // una spesa che non si registra è peggio di una registrata male.
+    if (entrata || uscita) inSottofondo(registraToken(entrata, uscita));
+  }
+}
+
+/** Scrive i token del giorno. ⚠️ Non deve MAI far fallire una generazione:
+    la contabilità è accessoria, il piatto no. */
+async function registraToken(entrata: number, uscita: number) {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/rpc/registra_token`, {
+      method: 'POST',
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${SERVICE_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ entrata, uscita }),
+    });
+  } catch (e) {
+    console.error('registraToken', e);
   }
 }
 
@@ -1546,6 +1613,63 @@ limitati a dimensionare il pasto di oggi su chi mangia.`
   });
 }
 
+// ============================================================
+//  I COSTI — una stima, e va detto che è una stima
+//
+//  ⚠️ `generator_usage` ha RLS accesa e ZERO policy: è invisibile alla
+//  chiave pubblica, ed è ciò che la rende non manomettibile da chi apre
+//  l'indirizzo. Per mostrarne il contenuto NON si aggiunge una policy —
+//  si passa di qui, dove c'è la chiave di servizio.
+//
+//  ⚠️ E questo modo NON consuma una tacca: è una lettura, non una
+//  generazione. Fargliela pagare vorrebbe dire che guardare quanto spendi
+//  ti fa spendere.
+// ============================================================
+
+// Prezzi per MILIONE di token, in dollari. Sono quelli di Sonnet al
+// momento in cui questo è stato scritto (18/08/2026).
+// ⚠️ I prezzi cambiano: quando cambiano, questi due numeri diventano
+// sbagliati in silenzio. È metà del motivo per cui la cifra si chiama
+// «stima» e l'app rimanda alla Console di Anthropic per il conto vero.
+const COSTO_IN  = 3;
+const COSTO_OUT = 15;
+
+async function riepilogoCosti(): Promise<Response> {
+  try {
+    const righe = await leggi('generator_usage', 'day,count,tok_in,tok_out') as
+      Array<{ day: string; count: number; tok_in: number; tok_out: number }>;
+
+    const oggi = new Date().toISOString().slice(0, 10);
+    const daInizioMese = oggi.slice(0, 8) + '01';
+
+    const somma = (filtro: (r: typeof righe[number]) => boolean) => {
+      const q = righe.filter(filtro);
+      const tin = q.reduce((n, r) => n + Number(r.tok_in || 0), 0);
+      const tout = q.reduce((n, r) => n + Number(r.tok_out || 0), 0);
+      return {
+        generazioni: q.reduce((n, r) => n + Number(r.count || 0), 0),
+        tok_in: tin,
+        tok_out: tout,
+        dollari: (tin / 1e6) * COSTO_IN + (tout / 1e6) * COSTO_OUT,
+      };
+    };
+
+    return json({
+      mese:  somma((r) => r.day >= daInizioMese),
+      oggi:  somma((r) => r.day === oggi),
+      tetto: MAX_AL_GIORNO,
+      // serve al client per dire «i conti partono da qui»: prima di questa
+      // data i token non venivano registrati, e un totale che parte da zero
+      // senza dirlo sembrerebbe dire che non hai speso niente
+      dal: righe.filter((r) => Number(r.tok_in || 0) > 0)
+                .map((r) => r.day).sort()[0] ?? null,
+    });
+  } catch (e) {
+    console.error('costi', e);
+    return errore('Non riesco a leggere i costi. Riprova fra poco.', 500);
+  }
+}
+
 /** Sveglia l'anello successivo e non aspetta che finisca. */
 async function svegliaProssimoPasso(id: string) {
   await fetch(`${SUPABASE_URL}/functions/v1/cosa-cucino`, {
@@ -1782,6 +1906,10 @@ Deno.serve(async (req) => {
   // Il terzo mestiere: completare un piatto scritto a mano. Parte solo
   // quando qualcuno tocca «Crea la ricetta», mai da sé.
   if (body.modo === 'ricetta') return await completaPiatto(body);
+
+  // ⚠️ Prima del contatore, apposta: guardare quanto si è speso non deve
+  // costare una generazione.
+  if (body.modo === 'costi') return await riepilogoCosti();
 
   const pasto  = body.pasto === 'cena' ? 'cena' : 'pranzo';
   const chi    = ['io', 'io_e_x', 'solo_x'].includes(String(body.chi)) ? String(body.chi) : 'io';

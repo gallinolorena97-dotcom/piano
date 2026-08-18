@@ -1091,9 +1091,30 @@ select.field{appearance:none;-webkit-appearance:none;
 /* oggi o domani: la sola cosa che vale la pena far notare */
 .sp-quando.presto{color:var(--pesca-ink);font-weight:600}
 /* il modulo «metto in dispensa», aperto sulla riga che hai appena spuntato */
-.sp-agg{
+.sp-agg,
+/* e il pannello di modifica di una voce di dispensa: stessa forma, perché
+   fanno la stessa cosa — un modulo che si apre sulla riga che riguarda */
+.inv-edit{
   padding:14px 16px;border-top:2px solid var(--viola);background:var(--surface-2);
 }
+
+/* I costi, dentro il menu. La cifra è grande perché è la risposta alla
+   domanda; tutto il resto sta sotto, piccolo, compreso il fatto — che non
+   si nasconde mai — che è una stima e non il conto. */
+.costi{
+  background:var(--lavanda-soft);border-radius:var(--r-m);
+  padding:14px;margin-top:10px;
+}
+.costi-cifra{
+  font-family:var(--font-titolo);font-weight:600;font-size:27px;
+  color:var(--viola-testo);line-height:1.1;font-variant-numeric:tabular-nums;
+}
+.costi-eti{
+  font-size:11.5px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;
+  color:var(--muted);margin-top:3px;
+}
+.costi .hint{margin-top:8px}
+.costi b{color:var(--ink)}
 .sp-nome{flex:1;min-width:0;word-break:break-word}
 
 /* ============================================================
@@ -1404,9 +1425,20 @@ select.field{appearance:none;-webkit-appearance:none;
   <div class="form-row" style="margin-top:0">
     <button class="btn ghost" id="menuProfilo" style="flex:1">Profilo completo ›</button>
   </div>
+  <!-- ⚠️ Qui c'era «Copia per Claude»: serviva quando l'inventario si
+       portava a mano in chat, ma ormai vive nel database e la Edge
+       Function se lo rilegge da sé. Al suo posto le due cose che servono
+       davvero: sapere quanto costa, e potersi portare via i propri dati.
+       Il copia-riepilogo del Diario resta dov'è: quello serve ancora. -->
   <div class="form-row">
-    <button class="btn" id="copyBtn" style="flex:1">Copia per Claude</button>
+    <button class="btn ghost" id="menuCosti" style="flex:1">Quanto sto spendendo ›</button>
   </div>
+  <div id="menuCostiBox" hidden></div>
+  <div class="form-row">
+    <button class="btn ghost" id="menuBackup" style="flex:1">Scarica un backup dei dati</button>
+  </div>
+  <p class="hint">Un file con dispensa, ricette, piano, diario e spesa.
+    Da tenere da parte, non da incollare.</p>
 </div>
 
 <div id="banner" hidden></div>
@@ -4352,6 +4384,18 @@ $('#invAdd').onclick = async () => {
 };
 
 $('#invBody').addEventListener('click', async (ev) => {
+  // il pannello di modifica vive dentro la lista: i suoi tocchi si
+  // gestiscono qui e non arrivano alle righe sotto
+  const ed = ev.target.closest('.inv-edit');
+  if (ed){
+    if (ev.target.closest('[data-e-no]')){ ed.remove(); return; }
+    if (ev.target.closest('[data-e-ok]')){
+      const it = S.inv.find(x => x.id === ed.dataset.per);
+      if (it) await salvaVoceDispensa(ed, it);
+    }
+    return;
+  }
+
   const btn  = ev.target.closest('[data-act]');
   if (!btn) return;
   const id   = btn.closest('.item').dataset.id;
@@ -4379,32 +4423,105 @@ $('#invBody').addEventListener('click', async (ev) => {
   if (btn.dataset.act === 'qty') apriEditorQty(btn.closest('.item').querySelector('.item-qty'), item);
 });
 
+/**
+ * L'editor di una voce di dispensa.
+ *
+ * ⚠️ Prima era un campo solo, che si salvava perdendo il fuoco. Adesso è
+ * un pannellino, perché sotto la quantità ci sono anche i VALORI PER
+ * 100 g — e con più campi il "salva quando esci dal campo" diventerebbe
+ * una trappola: passare dalla quantità alle proteine salverebbe a metà.
+ * Invio salva ancora, quindi per cambiare solo la quantità i gesti
+ * restano gli stessi di prima.
+ */
 function apriEditorQty(cell, item){
-  if (cell.querySelector('input')) return;
-  const inp = document.createElement('input');
-  inp.className = 'field';
-  inp.value = item.qty;
-  inp.style.cssText = 'padding:5px 8px;font-size:15px;width:150px';
-  cell.textContent = '';
-  cell.appendChild(inp);
-  inp.focus(); inp.select();
+  const riga = cell.closest('.item');
+  if (!riga || riga.nextElementSibling?.classList?.contains('inv-edit')) return;
 
-  let chiuso = false;
-  const salva = async () => {
-    if (chiuso) return; chiuso = true;
-    const nuovo = inp.value.trim() || '—';
-    if (nuovo === item.qty) { renderInv(); return; }
-    try{
-      const { error } = await sb.from('inventory_items').update({ qty:nuovo }).eq('id', item.id);
-      if (error) throw error;
-      item.qty = nuovo; renderInv(); toast('Quantità aggiornata.');
-    }catch(e){ esitoErrore(e); renderInv(); }
-  };
-  inp.addEventListener('blur', salva);
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); inp.blur(); }
-    if (e.key === 'Escape'){ chiuso = true; renderInv(); }
+  riga.insertAdjacentHTML('afterend', `
+    <div class="inv-edit" data-per="${esc(item.id)}">
+      <div class="form-row" style="margin-top:0">
+        <label class="campo">
+          <span class="campo-eti">Quantità</span>
+          <input class="field" data-e-qta value="${esc(item.qty)}" autocomplete="off">
+        </label>
+      </div>
+
+      <!-- ⚠️ Facoltativi, e devono restarlo: questo NON è un database
+           alimenti. Si compilano sulle quattro o cinque voci che tornano
+           ogni settimana, e sulle altre restano vuoti per sempre. -->
+      <div class="q-label">Valori per 100 g <span>— facoltativi</span></div>
+      <div class="form-row" style="margin-top:0">
+        <label class="campo">
+          <span class="campo-eti">Proteine</span>
+          <input class="field" data-e-prot type="number" step="0.1" inputmode="decimal"
+                 placeholder="—" value="${item.prot_100g ?? ''}">
+          <span class="campo-unita">g</span>
+        </label>
+        <label class="campo">
+          <span class="campo-eti">Calorie</span>
+          <input class="field" data-e-kcal type="number" step="1" inputmode="numeric"
+                 placeholder="—" value="${item.kcal_100g ?? ''}">
+          <span class="campo-unita">kcal</span>
+        </label>
+      </div>
+      <p class="hint">Copiali dall'etichetta. Dove ci sono, il generatore li usa
+        invece di stimare; dove non ci sono, stima come ha sempre fatto.</p>
+
+      <div class="form-row">
+        <button class="btn" data-e-ok style="flex:1">Salva</button>
+        <button class="btn ghost" data-e-no>Annulla</button>
+      </div>
+    </div>`);
+
+  const box = riga.nextElementSibling;
+  const q = box.querySelector('[data-e-qta]');
+  q.focus(); q.select();
+  box.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); salvaVoceDispensa(box, item); }
+    if (e.key === 'Escape'){ box.remove(); }
   });
+}
+
+/** Un numero facoltativo: vuoto resta vuoto. ⚠️ Lo zero si accetta (esiste
+    davvero: l'acqua ha 0 kcal), ed è il motivo per cui non si può usare
+    numeroONull() qui — quello butta via lo zero apposta. */
+const nutriente = (v) => {
+  const s = String(v ?? '').trim();
+  if (s === '') return null;
+  const n = Number(s.replace(',', '.'));
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
+
+async function salvaVoceDispensa(box, item){
+  const campi = {
+    qty: box.querySelector('[data-e-qta]').value.trim() || '—',
+    prot_100g: nutriente(box.querySelector('[data-e-prot]').value),
+    kcal_100g: nutriente(box.querySelector('[data-e-kcal]').value),
+  };
+
+  box.querySelectorAll('button, input').forEach(x => x.disabled = true);
+  try{
+    let { error } = await sb.from('inventory_items').update(campi).eq('id', item.id);
+    // ⚠️ Le due colonne nuove sono facoltative anche per il DATABASE: se
+    // tabelle-nutrienti.sql non è stato eseguito non esistono, e cambiare
+    // una quantità — che funzionava da sempre — non deve smettere.
+    if (error && /prot_100g|kcal_100g/i.test(String(error.message || ''))){
+      ({ error } = await sb.from('inventory_items').update({ qty:campi.qty }).eq('id', item.id));
+      if (!error){
+        Object.assign(item, { qty:campi.qty });
+        renderInv();
+        toast('Quantità aggiornata. I valori per 100 g no: esegui tabelle-nutrienti.sql.');
+        return;
+      }
+    }
+    if (error) throw error;
+    Object.assign(item, campi);
+    renderInv();
+    toast('Voce aggiornata.');
+  }catch(e){
+    box.querySelectorAll('button, input').forEach(x => x.disabled = false);
+    esitoErrore(e);
+  }
 }
 
 /* ============================================================
@@ -5284,6 +5401,10 @@ $('#menuBtn').onclick    = apriMenu;
 $('#menuChiudi').onclick = chiudiMenu;
 $('#menuVelo').onclick   = chiudiMenu;
 $('#menuProfilo').onclick = () => { chiudiMenu(); apriProfilo(); };
+// ⚠️ I costi si aprono DENTRO il menu e non chiudono niente: guardare
+// quanto spendi non deve farti perdere il posto in cui eri.
+$('#menuCosti').onclick  = () => apriCosti();
+$('#menuBackup').onclick = () => scaricaBackup();
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape' && !$('#menuPanel').hidden) chiudiMenu();
 });
@@ -5890,57 +6011,12 @@ $('#spCopia').onclick = async () => {
 };
 
 /* ============================================================
-   COPIA PER CLAUDE
+   COPIA, BACKUP E COSTI
+   ⚠️ Qui c'era anche testoExport(), che costruiva il testo di «Copia per
+   Claude»: l'inventario si portava a mano in chat. Ora vive nel database
+   e la Edge Function se lo rilegge da sé, quindi il testo non serve più a
+   nessuno. Il copia-riepilogo del Diario resta: quello serve ancora.
    ============================================================ */
-function testoExport(){
-  const d = new Date();
-  const dd = String(d.getDate()).padStart(2,'0');
-  const mm = String(d.getMonth()+1).padStart(2,'0');
-  const hh = String(d.getHours()).padStart(2,'0');
-  const mi = String(d.getMinutes()).padStart(2,'0');
-
-  const out = [`INVENTARIO — aggiornato ${dd}/${mm} ore ${hh}:${mi}`, ''];
-
-  for (const cat of CAT_ORDER){
-    out.push(CAT_LABEL[cat]);
-    const sub = S.inv.filter(i => i.cat === cat);
-    if (!sub.length) out.push('- (vuoto)');
-    else sub.forEach(i => out.push(`- ${i.name} — ${i.qty}`));
-    out.push('');
-  }
-
-  out.push('DA VERIFICARE');
-  const dv = S.inv.filter(i => daVerificare(i.qty));
-  if (!dv.length) out.push('- (niente)');
-  else dv.forEach(i => out.push(`- ${i.name}`));
-  out.push('');
-
-  out.push('RICETTE — i voti sono per persona');
-  // separatore « · » al posto della virgola: alcuni nomi contengono virgole
-  for (const c of votanti()){
-    out.push('');
-    out.push(`Secondo ${c.nome}:`);
-    const gruppi = [
-      ['  preferite',         S.rec.filter(r => votoDi(r.id, c.slug) === 'fav')],
-      ['  vanno bene',        S.rec.filter(r => votoDi(r.id, c.slug) === 'ok')],
-      ['  da non riproporre', S.rec.filter(r => votoDi(r.id, c.slug) === 'no')],
-    ];
-    let qualcosa = false;
-    for (const [titolo, lista] of gruppi){
-      if (!lista.length) continue;
-      qualcosa = true;
-      out.push(`${titolo}: ${lista.map(r => r.name).join(' · ')}`);
-    }
-    if (!qualcosa) out.push('  (non ha ancora votato niente)');
-  }
-  const senzaVoto = S.rec.filter(r => !Object.keys(S.voti[r.id] || {}).length);
-  if (senzaVoto.length){
-    out.push('');
-    out.push(`Nessuno ha votato: ${senzaVoto.map(r => r.name).join(' · ')}`);
-  }
-  return out.join('\n');
-}
-
 /** Copia negli appunti, con ripiego per i browser che bloccano la clipboard. */
 async function copiaTesto(testo, messaggio){
   try{
@@ -5960,7 +6036,103 @@ async function copiaTesto(testo, messaggio){
   toast(ok ? messaggio : 'Non riesco a copiare da solo: riprova.');
 }
 
-$('#copyBtn').onclick = () => copiaTesto(testoExport(), 'Copiato! Incollalo pure in chat.');
+/* ------------------------------------------------------------
+   IL BACKUP — un file da tenere, non un testo da incollare
+   ⚠️ Prende quello che è GIÀ in memoria, senza rileggere niente: se
+   qualcosa non si era caricato, nel file non c'è, e il file lo dice
+   invece di far finta. Un backup che mente è peggio di nessun backup.
+   ------------------------------------------------------------ */
+function scaricaBackup(){
+  const mancanti = [];
+  if (S.pianoErr) mancanti.push('il piano');
+  if (!S.inv.length) mancanti.push('la dispensa (era vuota)');
+
+  const dati = {
+    app: 'Piano & Dispensa',
+    scaricato_il: new Date().toISOString(),
+    ...(mancanti.length ? { ATTENZIONE: `Non contiene: ${mancanti.join(', ')}.` } : {}),
+    dispensa: S.inv,
+    ricette: S.rec,
+    voti: S.voti,
+    profili: S.profili,
+    piano: S.piano,
+    diario: S.diario,
+    spesa: S.spesa,
+    impostazioni: S.settings,
+  };
+
+  const oggi = oggiISO();
+  const url = URL.createObjectURL(
+    new Blob([JSON.stringify(dati, null, 2)], { type:'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `piano-e-dispensa-${oggi}.json`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  // il browser ha bisogno di un attimo per prendersi il file
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+
+  toast(mancanti.length
+    ? `Backup scaricato, ma senza ${mancanti.join(' e ')}.`
+    : 'Backup scaricato.');
+}
+
+/* ------------------------------------------------------------
+   I COSTI — ⚠️ è una STIMA, e va scritto ogni volta che si mostra
+   Il conto vero sta nella Console di Anthropic: i prezzi cambiano, e i
+   token contati da noi non comprendono tutto. Una cifra che si spaccia
+   per esatta quando non lo è fa prendere decisioni sbagliate.
+   ------------------------------------------------------------ */
+async function apriCosti(){
+  const box = $('#menuCostiBox');
+  if (!box.hidden){ box.hidden = true; box.innerHTML = ''; return; }
+
+  box.hidden = false;
+  box.innerHTML = `<div class="costi"><span class="loading">Conto…</span></div>`;
+
+  try{
+    const r = await fetch(`${SUPABASE_URL}/functions/v1/cosa-cucino`, {
+      method:'POST',
+      headers:{ apikey:SUPABASE_KEY, Authorization:`Bearer ${SUPABASE_KEY}`,
+                'Content-Type':'application/json' },
+      body: JSON.stringify({ modo:'costi' }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d?.errore || 'Non riesco a leggere i costi.');
+    box.innerHTML = costiHtml(d);
+  }catch(e){
+    box.innerHTML = `<div class="costi"><b>Non riesco a leggere i costi.</b>
+      <p>${esc(guastoDiRete(String(e?.message || '')) ? 'Controlla la connessione.' : (e?.message || ''))}</p></div>`;
+  }
+}
+
+/** In euro, non in dollari: la carta è in euro. È un cambio fisso e
+    approssimativo, ed è un motivo in più per chiamarla stima. */
+const inEuro = (dollari) => dollari * 0.92;
+
+const soldi = (dollari) => {
+  const e = inEuro(dollari);
+  if (e < 0.01) return 'meno di un centesimo';
+  if (e < 1) return `${Math.round(e * 100)} centesimi`;
+  return `${e.toFixed(2).replace('.', ',')} €`;
+};
+
+function costiHtml(d){
+  const mese = d.mese || {}, oggi = d.oggi || {};
+  return `<div class="costi">
+    <div class="costi-cifra">${esc(soldi(mese.dollari || 0))}</div>
+    <div class="costi-eti">stimati questo mese</div>
+    <p class="hint" style="margin-top:9px">
+      ${mese.generazioni || 0} ${(mese.generazioni === 1 ? 'generazione' : 'generazioni')} nel mese ·
+      oggi ${oggi.generazioni || 0} su ${d.tetto} · circa ${esc(soldi(oggi.dollari || 0))} oggi.
+      ${d.dal ? `I conti partono dal ${esc(labelData(d.dal))}: prima non venivano registrati.` : ''}
+    </p>
+    <p class="hint"><b>È una stima, non il conto.</b> I prezzi cambiano e i token
+      che conto io non comprendono tutto. La cifra vera sta nella Console di
+      Anthropic — questa serve solo a capire l'ordine di grandezza.</p>
+  </div>`;
+}
 
 /* ============================================================
    TAB e AVVIO

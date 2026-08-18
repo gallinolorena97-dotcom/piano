@@ -138,8 +138,21 @@ e finisce nell'elenco **DA VERIFICARE**.
 **Ricette** — i tre tasti **♥ / OK / NO** sono interruttori: premi una volta per dare il voto,
 ripremi lo stesso tasto per toglierlo.
 
-**Copia per Claude** — il tasto in alto copia tutto l'inventario e le ricette in formato testo,
-pronto da incollare in chat.
+**I valori per 100 g** — toccando la matita ✎ su una voce di dispensa puoi scrivere,
+se vuoi, quante proteine e quante calorie ha per 100 g. Sono facoltativi: dove li
+scrivi il generatore li usa invece di stimare, dove non ci sono stima come ha sempre
+fatto. Conviene compilarli solo sulle quattro o cinque cose che compri sempre.
+
+**Nel menu** (l'icona in alto a destra) trovi anche:
+
+- **Quanto sto spendendo** — la stima di spesa del mese per le generazioni.
+  ⚠️ È una stima, non il conto: i prezzi cambiano. La cifra vera sta nella Console
+  di Anthropic.
+- **Scarica un backup dei dati** — un file con dispensa, ricette, piano, diario e
+  spesa. Da tenere da parte, non da incollare in chat.
+
+Il vecchio tasto «Copia per Claude» non c'è più: l'inventario ormai vive nel database
+e il generatore se lo rilegge da solo.
 
 ---
 

@@ -577,8 +577,9 @@ numeri solo sui pasti di Ciprian, promemoria freezer sul giorno giusto),
 giorno) e **v5 Blocco 4** (modifica a mano, rigenerazione, «Lascia») — **questi due da
 collaudare**. In più: si cambia giorno strisciando col pollice.
 
-✅ **TUTTI I FILE SQL SONO ESEGUITI** (18/08/2026). Non richiederne nessuno: sono stati
-verificati uno per uno interrogando il database, non chiedendoli all'utente.
+✅ **I file SQL fino al Blocco 5 sono tutti eseguiti** (18/08/2026), verificati uno per
+uno interrogando il database. ⚠️ **Ne sono nati due dopo**: `tabelle-costi.sql` e
+`tabelle-nutrienti.sql` — vedi «PROSSIMO PASSO».
 `plan_meals.a_mano` · `plan_meals.ricetta_id` · `recipes.ingredienti/prot/kcal/tempo` ·
 `shopping_list.serve_il` · la tabella `plan_jobs`: ci sono tutti.
 
@@ -940,15 +941,21 @@ col campo «che voglia hai?».
 - **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.
 - **Stile: la passata ricca è approvata** nella versione attualmente online.
 
-#### ▶️ PROSSIMO PASSO — collaudare il piatto a mano e la spesa collegata
+#### ▶️ PROSSIMO PASSO — due passaggi su Supabase, poi collaudare
 
 **Aggiornato il 18/08/2026.**
 
-✅ **NON C'È NIENTE IN SOSPESO SUL DATABASE.** Tutti i file SQL sono eseguiti e la
-Edge Function è rideployata (18/08/2026) — verificato interrogando il database, vedi
-«TUTTI I FILE SQL SONO ESEGUITI» più sopra per il come. Il codice online e il database
-sono allineati: quello che non funziona, se qualcosa non funziona, è un difetto vero e
-non un passaggio dimenticato.
+⚠️ **DUE PASSAGGI IN SOSPESO** (aperti il 18/08 col push di menu, costi e valori per
+100 g). Prima erano zero: quel push ha toccato la function, e ogni volta che si tocca
+il `.ts` serve un deploy a mano.
+
+1. **Su Supabase → SQL Editor**: `tabelle-costi.sql` e `tabelle-nutrienti.sql`.
+2. **Su Supabase → Edge Functions → cosa-cucino → Deploy**: reincollare
+   `edge-function-cosa-cucino.ts` (Verify JWT resta OFF).
+
+Finché non sono fatti l'app non si rompe — le scritture riprovano senza le colonne
+nuove e lo dicono — ma «Quanto sto spendendo» resta a zero e i valori per 100 g non si
+possono salvare.
 
 ⚠️ **Quello che manca è il COLLAUDO**, ed è l'unica cosa che l'utente può fare e
 nessun altro. Due parti.
@@ -1130,28 +1137,64 @@ oppure la scelta di quanti giorni fare. Il primo è meglio: tiene la griglia sem
 sette giorni, e `righeDaSalvare()` salta quei pasti come già fa quando il generatore
 non scrive niente.
 
-#### 📌 Da fare DOPO i Blocchi 3 e 4 (chiesto il 13/08/2026)
+#### ✅ Fatti il 18/08/2026 — menu, costi, valori per 100 g
 
-**A · Ripulire il menu.** Via **«Copia per Claude»**: serviva quando l'inventario si
-portava a mano in chat, ma ormai vive nel database e la Edge Function se lo rilegge da
-sola. Resta il **copia-riepilogo del Diario**, che serve ancora. Al suo posto nel menu
-entrano la voce **Costi** (punto B) e un **export completo dei dati** come backup —
-scaricabile, non da incollare.
+Erano i tre punti A/B/C in coda dal 13/08. Fatti **insieme**, in un push solo, perché
+tutti e tre toccavano la Edge Function: ⚠️ **ogni deploy è un passaggio a mano
+dell'utente e vanno raggruppati.**
 
-**B · I costi dentro l'app.** La Edge Function registra i **token di ogni chiamata**
-nella tabella del tetto (`generator_usage`, che oggi ha solo `day` e `count`: servono
-due colonne in più), e il menu mostra la **stima di spesa del mese**.
-⚠️ Va scritto **stima**, e va detto che il conto vero sta nella Console di Anthropic:
-i prezzi cambiano e il conteggio dei token lato nostro non include tutto.
-⚠️ **Da fare al prossimo intervento sulla function, non con un deploy dedicato**: ogni
-deploy è un passaggio manuale sul pannello Supabase e vanno raggruppati.
+**A · Il menu ripulito.** Via **«Copia per Claude»** e la sua `testoExport()`:
+l'inventario si portava a mano in chat, ma ormai vive nel database e la function se lo
+rilegge da sé. Al suo posto **«Quanto sto spendendo»** e **«Scarica un backup dei
+dati»** (un file `.json`, da tenere, non da incollare).
+⚠️ Il **copia-riepilogo del Diario resta**: quello serve ancora.
+⚠️ `scaricaBackup()` prende quello che è **già in memoria** e, se qualcosa non si era
+caricato, **lo scrive nel file** invece di far finta: un backup che mente è peggio di
+nessun backup.
 
-**C · Più precisione sui numeri, senza database alimenti.** Sulle voci di dispensa due
-campi **facoltativi**: `kcal_100g` e `prot_100g`. Il generatore li usa quando ci sono,
-altrimenti stima come fa adesso **e lo dichiara**.
-Non contraddice la regola «niente database alimenti» qui sotto: non si importa nessun
-archivio, non c'è nessuno scanner di codici a barre, e i campi restano vuoti finché
-non li scrive l'utente sulle voci che le interessano.
+**B · I costi.** `tabelle-costi.sql` aggiunge `generator_usage.tok_in/tok_out` e la
+funzione `registra_token()`. I token si contano in **un punto solo**, dentro
+`pezziDiTesto()`, perché di lì passa ogni chiamata di tutti e tre i mestieri: contarli
+nei singoli mestieri vorrebbe dire dimenticarsene al quarto.
+
+⚠️ **Come arrivano i token, e non è ovvio**: `message_start` porta gli input (già
+definitivi), `message_delta` porta gli output **cumulativi**. Quindi l'uscita si
+**sostituisce** a ogni delta, non si somma — sommarla gonfierebbe la stima di parecchie
+volte. La scrittura sta in un `finally`, così vale anche se il flusso si rompe: quello
+che è stato speso è stato speso lo stesso.
+
+⚠️ **`generator_usage` resta invisibile alla chiave pubblica** (RLS accesa, zero
+policy): è ciò che la rende non manomettibile da chi apre l'indirizzo. Per mostrarne il
+contenuto **non si aggiunge una policy** — c'è il modo `costi` della function, che ha la
+chiave di servizio. E quel modo **non consuma una tacca**: guardare quanto spendi non
+deve farti spendere.
+
+⚠️ **La cifra è una STIMA e l'app lo scrive ogni volta.** `COSTO_IN`/`COSTO_OUT` nella
+function sono i prezzi al 18/08/2026: quando cambiano diventano sbagliati **in
+silenzio**. È metà del motivo per cui si rimanda alla Console di Anthropic per il conto
+vero. L'altra metà è che i token contati qui non comprendono tutto.
+
+**C · I valori per 100 g.** `tabelle-nutrienti.sql` aggiunge `inventory_items.prot_100g`
+e `kcal_100g`, **facoltativi**. `descriviDispensa()` li passa al modello dove ci sono, e
+tutti e tre i prompt dicono la stessa cosa: **dove il valore è dichiarato non si stima**,
+dove non c'è si stima come sempre.
+
+⚠️ **Non è un database alimenti** e la decisione che li vieta resta in piedi: nessun
+archivio importato, nessuno scanner di codici a barre, e i campi restano vuoti finché
+non li scrive una persona sulle voci che le interessano.
+
+⚠️ **`nutriente()` non è `numeroONull()`**: qui **lo zero si accetta**, perché esiste
+davvero (l'acqua ha 0 kcal). `numeroONull()` lo butta via apposta, ed è giusto nel suo
+contesto — sono due regole diverse e non vanno unificate.
+
+⚠️ **L'editor della dispensa è cambiato**: era un campo solo che si salvava perdendo il
+fuoco, ora è un pannellino con Salva. Con più campi il «salva quando esci dal campo»
+sarebbe una trappola — passare dalla quantità alle proteine salverebbe a metà. **Invio
+salva ancora**, quindi per cambiare solo una quantità i gesti restano quelli di prima.
+
+⚠️ **Tutte e tre le colonne nuove sono facoltative anche per il DATABASE**: se il file
+SQL non è stato eseguito, la scrittura **riprova senza** e lo dice, invece di far
+fallire un'azione che funzionava da sempre.
 
 #### Rimasto indietro, minore
 
@@ -1200,6 +1243,8 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `tabelle-staffetta.sql` | la tabella `plan_jobs`: la settimana che il server genera da sé. ✅ eseguito |
 | `tabelle-ricette-complete.sql` | il contenuto delle ricette (ingredienti, prot, kcal, tempo) e il filo `plan_meals.ricetta_id`. ✅ eseguito |
 | `tabelle-spesa-blocco5.sql` | `shopping_list.serve_il`: la riga della spesa sa per quando serve. ✅ eseguito |
+| `tabelle-costi.sql` | `generator_usage.tok_in/tok_out` e `registra_token()`: la stima di spesa. **Da eseguire** |
+| `tabelle-nutrienti.sql` | `inventory_items.prot_100g/kcal_100g`, facoltativi. **Da eseguire** |
 | `prova-piano-v5.sql` | una settimana finta per collaudare il calendario a mano |
 | `COLLAUDO-V5.md` | la checklist di collaudo del calendario. Come tutti i `COLLAUDO-*`, resta **solo sul computer**: è in `.gitignore` |
 | `seed-dati-iniziali.sql` | inventario e ricette di partenza (11/08) |
