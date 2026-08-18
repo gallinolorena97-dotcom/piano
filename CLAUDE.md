@@ -949,13 +949,15 @@ col campo «che voglia hai?».
 100 g). Prima erano zero: quel push ha toccato la function, e ogni volta che si tocca
 il `.ts` serve un deploy a mano.
 
-1. **Su Supabase → SQL Editor**: `tabelle-costi.sql` e `tabelle-nutrienti.sql`.
+1. **Su Supabase → SQL Editor**: `tabelle-costi.sql`, `tabelle-nutrienti.sql` e
+   `tabelle-blocco6.sql`.
 2. **Su Supabase → Edge Functions → cosa-cucino → Deploy**: reincollare
    `edge-function-cosa-cucino.ts` (Verify JWT resta OFF).
 
-Finché non sono fatti l'app non si rompe — le scritture riprovano senza le colonne
-nuove e lo dicono — ma «Quanto sto spendendo» resta a zero e i valori per 100 g non si
-possono salvare.
+Finché non sono fatti l'app non si rompe — le colonne nuove si mandano solo quando
+hanno un valore, e dove serve la scrittura riprova senza — ma «Quanto sto spendendo»
+resta a zero, i valori per 100 g non si salvano, e procedimento, sostituzioni e
+svuota-frigo non compaiono.
 
 ⚠️ **Quello che manca è il COLLAUDO**, ed è l'unica cosa che l'utente può fare e
 nessun altro. Due parti.
@@ -1010,6 +1012,59 @@ lista. ⚠️ Prudenza come sempre: si nomina mancante solo ciò che non si trov
 ⚠️ **`toast()` ha un quarto parametro, l'etichetta del bottone**, e torna sempre ad
 «Annulla» se non la si passa: un toast che si tenesse addosso la scritta del toast
 precedente prometterebbe la cosa sbagliata.
+
+#### La v5 — Blocco 6: procedimento, sostituzioni, svuota-frigo (18/08/2026)
+
+⚠️ **Serve `tabelle-blocco6.sql`**: `plan_meals.procedimento`, `plan_meals.sostituzioni`,
+`recipes.procedimento`, `plan_jobs.svuota_frigo`. Senza, tutto continua a funzionare —
+le colonne nuove si mandano **solo se hanno un valore** — ma i tre lavori non si vedono.
+
+**1 · Il procedimento.** Passi numerati, coi tempi veri **dentro** i passi («rosola 5
+minuti»), non alla fine: chi cucina ha le mani sporche e legge una riga per volta.
+⚠️ **La lunghezza la decide il piatto**: due o tre righe se è banale. Un procedimento
+lungo per una cosa ovvia non lo legge nessuno, e chi ne salta uno si abitua a saltarli
+tutti. Tetto a dieci passi, applicato lato codice (`passiPuliti()`), non solo chiesto
+nel prompt.
+
+⚠️ **Sta su `plan_meals` E su `recipes`, e non è una svista.** Sulla ricetta è la
+versione che resta e si riusa (per una persona); sul pasto è come si fa **quel** giorno.
+Un pasto generato dalla settimana non ha una ricetta collegata: se il procedimento
+vivesse solo sulle ricette, quei pasti resterebbero muti proprio dove serve di più.
+
+⚠️ **Nel calendario è CHIUSO** (`<details class="proc">`). Il piano si guarda dieci
+volte al giorno per sapere cosa si mangia e si apre due volte per cucinare: tenerlo
+aperto allungherebbe ogni scheda per il caso raro, e la striscia dei sette giorni
+sparirebbe sotto un muro di testo. È un `<details>`, cioè l'apri-e-chiudi del browser:
+nessuna riga di JS da mantenere.
+
+**2 · Le sostituzioni.** ⚠️ **Non sono «manca», sono il contrario di «manca».** «Manca»
+vuol dire vai a comprarlo; una sostituzione vuol dire *non serve che tu vada da nessuna
+parte, usa questa cosa che hai già*. Per questo stanno nel riquadro **menta** delle
+buone notizie e non nell'ambra degli avvisi: sono una spesa risparmiata.
+
+⚠️ **Mai sulla fonte proteica.** Il pollo non si sostituisce col tonno «perché tanto
+sono proteine»: quello cambia il piatto, e le proteine sono il vincolo che comanda su
+tutto il metodo. Valgono per erbe, aromi, contorni, latticini di rifinitura.
+
+**3 · Lo svuota-frigo.** Un chip nella passata, **spento di default e senza memoria**:
+è una scelta per *questa* settimana, non un'impostazione — chi parte fra dieci giorni
+non deve ritrovarselo acceso.
+
+⚠️ **Non è una modalità diversa del generatore: è una priorità in più**, che si infila
+davanti alla varietà e ai gusti ma resta **dietro** alle proteine e ai divieti. Nel
+prompt è scritto in quest'ordine, e il punto 4 lo dice per esteso: **il minimo di 55 g
+nei pasti principali di Ciprian resta**. Svuotare il frigo non è una scusa per dargli un
+piatto di verdure; se per arrivarci serve comprare una fonte proteica, quella va in
+«manca».
+
+⚠️ **Il flag vive su `plan_jobs`, non in un parametro di passaggio.** La settimana si
+genera a staffetta e ogni anello riparte da zero rileggendo la riga di lavoro: se il
+flag stesse solo nella prima chiamata, dal secondo giorno in poi il piano tornerebbe
+normale **e nessuno se ne accorgerebbe** guardando il risultato.
+
+⚠️ **Altri due gemelli da tenere allineati**, oltre a `rigaDiPasto()`/`righeDaSalvare()`:
+`passiPuliti()` e `sostPulite()` esistono **due volte**, nella function e nel frontend,
+e ripuliscono le stesse cose. Se cambia lo schema si toccano tutte e due.
 
 #### La grafica è CHIUSA (18/08/2026) — non si riapre da soli
 
@@ -1245,6 +1300,7 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `tabelle-spesa-blocco5.sql` | `shopping_list.serve_il`: la riga della spesa sa per quando serve. ✅ eseguito |
 | `tabelle-costi.sql` | `generator_usage.tok_in/tok_out` e `registra_token()`: la stima di spesa. **Da eseguire** |
 | `tabelle-nutrienti.sql` | `inventory_items.prot_100g/kcal_100g`, facoltativi. **Da eseguire** |
+| `tabelle-blocco6.sql` | procedimento e sostituzioni sui pasti, procedimento sulle ricette, `plan_jobs.svuota_frigo`. **Da eseguire** |
 | `prova-piano-v5.sql` | una settimana finta per collaudare il calendario a mano |
 | `COLLAUDO-V5.md` | la checklist di collaudo del calendario. Come tutti i `COLLAUDO-*`, resta **solo sul computer**: è in `.gitignore` |
 | `seed-dati-iniziali.sql` | inventario e ricette di partenza (11/08) |

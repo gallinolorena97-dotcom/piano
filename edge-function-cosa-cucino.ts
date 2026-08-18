@@ -734,6 +734,26 @@ Non inventare mai un ingrediente che non c'è.
 - "tempo": minuti veri di preparazione.
 - "proteina_principale": una parola minuscola e generica (pollo, tonno, uova, manzo,
   pesce, legumi, formaggio, maiale). Serve alla regola della varietà.
+- "procedimento": i passi per farlo, uno per riga, nell'ordine in cui si fanno.
+  ⚠️ LA LUNGHEZZA LA DECIDE IL PIATTO, NON TU. Se è banale bastano DUE O TRE righe
+  ("Scalda la piastra. Cuoci il petto 4 minuti per lato. Insalata a parte."): un
+  procedimento lungo per una cosa ovvia non lo legge nessuno, e chi lo salta si abitua
+  a saltarli tutti. Se è un piatto vero, arriva anche a otto passi, ma non oltre.
+  ⚠️ TEMPI VERI DENTRO I PASSI, non alla fine: "rosola 5 minuti", "in forno 25 minuti
+  a 200°". Chi cucina ha le mani sporche e legge una riga per volta.
+  Niente passi vuoti tipo "prepara gli ingredienti".
+- "sostituzioni": ⚠️ NON sono la stessa cosa di "manca", sono il contrario.
+  "manca" vuol dire: vai a comprarlo. Una sostituzione vuol dire: non serve che tu vada
+  da nessuna parte, usa quest'altra cosa che c'è già in dispensa.
+  Quando un ingrediente NON ESSENZIALE non c'è, prima di metterlo in "manca" guarda se
+  in dispensa c'è qualcosa che fa lo stesso mestiere: prezzemolo→basilico,
+  scalogno→cipolla, panna→ricotta, aceto di mele→aceto di vino. Se c'è, usalo negli
+  ingredienti e scrivi la sostituzione, e NON metterlo in "manca".
+  ⚠️ MAI SULLA FONTE PROTEICA. Il pollo non si sostituisce col tonno "perché tanto sono
+  proteine": quello cambia il piatto, e le proteine sono il vincolo che comanda su
+  tutto. Le sostituzioni valgono per erbe, aromi, contorni, latticini di rifinitura.
+  "uso" deve essere una cosa che c'è DAVVERO in dispensa, scritta col nome della
+  dispensa. Se non c'è niente che vada bene, lista vuota e l'ingrediente va in "manca".
 - Campi che non servono: stringa vuota "" per i testi, 0 per i numeri, [] per le liste.
 
 Scrivi in italiano semplice e concreto. Niente tono da dieta, niente premi, niente colpe.`;
@@ -747,6 +767,21 @@ const INGREDIENTE_PIANO = {
     per:  { type: 'string' },
   },
   required: ['nome', 'qta', 'per'],
+  additionalProperties: false,
+};
+
+// Un passo del procedimento: una frase sola, con i tempi veri dentro.
+const PASSO = { type: 'string' };
+
+// Una sostituzione: non e' una mancanza, e' il contrario di una mancanza.
+const SOSTITUZIONE = {
+  type: 'object',
+  properties: {
+    invece_di: { type: 'string' },
+    uso:       { type: 'string' },   // deve esserci DAVVERO in dispensa
+    perche:    { type: 'string' },
+  },
+  required: ['invece_di', 'uso', 'perche'],
   additionalProperties: false,
 };
 
@@ -771,10 +806,13 @@ const SCHEMA_SETTIMANA = {
           scongelare_il:       { type: 'string' },   // AAAA-MM-GG, di solito il giorno prima
           avanzo_per:          { type: 'string' },
           manca:               { type: 'array', items: { type: 'string' } },
+          procedimento:        { type: 'array', items: PASSO },
+          sostituzioni:        { type: 'array', items: SOSTITUZIONE },
           proteina_principale: { type: 'string' },
         },
         required: ['day','pasto','piatto','perche','ingredienti','dolce','tempo','prot','kcal',
-                   'scongelamento','scongelare_il','avanzo_per','manca','proteina_principale'],
+                   'scongelamento','scongelare_il','avanzo_per','manca','procedimento',
+                   'sostituzioni','proteina_principale'],
         additionalProperties: false,
       },
     },
@@ -874,6 +912,25 @@ la carne), altre no (un cucchiaio di olio, mezza cipolla, il sale).
 7. **"manca"**: solo le cose che servono e che in dispensa non ci sono. Se non manca
    niente, lista vuota. Non inventare mancanze per prudenza.
 
+8. **"procedimento"**: i passi per farlo, uno per riga, nell.ordine in cui si fanno, e
+   PER UNA PERSONA come il resto della ricetta (i tempi non cambiano se le porzioni
+   raddoppiano). ⚠️ La lunghezza la decide il piatto: se è banale bastano DUE O TRE
+   righe — un procedimento lungo per una cosa ovvia non lo legge nessuno, e chi lo
+   salta si abitua a saltarli tutti. ⚠️ I tempi veri stanno DENTRO i passi («rosola 5
+   minuti», «in forno 25 minuti a 200°»), non alla fine: chi cucina ha le mani sporche
+   e legge una riga per volta. Niente passi vuoti tipo «prepara gli ingredienti».
+
+9. **"sostituzioni"**: ⚠️ NON sono la stessa cosa di "manca", sono il contrario.
+   "manca" vuol dire vai a comprarlo; una sostituzione vuol dire non serve che tu vada
+   da nessuna parte, usa quest.altra cosa che hai già.
+   Quando un ingrediente NON ESSENZIALE non c.è, prima di metterlo in "manca" guarda se
+   in dispensa c.è qualcosa che fa lo stesso mestiere (prezzemolo→basilico,
+   scalogno→cipolla, panna→ricotta). Se c.è, usalo e scrivi la sostituzione, e NON
+   metterlo in "manca".
+   ⚠️ MAI SULLA FONTE PROTEICA: il pollo non si sostituisce col tonno «perché tanto
+   sono proteine». Vale per erbe, aromi, contorni, latticini di rifinitura.
+   "uso" deve esserci DAVVERO in dispensa, col nome della dispensa.
+
 Campi che non servono: stringa vuota "" per i testi, 0 per i numeri, [] per le liste.
 Scrivi in italiano semplice e concreto. Niente tono da dieta, niente premi, niente colpe.`;
 
@@ -903,11 +960,15 @@ const SCHEMA_RICETTA = {
     nota:                { type: 'string' },
     tempo:               { type: 'integer' },
     manca:               { type: 'array', items: { type: 'string' } },
+    // il procedimento e' per UNA persona come il resto della ricetta:
+    // i tempi non cambiano se le porzioni raddoppiano
+    procedimento:        { type: 'array', items: PASSO },
+    sostituzioni:        { type: 'array', items: SOSTITUZIONE },
     proteina_principale: { type: 'string' },
   },
   required: ['piatto','ricetta_ingredienti','ricetta_prot','ricetta_kcal',
              'pasto_ingredienti','pasto_prot','pasto_kcal','dolce','nota','tempo',
-             'manca','proteina_principale'],
+             'manca','procedimento','sostituzioni','proteina_principale'],
   additionalProperties: false,
 };
 
@@ -1143,6 +1204,10 @@ type PezziContesto = {
   fuoriELiberi: string[];
   settimana: string[];
   ioSlug: string;
+  // ⚠️ Lo svuota-frigo NON è una modalità diversa del generatore: è una
+  // priorità in più, che si infila davanti alla varietà e ai gusti ma
+  // resta DIETRO alle proteine e ai divieti. Vedi la sezione nel prompt.
+  svuotaFrigo?: boolean;
 };
 
 /**
@@ -1158,7 +1223,25 @@ function costruisciContestoSettimana(c: Contesto, p: PezziContesto): string {
   const impostazioni = Object.fromEntries(c.setRows.map((s) => [s.key, s.value]));
   const quantiPasti = p.giorni.reduce((n, g) => n + g.pasti.length, 0);
 
-  return `## DISPENSA DI ADESSO
+  return `${p.svuotaFrigo ? `## ⚠️ SVUOTA-FRIGO — questa volta comanda questo
+
+Chi ha chiesto questo piano sta per partire, o sta per fare una spesa grossa, e vuole
+finire quello che ha. Quindi:
+
+1. **Massimizza il consumo di quello che si deteriora prima**: prima il fresco del
+   frigo, poi quello che ha una scadenza vicina o un «?» sospetto, poi la dispensa.
+   Una cosa che si butta è peggio di un piatto poco entusiasmante.
+2. **Compra il meno possibile**: "manca" dovrebbe essere vuoto o quasi. Se serve
+   qualcosa che non c'è, prima cerca una sostituzione fra quello che c'è.
+3. **La varietà passa in secondo piano**: ripetere un ingrediente due giorni di fila
+   qui va bene, se serve a finirlo. I DIVIETI delle persone invece restano intoccabili,
+   e non si negoziano nemmeno adesso.
+4. ⚠️ **IL MINIMO PROTEICO DI CIPRIAN RESTA**: 55 g nei suoi pasti principali, come
+   sempre. Svuotare il frigo non è una scusa per dargli un piatto di verdure. Se per
+   arrivarci serve comprare una fonte proteica, mettila in "manca": è l'unica cosa per
+   cui vale la pena andare a fare la spesa.
+
+` : ''}## DISPENSA DI ADESSO
 
 ${descriviDispensa(c.inv)}
 ${p.restaPrima ? `\n⚠️ ATTENZIONE: i giorni precedenti del piano hanno già consumato una parte di questa dispensa.\nDopo quei giorni resta questo:\n${p.restaPrima}\nParti da QUI, non dalla dispensa piena.` : ''}
@@ -1267,6 +1350,7 @@ async function pianificaSettimana(body: Record<string, unknown>): Promise<Respon
   const quantiPasti = giorni.reduce((n, g) => n + g.pasti.length, 0);
   const contesto = costruisciContestoSettimana(c, {
     giorni, giaFatti, restaPrima, fuoriELiberi, settimana, ioSlug,
+    svuotaFrigo: body.svuota_frigo === true,
   });
 
   const chiamata = await chiamaAnthropic(REGOLE_SETTIMANA, contesto, SCHEMA_SETTIMANA, MAX_TOKENS_SETTIMANA);
@@ -1444,8 +1528,32 @@ function rigaDiPasto(g: GiornoPassata, quale: string, m: any, oggi: string) {
     scongelare_il: /^\d{4}-\d{2}-\d{2}$/.test(String(m?.scongelare_il ?? '')) ? m.scongelare_il : null,
     avanzo_per: String(m?.avanzo_per ?? '').trim() || null,
     dipende_da_spesa: (Array.isArray(m?.manca) ? m.manca : []).length > 0,
+    // ⚠️ Le due colonne del Blocco 6 si mandano SOLO se il modello ha
+    // scritto qualcosa: su un database senza tabelle-blocco6.sql mandarle
+    // sempre romperebbe tutta la generazione, che funzionava già.
+    ...(passiPuliti(m?.procedimento).length ? { procedimento: passiPuliti(m.procedimento) } : {}),
+    ...(sostPulite(m?.sostituzioni).length ? { sostituzioni: sostPulite(m.sostituzioni) } : {}),
   };
 }
+
+/** I passi buoni: niente righe vuote, niente romanzi, al massimo dieci.
+    ⚠️ Il tetto non è estetica: un procedimento che non finisce più non lo
+    legge nessuno, e chi ne salta uno si abitua a saltarli tutti. */
+const passiPuliti = (v: unknown) => (Array.isArray(v) ? v : [])
+  .map((x) => String(x ?? '').trim())
+  .filter(Boolean)
+  .slice(0, 10);
+
+/** Le sostituzioni buone: servono tutti e tre i pezzi, se no non si
+    capisce né cosa manca né cosa ci si mette. */
+const sostPulite = (v: unknown) => (Array.isArray(v) ? v : [])
+  .map((x: any) => ({
+    invece_di: String(x?.invece_di ?? '').trim(),
+    uso:       String(x?.uso ?? '').trim(),
+    perche:    String(x?.perche ?? '').trim(),
+  }))
+  .filter((x) => x.invece_di && x.uso)
+  .slice(0, 6);
 
 /** Scrive righe nel calendario cancellando SOLO i pasti che riscrive. */
 async function scriviNelCalendario(righe: any[]) {
@@ -1455,7 +1563,21 @@ async function scriviNelCalendario(righe: any[]) {
     if (!giorni.length) continue;
     await scrivi('DELETE', `plan_meals?pasto=eq.${q}&day=in.(${giorni.join(',')})`, undefined, 'return=minimal');
   }
-  await scrivi('POST', 'plan_meals', righe, 'return=minimal');
+  try {
+    await scrivi('POST', 'plan_meals', righe, 'return=minimal');
+  } catch (e) {
+    // ⚠️ IL DEPLOY E IL FILE SQL NON ARRIVANO MAI NELLO STESSO ISTANTE.
+    // Fra il momento in cui questa function viene reincollata e quello in
+    // cui il file SQL viene eseguito passa qualche minuto, e in quei minuti
+    // il modello scrive già procedimento e sostituzioni verso colonne che
+    // non esistono ancora. Senza questo ripiego una settimana intera si
+    // perderebbe per un ordine di operazioni — cioè per niente.
+    // Meglio un piano senza procedimento che nessun piano.
+    if (!/procedimento|sostituzioni/i.test(String((e as any)?.message ?? ''))) throw e;
+    console.error('colonne del Blocco 6 assenti: scrivo senza');
+    await scrivi('POST', 'plan_meals',
+      righe.map(({ procedimento, sostituzioni, ...resto }) => resto), 'return=minimal');
+  }
 }
 
 /** Quello che manca finisce nella lista della spesa, senza doppioni. */
@@ -1729,6 +1851,9 @@ async function passoStaffetta(id: string) {
         (x[q].modo === 'casa' ? ` — mangia: ${x[q].chi}` : '') +
         (x[q].nota.trim() ? ` — nota: ${x[q].nota.trim()}` : ''))),
       ioSlug: String(lavoro.io_slug ?? 'lorena'),
+      // il flag viaggia con la riga di lavoro: ogni anello della staffetta
+      // lo rilegge dal database invece di fidarsi di chi l'ha svegliato
+      svuotaFrigo: lavoro.svuota_frigo === true,
     });
 
     // ⚠️ Si scrive quello che è ARRIVATO, non quello che era stato chiesto.
@@ -1817,10 +1942,18 @@ async function avviaStaffetta(body: Record<string, unknown>): Promise<Response> 
     const creato = await scrivi('POST', 'plan_jobs', {
       passata, oggi, io_slug: String(body.io_slug ?? 'lorena').slice(0, 40),
       giorni_tot: daCucinare, stato: 'in_corso', passo: 'Sto per cominciare…',
+      // ⚠️ La colonna si manda SOLO quando serve davvero: su un database in
+      // cui tabelle-blocco6.sql non è ancora stato eseguito non esiste, e
+      // mandarla sempre romperebbe una generazione normale, che funzionava.
+      ...(body.svuota_frigo === true ? { svuota_frigo: true } : {}),
     });
     lavoro = Array.isArray(creato) ? creato[0] : creato;
   } catch (e) {
     console.error('creazione lavoro', e);
+    // ⚠️ Due cause diverse, due messaggi diversi: mandare qualcuno a
+    // eseguire il file sbagliato è peggio che non dirgli niente.
+    if (/svuota_frigo/i.test(String((e as any)?.message ?? '')))
+      return errore('Per lo svuota-frigo manca una colonna. Esegui tabelle-blocco6.sql su Supabase.', 500);
     return errore('Manca la tabella dei lavori. Esegui tabelle-staffetta.sql su Supabase.', 500);
   }
 
