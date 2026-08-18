@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <title>Piano &amp; Dispensa</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#FFFFFF">
+<!-- Lo stesso lavanda della testata: se resta bianco, su iPhone la barra
+     di stato taglia in due la testata invece di continuarla. -->
+<meta name="theme-color" content="#EFEBFC">
 <meta name="color-scheme" content="light">
 
 <!-- Apple / home screen iPhone -->
@@ -87,7 +89,10 @@
      coppie identiche copiaincollate: ora hanno un nome che dice il RUOLO,
      così due posti che fanno la stessa cosa non possono più scollarsi.
      ------------------------------------------------------------ */
-  --grad-testata:linear-gradient(120deg,#F6EFFC 0%,var(--surface) 46%,#FDF4E9 100%);
+  /* ⛔ Qui c'era --grad-testata, la sfumatura lavanda-pesca della testata.
+     Tolta il 18/08/2026: era il «gradiente ovunque da template» che il
+     brief del design vieta, e generata invece che disegnata. La testata
+     ora ha UN colore solo, quello dell'icona. Non rimetterla. */
   --grad-fascia:linear-gradient(104deg,#E7DBFB 0%,#F9EBD8 66%,#EAF6EF 100%);
   --grad-fascia-tenue:linear-gradient(104deg,#F3EDFB 0%,#FAF3EA 66%,#F0F7F3 100%);
   --grad-pillola:linear-gradient(96deg,#EDE4FA 0%,#F7F0FB 55%,#E9F5EF 100%);
@@ -163,59 +168,74 @@ button{cursor:pointer;border:0;background:none}
 h1,h2,h3{font-family:var(--font-titolo);font-weight:600;margin:0}
 
 /* ============================================================
-   3 · TESTATA — LA FIRMA DELL'APP
+   3 · TESTATA — LA FIRMA DELL'APP (secondo tentativo, 18/08/2026)
    ============================================================
-   È l'unica cosa che si vede da OGNI schermata, e finora era la più
-   spoglia: un titolo, un hamburger, una riga di testo grigia.
+   Il primo tentativo era troppo timido e il giudizio è stato «si sente la
+   pulizia, non si vede la firma». Tre correzioni, e sono la stessa idea
+   portata fino in fondo.
 
-   Tre mosse, e sono una cosa sola:
+   L'IDEA: la testata NON è una barra sopra l'app, è l'ETICHETTA DEL
+   BARATTOLO. Aprire l'app deve somigliare ad aprire l'icona.
 
-   1 · IL MARCHIO. Il barattolo col germoglio è già la faccia dell'app —
-       sta sull'icona dell'iPhone — ma dentro l'app non compariva da
-       nessuna parte. Ora apre la testata: chi apre l'icona e chi apre
-       l'app vedono la stessa cosa.
+   1 · LA TESTATA HA IL COLORE DELL'ICONA. Via la sfumatura lavanda-pesca:
+       era esattamente il «gradiente ovunque da template» che il brief
+       vietava, e per giunta generata invece che disegnata. Al suo posto
+       UN colore solo, --lavanda-soft, che è lo stesso quadrato lavanda su
+       cui sta il barattolo di apple-touch-icon.png. La testata diventa
+       quel quadrato, ingrandito.
 
-   2 · IL BORDO A MANO. La riga sotto la testata non è più un filo dritto
-       da 1px: è lo stesso scarabocchio ondulato che l'app già disegna
-       sotto i titoletti di sezione (.q-label::after), steso per tutta la
-       larghezza. Il segno che l'app usava in piccolo diventa il suo
-       bordo. È l'opposto del gradiente da template: non si può prendere
-       questa testata e appiccicarla a un'altra app, perché è fatta con
-       la calligrafia di questa.
+   2 · IL BARATTOLO A 54 PIXEL, E SENZA RIQUADRO. Prima era 38px dentro
+       una piastrellina lavanda: un'icona fra le icone, da cercare. Ora è
+       grande e sta direttamente sul fondo lavanda — cioè è l'icona
+       dell'app a grandezza vera. Non gli serve un riquadro, perché il
+       riquadro è tutta la testata. E ha un ruolo: regge le DUE righe
+       (titolo e pillola), non sta di fianco a una.
 
-   3 · GLI OBIETTIVI IN UNA PILLOLA. Erano una riga di testo grigia con
-       una freccina: non sembrava toccabile, e invece apre il profilo.
-       Ora è una pillola su lavanda, col nome di chi sei in evidenza.
+   3 · L'ONDA CON UN TRATTO VERO. Era 2.6px di lavanda pallido su bianco:
+       a quello spessore qualunque onda si legge come un bordo. Ora è 5px
+       di viola pieno, con un passo tre volte più largo, e sta su un fondo
+       colorato: si vede che è un segno tirato a mano, non un filo di
+       separazione. È lo stesso gesto dello scarabocchio sotto i titoletti
+       di sezione (.q-label::after), che resta com'è: la testata parla la
+       calligrafia che l'app usa già in piccolo.
+
+   ⚠️ Conseguenze da non disfare:
+   - la pillola degli obiettivi e il tasto del menu sono passati a fondo
+     BIANCO: su una testata lavanda un oggetto lavanda sparisce;
+   - .h-title em usa --viola-testo e non --viola: il viola pieno su
+     --lavanda-soft dà 4.43, sotto la soglia AA (sta scritto nei token);
+   - <meta name="theme-color"> è lavanda come la testata, altrimenti su
+     iPhone la barra di stato resta bianca e taglia la testata in due.
    ============================================================ */
 header{
   position:-webkit-sticky;position:sticky;top:0;z-index:40;
-  background:var(--grad-testata);
-  padding:calc(12px + var(--safe-t)) 16px 15px;
-}
-/* Il bordo a mano. Il disegno è la stessa onda di .q-label::after, con
-   lo stesso passo (12px per mezza onda) e lo stesso tratto: la piastrella
-   è larga un'onda intera, così si ripete senza saldature visibili.
-   ⚠️ Il colore è --segno, ma qui è scritto a mano (%23A992E8) perché i
-   data-URI non leggono le variabili: se cambia il token, cambia anche qui. */
-header::after{
-  content:'';position:absolute;left:0;right:0;bottom:0;height:9px;
-  pointer-events:none;
-  background:repeat-x left bottom/24px 9px
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='9'%3E%3Cpath d='M0 5.4q6-5.6 12 0t12 0' fill='none' stroke='%23A992E8' stroke-width='2.6' stroke-linecap='round'/%3E%3C/svg%3E");
-}
-.h-top{display:flex;align-items:center;gap:11px;max-width:860px;margin:0 auto}
-/* il barattolo: sta su un suo riquadro morbido, come un'etichetta */
-.h-marchio{
-  flex:0 0 38px;width:38px;height:38px;border-radius:12px;
   background:var(--lavanda-soft);
-  display:flex;align-items:center;justify-content:center;
+  padding:calc(12px + var(--safe-t)) 16px 22px;
 }
-.h-title{font-size:21px;letter-spacing:-.2px;flex:1;line-height:1.15}
-.h-title em{font-style:normal;color:var(--viola)}
+/* L'onda. Piastrella larga un'onda intera (34px), così si ripete senza
+   saldature. ⚠️ Il colore è --viola, ma qui è scritto a mano (%236B5BD2)
+   perché i data-URI non leggono le variabili: se cambia il token, va
+   cambiato anche qui. */
+header::after{
+  content:'';position:absolute;left:0;right:0;bottom:0;height:14px;
+  pointer-events:none;
+  background:repeat-x left bottom/34px 14px
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='34' height='14'%3E%3Cpath d='M0 7q8.5-7 17 0t17 0' fill='none' stroke='%236B5BD2' stroke-width='4.6' stroke-linecap='round'/%3E%3C/svg%3E");
+}
+.h-top{display:flex;align-items:center;gap:13px;max-width:860px;margin:0 auto}
+/* il barattolo dell'icona, a grandezza vera: niente riquadro, perché il
+   riquadro è la testata */
+.h-marchio{flex:0 0 54px;width:54px;height:54px;display:block}
+.h-marchio svg{display:block;width:100%;height:100%}
+/* le due righe che il barattolo regge */
+.h-testi{flex:1;min-width:0}
+.h-title{font-size:22px;letter-spacing:-.2px;line-height:1.15}
+/* ⚠️ --viola-testo, non --viola: su lavanda il viola pieno è sotto la AA */
+.h-title em{font-style:normal;color:var(--viola-testo)}
 .h-targets{
   display:inline-flex;align-items:center;gap:6px;
-  margin:9px 0 0;padding:6px 13px;border-radius:99px;
-  background:var(--lavanda-soft);border:1px solid var(--lavanda);
+  margin:7px 0 0;padding:6px 13px;border-radius:99px;
+  background:var(--surface);border:1px solid var(--lavanda);
   font-size:13px;font-weight:600;color:var(--viola-testo);
   min-height:34px;text-align:left;
   transition:background var(--t),border-color var(--t);
@@ -224,11 +244,10 @@ header::after{
    e una pillola vuota sarebbe una macchia senza significato */
 .h-targets:empty{display:none}
 .h-targets::after{content:'›';font-weight:700;font-size:16px;line-height:1}
-.h-targets:hover{background:var(--lavanda);border-color:var(--viola)}
-.h-riga{max-width:860px;margin:0 auto;display:flex}
+.h-targets:hover{background:var(--lavanda-soft);border-color:var(--viola)}
 .h-btn{
   width:44px;height:44px;flex:0 0 44px;border-radius:var(--r-m);
-  background:var(--lavanda-soft);color:var(--viola);
+  background:var(--surface);color:var(--viola);
   display:flex;align-items:center;justify-content:center;
   transition:background var(--t),transform var(--t);
 }
@@ -1296,14 +1315,19 @@ select.field{appearance:none;-webkit-appearance:none;
 <header>
   <div class="h-top">
     <span class="h-marchio" aria-hidden="true">
-      <svg viewBox="0 0 24 24" width="24" height="24"><use href="#i-marchio"/></svg>
+      <!-- viewBox stretto sul barattolo: nell'icona il margine intorno lo
+           fa il quadrato lavanda, e qui il quadrato è tutta la testata —
+           tenere anche il margine lo rimpicciolirebbe di nuovo. -->
+      <svg viewBox="3.6 1.6 16.8 21"><use href="#i-marchio"/></svg>
     </span>
-    <h1 class="h-title">Piano &amp; <em>Dispensa</em></h1>
+    <div class="h-testi">
+      <h1 class="h-title">Piano &amp; <em>Dispensa</em></h1>
+      <button class="h-targets" id="targets" type="button"></button>
+    </div>
     <button class="h-btn" id="menuBtn" type="button" aria-label="Apri il menu" aria-expanded="false">
       <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><use href="#i-menu"/></svg>
     </button>
   </div>
-  <div class="h-riga"><button class="h-targets" id="targets" type="button"></button></div>
 </header>
 
 <nav class="tabs" role="tablist">
@@ -1573,6 +1597,17 @@ const esc = (t) => String(t ?? '').replace(/[&<>"']/g, c =>
 const ico = (nome, misura = 18) =>
   `<svg class="ico" viewBox="0 0 24 24" width="${misura}" height="${misura}"
         aria-hidden="true"><use href="#i-${nome}"/></svg>`;
+
+/** Uno spazio fra il numero e l'unità, SOLO per mostrarla.
+    In dispensa convivono «300 g» e «500g» perché è come sono state
+    scritte: una a mano, l'altra dal generatore. Il dato resta quello che
+    è — riscriverlo vorrebbe dire toccare la dispensa di nascosto — ma
+    letto in colonna quel mezzo spazio in meno si nota.
+    ⚠️ Prudenza come dappertutto: si tocca solo un numero attaccato a
+    un'unità che conosciamo. «2×100 g», «1,5», «? da verificare», «scad.
+    29/8» passano intatti. E ⚠️ non si usa MAI dentro un campo da
+    compilare: quello che si salva dev'essere quello che si è scritto. */
+const mostraQta = (t) => String(t ?? '').replace(/(\d)(kg|mg|ml|cl|dl|g|l)\b/gi, '$1 $2');
 
 const CAT_LABEL = { frigo:'FRIGO', freezer:'CONGELATORE', dispensa:'DISPENSA' };
 const CAT_ORDER = ['frigo','freezer','dispensa'];
@@ -2308,7 +2343,7 @@ function ingredientiHtml(r){
     return `<div class="ing-head">${esc(titolo)}</div>` +
       gruppi.get(k).map(i => `<div class="ing">
         <div style="flex:1">${esc(i.nome || '')}</div>
-        <div class="ing-q">${esc(i.qta || '')}</div></div>`).join('');
+        <div class="ing-q">${esc(mostraQta(i.qta))}</div></div>`).join('');
   }).join('');
 }
 
@@ -4034,7 +4069,7 @@ function rigaInv(i){
   return `<div class="item ${v ? 'verifica' : ''}" data-id="${i.id}">
     <div class="item-name">${esc(i.name)}</div>
     ${v ? '<span class="tag-verifica">VERIFICA</span>' : ''}
-    <div class="item-qty editable" data-act="qty">${esc(i.qty)}</div>
+    <div class="item-qty editable" data-act="qty">${esc(mostraQta(i.qty))}</div>
     <button class="icon-btn modifica" data-act="qty" aria-label="Modifica la quantità di ${esc(i.name)}">
       ${ico("matita",19)}
     </button>
@@ -4432,7 +4467,7 @@ function vuoto(testo){
 function cardProposta(p, i){
   const lista = (arr) => (arr || []).map(x =>
     `<div class="ing"><div style="flex:1">${esc(x.nome)}</div>
-     <div class="ing-q">${esc(x.quantita)}</div></div>`).join('');
+     <div class="ing-q">${esc(mostraQta(x.quantita))}</div></div>`).join('');
 
   const perX = (p.ingredienti_x || []).length;
 
@@ -4677,7 +4712,7 @@ function apriCucinato(p, card, opz = {}){
 
 function rigaCucinato(r, k){
   const inDispensa = r.voce
-    ? `<span class="cuc-ora">in dispensa: ${esc(r.voce.qty)}</span>`
+    ? `<span class="cuc-ora">in dispensa: ${esc(mostraQta(r.voce.qty))}</span>`
     : `<span class="cuc-ora assente">non è in dispensa</span>`;
   return `<div class="cuc-riga" data-k="${k}">
     <div class="cuc-testa">

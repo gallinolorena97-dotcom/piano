@@ -380,31 +380,70 @@ triangolini fatti con due sfumature incrociate — ora è una freccia del set, t
 Le frecce su/giù dei campi numero sono via. ⚠️ **L'icona del calendario resta** (si
 tinge soltanto): toglierla renderebbe le date impossibili da inserire su iPhone.
 
-#### La firma: la testata (18/08/2026) — ⛔ in attesa del giudizio
+#### La firma: la testata — ⛔ secondo tentativo, in attesa del giudizio
 
-`PROMPT-FIX-E-GRAFICA.md` chiedeva **una cosa sola fatta benissimo**, a scelta fra le
-illustrazioni degli stati vuoti e il trattamento della testata. Scelta la **testata**,
-per tre motivi: è l'unica cosa che si vede da ogni schermata; le illustrazioni
-esistevano già ed erano state approvate; e `.arco-testata` era **codice morto** — il
-trattamento della testata era stato disegnato e mai attaccato.
+`PROMPT-FIX-E-GRAFICA.md` chiede **una cosa sola fatta benissimo**, a scelta fra le
+illustrazioni degli stati vuoti e il trattamento della testata. Scelta la **testata**:
+è l'unica cosa che si vede da ogni schermata, le illustrazioni esistevano già ed erano
+approvate, e `.arco-testata` era **codice morto** — il trattamento della testata era
+stato disegnato e mai attaccato.
 
-Tre mosse che sono una cosa sola:
+**Il primo tentativo (18/08, commit `d54d948`) è stato bocciato.** Il giudizio, testuale:
+«la pulizia si sente ed è promossa; la firma no». Tre motivi, e vanno ricordati perché
+sono la lezione, non l'episodio:
 
-1. **Il marchio.** Il barattolo col germoglio è già la faccia dell'app (sta sull'icona
-   dell'iPhone) ma dentro l'app non compariva da nessuna parte. Ora apre la testata.
+1. il barattolo era **38px dentro una piastrellina**: «se lo devo cercare, non firma»;
+2. l'onda era **2.6px pallidi a larghezza intera**: a quello spessore qualunque onda
+   «si legge come un bordo qualsiasi»;
+3. il fondo della testata era la sfumatura lavanda-pesca, cioè **il gradiente da
+   template che il brief stesso vieta**, e per giunta generato invece che disegnato.
+
+⚠️ **La regola che ne esce, e vale per ogni firma futura**: una firma timida non è una
+firma prudente, è una firma che non c'è. Se una cosa deve essere riconoscibile, o ha
+peso o non vale il posto che occupa.
+
+**Il secondo tentativo** parte da un'idea sola: la testata **non è una barra sopra
+l'app, è l'etichetta del barattolo**. Aprire l'app deve somigliare ad aprire l'icona.
+
+1. **Un colore solo, quello dell'icona.** La testata è `--lavanda-soft` piatto — lo
+   stesso quadrato lavanda su cui sta il barattolo di `apple-touch-icon.png`. Il token
+   `--grad-testata` è stato **cancellato**: ⛔ non rimetterlo.
+2. **Il barattolo a 54px e senza riquadro**, col `viewBox` stretto sul disegno: il
+   riquadro è tutta la testata, tenerne un altro dentro lo rimpicciolirebbe di nuovo.
+   E regge **due righe** (titolo e pillola), non sta di fianco a una.
    ⚠️ Se cambia `favicon.svg`, cambia anche `#i-marchio`: il senso è che siano la
    stessa cosa.
-2. **Il bordo a mano.** La riga sotto la testata non è più un filo dritto da 1px: è lo
-   **stesso scarabocchio ondulato** che l'app già disegna sotto i titoletti di sezione
-   (`.q-label::after`), steso per tutta la larghezza, stesso passo e stesso tratto. Il
-   segno che l'app usava in piccolo diventa il suo bordo — non si può prendere questa
-   testata e appiccicarla a un'altra app.
-3. **Gli obiettivi in una pillola**, non più una riga di testo grigia che non sembrava
-   toccabile. È vuota davvero quando non c'è niente da dire (`.h-targets:empty`).
+3. **L'onda con un tratto vero**: 4.6px di `--viola` pieno, passo tre volte più largo,
+   su fondo colorato. È lo stesso gesto dello scarabocchio sotto i titoletti di sezione
+   (`.q-label::after`, che resta com'è): l'app parla in grande la calligrafia che usa
+   già in piccolo.
+4. **Gli obiettivi in una pillola**, promossa al primo giro: non era più una riga di
+   testo grigia che non sembrava toccabile.
 
-⚠️ Il vecchio `.arco-testata` è stato **cancellato**, e non va rimesso: era un'onda
-*piena* color superficie, e il fondo dell'app è sfumato — avrebbe lasciato una macchia.
-Il bordo nuovo è un **segno**, non una superficie.
+⚠️ **Tre conseguenze da non disfare:**
+- pillola e tasto del menu sono passati a fondo **bianco**: su una testata lavanda un
+  oggetto lavanda sparisce;
+- `.h-title em` usa `--viola-testo`, **non** `--viola`: il viola pieno su
+  `--lavanda-soft` dà 4.43, sotto la AA (sta scritto nei token);
+- `<meta name="theme-color">` è lavanda come la testata: se resta bianco, su iPhone la
+  barra di stato taglia in due la testata invece di continuarla.
+
+⛔ Il vecchio `.arco-testata` resta **cancellato**: era un'onda *piena* color superficie,
+e il fondo dell'app è sfumato — avrebbe lasciato una macchia. L'onda nuova è un **segno**.
+
+#### Le quantità: lo spazio prima dell'unità si mette solo per mostrarle
+
+Trovato il 18/08/2026: in dispensa convivono «300 g» e «500g». **È il dato**, non un
+difetto di visualizzazione — `scriviQta()` mette lo spazio, ma gira **solo** quando
+l'app ricalcola una quantità dopo «Ho cucinato questo»; tutto il resto (scritto a mano,
+scritto dal generatore) finisce nel database così com'è.
+
+`mostraQta()` mette lo spazio **solo in lettura**, e il dato resta quello che è:
+riscriverlo vorrebbe dire toccare la dispensa di nascosto. ⚠️ Prudenza come dappertutto:
+tocca solo un numero attaccato a un'unità conosciuta (`g kg mg l ml cl dl`), e lascia
+intatti «2×100 g», «1,5», «? da verificare», «scad. 29/8».
+⚠️ **Mai dentro un campo da compilare**: quello che si salva dev'essere quello che si
+è scritto. `apriEditorQty()` e il pannello di «Ho cucinato questo» mostrano il grezzo.
 
 ### La v5 — il calendario (12/08/2026, Blocco 1)
 
@@ -890,22 +929,66 @@ col campo «che voglia hai?».
 - **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.
 - **Stile: la passata ricca è approvata** nella versione attualmente online.
 
-#### ▶️ PROSSIMO PASSO — il giudizio sulla firma, poi il piatto a mano
+#### ▶️ PROSSIMO PASSO — il giudizio sulla testata (secondo giro), poi il piatto a mano
 
-**Aggiornato il 18/08/2026.** Il Blocco 3 di `PROMPT-FIX-E-GRAFICA.md` è stato spinto:
-inventario, token completati, componenti mancanti, icone al posto delle emoji, stati
-vuoti, e **la firma sulla testata**. ⛔ **Qui ci si ferma**: il brief chiede il giudizio
-visivo con screenshot da PC e da iPhone **prima** di fare altro.
+**Aggiornato il 18/08/2026.** Il Blocco 3 di `PROMPT-FIX-E-GRAFICA.md` è fatto. La
+pulizia (token, componenti, icone, stati vuoti) è **promossa**. La firma è al **secondo
+tentativo**: il primo è stato bocciato perché troppo timido — vedi «La firma: la
+testata» più sopra, con i tre motivi.
 
-- se la testata piace → si va avanti nello stesso stile;
-- se non piace → si prova l'altra strada (le illustrazioni), **senza sommarle**: la
-  regola del brief è una cosa sola fatta benissimo, non dieci effetti sparsi.
+⛔ **Qui ci si ferma**: serve il giudizio visivo con screenshot da PC e da iPhone.
 
-Dopo il giudizio: **il piatto inserito a mano con le ricette collegate** — l'utente ha
-deciso il 18/08 che viene **dopo** la grafica, apposta perché nasca già dentro il
-design system invece di doverci rientrare a forza.
+- se la testata piace → la grafica è chiusa;
+- se non piace **neanche questa** → allora si prova l'altra strada del brief, cioè le
+  illustrazioni degli stati vuoti. ⚠️ **Non si sommano**: la regola è una cosa sola
+  fatta benissimo, e due firme insieme sono zero firme.
 
-Poi, quello che era in coda da prima. Brief: `PROMPT-V5-PIANO.md`. Il brief diceva di fermarsi dopo il Blocco 3; **l'utente ha
+Dopo il giudizio: **il piatto inserito a mano con le ricette collegate** (vedi il
+riquadro qui sotto). L'utente ha deciso il 18/08 che viene **dopo** la grafica, apposta
+perché nasca già dentro il design system invece di doverci rientrare a forza.
+
+#### 📌 IN CODA — il piatto a mano deve nascere completo (chiesto il 18/08/2026)
+
+Quando un piatto scritto a mano ottiene la sua ricetta (creata col bottone o collegata
+dal ricettario) deve nascere **completo come quelli del generatore**: ingredienti coi
+**nomi della dispensa** (`stessoNome()`, e il prompt che li impone alla lettera),
+grammi per persona, e i numeri **già scritti** — proteine e kcal.
+
+⚠️ **Il collegamento fra piatto a mano e ricetta oggi NON ESISTE**: nel pannello
+«Scrivo io» (`apriModificaPasto()`) non c'è nessun bottone per creare o collegare una
+ricetta. È tutto da costruire, non da correggere.
+
+**Verificato il 18/08 — come entra oggi un pasto a mano nei totali di Ciprian**, perché
+il lavoro parta dai fatti e non da un'impressione:
+
+| Caso | Cosa fa il TOT del giorno |
+|---|---|
+| pasto di **sola Lorena** | **non entra**: `totaleGiorno()` filtra su `mangiaCiprian(r)`, e il pannello nasconde proprio i due campi. Giusto così |
+| **Ciprian**/**Entrambi**, numeri scritti | entra coi numeri, identico a uno del generatore |
+| **Ciprian**/**Entrambi**, campi vuoti | entra valendo **zero**, e il totale **si dichiara parziale** |
+
+⚠️ **Il buco 1, da chiudere insieme al resto**: «parziale» scatta solo se mancano
+**tutti e due** i numeri — la condizione in `totaleGiorno()` è `r.prot == null &&
+r.kcal == null`. Se scrivi solo le proteine e lasci vuote le kcal, il pasto entra con
+le proteine giuste, somma **zero kcal**, e **il totale non si dichiara più parziale**:
+le calorie del giorno risultano più basse del vero senza che niente lo segnali. Ed è il
+caso più probabile di tutti — le proteine uno se le ricorda, le kcal no.
+
+⚠️ **Il buco 2**: il TOT e «finora oggi» sono **due numeri con due fonti diverse**. Il
+TOT legge `plan_meals`, «finora oggi» legge `meals_log`. Un pasto a mano entra subito
+nel primo, ma nel secondo **solo quando lo confermi** («Ho cucinato questo» o il «Sì»
+della verifica). E i numeri che allora finiscono nel diario sono quelli del piano: se
+mancavano lì, mancano anche qui. **Un pasto a mano senza macro non buca un totale, ne
+buca due**, e il secondo se lo porta dietro nei giorni dopo.
+
+**Vincoli dettati dall'utente, invariati:** visualizzazione **identica** — i numeri
+compaiono solo dove compaiono già (totali e pasti di Ciprian), sui pasti di sola Lorena
+nessuno, come da metodo. **Niente conteggio interattivo, niente database alimenti**
+(vedi le decisioni chiuse più sotto).
+
+#### Quello che era in coda da prima
+
+Brief: `PROMPT-V5-PIANO.md`. Il brief diceva di fermarsi dopo il Blocco 3; **l'utente ha
 deciso il 13/08 di proseguire col Blocco 4**, che è quindi scritto ma **non collaudato**.
 
 Prima di andare avanti: `COLLAUDO-V5-BLOCCO3.md` e `COLLAUDO-V5-BLOCCO4.md`, ed eseguire
