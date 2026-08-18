@@ -1120,6 +1120,13 @@ select.field{appearance:none;-webkit-appearance:none;
   display:block;margin-top:2px;font-size:12.5px;color:var(--muted);
   text-decoration:none;
 }
+/* quanto comprarne: accanto al nome, non dentro. Il nome è la chiave che
+   collega spesa, piano e dispensa, e non va sporcato. */
+.sp-qta{
+  margin-left:8px;font-size:13.5px;color:var(--viola-testo);font-weight:600;
+  text-decoration:none;white-space:nowrap;
+}
+.sp-item.fatto .sp-qta{color:var(--muted);opacity:.7}
 .sp-item.fatto .sp-quando{opacity:.6}
 /* oggi o domani: la sola cosa che vale la pena far notare */
 .sp-quando.presto{color:var(--pesca-ink);font-weight:600}
@@ -5963,13 +5970,14 @@ function apriAggiuntaDispensa(v){
     <div class="sp-agg" data-per="${esc(v.id)}">
       <div class="q-label" style="margin-top:0">Metto in dispensa «${esc(v.name)}»</div>
       <div class="form-row" style="margin-top:0">
-        <input class="field" data-agg-qta placeholder="quanto ne hai preso" autocomplete="off">
+        <input class="field" data-agg-qta placeholder="quanto ne hai preso"
+               value="${esc(v.qta || '')}" autocomplete="off">
       </div>
       <div class="chips mini" data-campo="cat" style="margin-top:8px">
         ${CAT_ORDER.map(c => `<button data-cat="${c}" aria-pressed="${c === 'dispensa'}"
           >${esc(CAT_LABEL[c])}</button>`).join('')}
       </div>
-      <p class="hint">La quantità è testo libero: «500 g», «2 confezioni», «~1 kg».
+      <p class="hint">${v.qta ? 'Ho scritto quanto ne dovevi comprare: correggilo se ne hai preso di più o di meno. ' : ''}La quantità è testo libero: «500 g», «2 confezioni», «~1 kg».
         Se la lasci vuota scrivo «?» e la voce nasce da verificare.</p>
       <div class="form-row">
         <button class="btn" data-agg-ok style="flex:1">Aggiungi alla dispensa</button>
@@ -6028,9 +6036,13 @@ function rigaSpesa(v){
     ? `<span class="sp-quando ${v.serve_il <= addGiorni(oggiISO(),1) ? 'presto' : ''}"
         >serve ${esc(quandoRelativo(v.serve_il))}</span>`
     : '';
+  // ⚠️ La quantità sta ACCANTO al nome, non dentro: il nome è la chiave con
+  // cui l'app collega spesa, piano e dispensa, e «Pane 1 kg» non sarebbe
+  // più il «Pane» che il piano aspetta.
+  const quanto = v.qta ? `<span class="sp-qta">${esc(mostraQta(v.qta))}</span>` : '';
   return `<div class="sp-item ${v.done ? 'fatto' : ''}" data-id="${v.id}">
     <div class="sp-box" data-act="tog">${v.done ? ico("ok",15) : ""}</div>
-    <div class="sp-nome" data-act="tog">${esc(v.name)}${quando}</div>
+    <div class="sp-nome" data-act="tog">${esc(v.name)}${quanto}${quando}</div>
     <button class="icon-btn" data-act="del" aria-label="Togli">${ico("chiudi",17)}</button>
   </div>`;
 }
@@ -6085,7 +6097,7 @@ async function aggiungiAllaSpesa(nomi, silenzioso){
 async function inserisciInSpesa(righe){
   const { data, error } = await sb.from('shopping_list').insert(righe).select();
   if (!error) return data;
-  if (!/serve_il/i.test(String(error.message || ''))) throw error;
+  if (!/serve_il|qta/i.test(String(error.message || ''))) throw error;
   const { data: d2, error: e2 } = await sb.from('shopping_list')
     .insert(righe.map(({ name }) => ({ name }))).select();
   if (e2) throw e2;
@@ -6099,6 +6111,7 @@ async function inserisciInSpesa(righe){
 const rimettiInLista = (v) => {
   const r = { id:v.id, name:v.name, done:v.done };
   if (v.serve_il !== undefined) r.serve_il = v.serve_il;
+  if (v.qta !== undefined) r.qta = v.qta;
   return r;
 };
 

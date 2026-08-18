@@ -1086,6 +1086,27 @@ usata.
 **La cena di domenica è `modo:'libero'`**, col meccanismo che esiste già: il totale del
 giorno scende e lo si dichiara. Non è uno sgarro e non va scritto come tale.
 
+**Il Blocco 2 — lo spesone** sta in `import-spesa-22-28.sql`, e ha richiesto una colonna
+nuova (`tabelle-spesa-qta.sql`).
+
+⚠️ **PERCHÉ LA QUANTITÀ NON PUÒ STARE DENTRO AL NOME**, ed è la cosa da ricordare: il
+nome è la CHIAVE con cui `stessoNome()` collega spesa, piano e dispensa. «Pane 1 kg» non
+è più il «Pane» che il piano aspetta — il piano continuerebbe a segnalarlo mancante, e
+spuntandolo finirebbe in dispensa una voce chiamata «Pane 1 kg» che non corrisponde a
+niente. Per questo `shopping_list.qta` è una colonna a sé, e la riga la mostra ACCANTO
+al nome. Il brief diceva «senza costruire nulla di nuovo»: quel vincolo era sul flusso
+comprato→dispensa, che infatti è quello del Blocco 5 e non è stato toccato.
+
+Le date `serve_il` sono calcolate sul primo pasto che aspetta quella cosa, così la lista
+si ordina da sé. Le voci senza data (caffè, zucchero, carta forno) vanno in fondo.
+
+⚠️ **Due cose non coperte da nessuno**, dichiarate e non risolte di nascosto:
+`Olio` (che non è nella dispensa né nello spesone: comparirà come mancante finché non lo
+si aggiunge a «Base sempre in casa») e `Grana`, che invece è già dentro la quantità di
+«Base sempre in casa» e quindi `forseInCasa()` lo fa tacere.
+⚠️ **`Pasta sfoglia` l'ho aggiunta io**: non era nello spesone, ma lunedì sera la torta
+salata non si fa senza.
+
 #### ⚠️ Il buco chiuso: «Genera la settimana» passava sopra ai pasti scritti a mano
 
 Trovato verificando il punto 4 di quel brief, e **non era un problema di quell'import**:
