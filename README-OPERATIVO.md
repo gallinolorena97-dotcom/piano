@@ -20,14 +20,24 @@ Accedi, nessuna email, nessun codice. Lo stesso vale per chiunque abbia l'indiri
    - Se una sera mangiate presto o avete voglia di qualcosa, scrivilo in **+ nota**.
    - In cima c'è **«di solito a tavola ci sono»**: imposta tutti e quattordici i pasti
      in un colpo, poi correggi le eccezioni.
+   - Sotto c'è **Normale / Svuota-frigo**. Scegli il secondo prima di una partenza o di
+     una spesa grossa: punterà a finire quello che hai invece di cucinare il meglio.
+     Le proteine di Ciprian restano quelle di sempre.
+
    Ci vuole meno di un minuto.
-3. Premi **Genera il piano** e aspetta un paio di minuti. I piatti compaiono uno alla
-   volta mentre vengono scritti. **Non ricaricare la pagina.**
+3. Premi **Genera il piano** e **posa pure il telefono**. La settimana si scrive **sul
+   server**, un giorno alla volta: puoi spegnere lo schermo, cambiare app o chiudere
+   tutto. Riaprendo l'app trovi lo stato vero, coi giorni comparsi man mano.
 4. **Il riepilogo**: giorno per giorno cosa si mangia, i totali di Ciprian, cosa manca
-   e cosa resterà in dispensa. Qui non è ancora salvato niente.
-5. **Salva nel calendario** — oppure **Rifai la passata** se qualcosa non torna, o
-   **Butta via** se non ti convince.
-6. Le cose che mancano finiscono da sole nella lista della **Spesa**.
+   e cosa resterà in dispensa. **A questo punto è già tutto salvato** — ogni giorno
+   finito viene scritto subito, così una connessione che cade non porta via niente.
+5. Le cose che mancano finiscono da sole nella lista della **Spesa**, con scritto
+   **per quando servono**.
+
+> **Se si ferma.** Se il collegamento col generatore si interrompe, in cima alla tab
+> Piano compare un riquadro con **Riprendi la settimana**: riparte dal primo giorno
+> mancante, senza rifare (e senza ripagare) quelli già scritti. Non riparte da sola
+> apposta: una cosa che si rincorre da sé consumerebbe credito senza che nessuno guardi.
 
 **Durante la settimana:** aggiorni Dispensa e Ricette dall'app, e premi
 **✓ Ho cucinato questo** quando cucini, così la dispensa resta vera.
@@ -38,8 +48,13 @@ I giorni passati non si cancellano mai: restano come storico.
 > vecchia maniera: `/piano-settimana` in Claude Code, poi il file SQL su Supabase.
 > Serve solo in quel caso.
 
-**Quanto costa una settimana:** 3 delle 30 generazioni giornaliere (sono tre chiamate
-vere, una per ogni blocco di giorni). Restano dieci settimane al giorno.
+**Quanto costa una settimana:** **7** delle 30 generazioni giornaliere — una chiamata
+vera per ogni giorno da cucinare. Restano **quattro settimane al giorno**, e il tetto di
+spesa non si muove: siamo sui 14 centesimi a settimana.
+
+(Prima erano 3, quando si generavano più giorni per volta. Si è passati a un giorno per
+chiamata perché due giorni insieme arrivavano all'85% del tempo massimo concesso da
+Supabase, e ogni tanto la generazione veniva spenta a metà.)
 
 ---
 
@@ -69,7 +84,15 @@ Un giorno passato senza niente segnato dice solo «Niente segnato per questo gio
 Nessun rimprovero: è un fatto, non una colpa.
 
 Un pasto segnato **«dipende dalla spesa»** aspetta qualcosa che non hai ancora: lo trovi
-nella tab Spesa.
+nella tab Spesa. Quando l'hai comprato e messo in dispensa, **l'avviso sparisce da solo**.
+
+Sotto il pasto puoi trovare altre due cose:
+
+- **Come si fa** — il procedimento, chiuso. Toccalo quando ti metti a cucinare: sono
+  passi numerati, coi tempi dentro («rosola 5 minuti»). Se il piatto è banale sono due
+  righe, ed è voluto.
+- **Sostituzioni** (riquadro verde) — «ho messo il basilico invece del prezzemolo, che
+  non avevi». Non è un avviso: vuol dire che **non devi comprare niente**.
 
 **Per cambiare giorno** puoi toccare un giorno nella striscia, oppure **strisciare col
 pollice** sulla scheda: verso sinistra vai avanti, verso destra torni indietro. Sul
@@ -130,8 +153,9 @@ massimo tre giorni: più in là non te la richiede.
 Se rispondi tu dal tuo telefono, l'altro non se la ritrova: la risposta è salvata nel
 database, non sul telefono. Così la dispensa non viene scalata due volte.
 
-**Dispensa** — aggiungi con nome, quantità e categoria; tocca la quantità per correggerla;
-la **×** elimina, e per 8 secondi hai il tasto **Annulla**.
+**Dispensa** — aggiungi con nome, quantità e categoria. Toccando la quantità (o la
+matita ✎) si apre un pannellino dove correggerla: **Invio salva**, come prima.
+La **×** elimina, e per 8 secondi hai il tasto **Annulla**.
 Se in una quantità scrivi un `?` (per esempio `? da contare`) la voce si colora di ambra
 e finisce nell'elenco **DA VERIFICARE**.
 
@@ -299,6 +323,54 @@ I messaggi sono già scritti in italiano semplice. I due più probabili:
 
 ---
 
+## Aggiornare il generatore su Supabase (il «deploy»)
+
+Serve **solo** quando Claude ti dice che ha toccato `edge-function-cosa-cucino.ts`.
+Non è una cosa da fare di routine: se nessuno te lo chiede, lascia stare.
+
+**Perché tocca a te**: quel file non fa parte dell'app pubblicata. Sta su Supabase, in
+un posto a cui si arriva solo entrando col tuo account — quindi l'unica persona che
+può metterlo online sei tu.
+
+### 1 · Copia il codice
+
+Apri **`edge-function-cosa-cucino.ts`** (sta nella stessa cartella di `index.html`).
+Va bene qualunque editor, anche il Blocco note.
+
+- **Ctrl+A** per selezionare tutto
+- **Ctrl+C** per copiare
+
+⚠️ Dev'essere **tutto**, dalla prima riga all'ultima. Se ne copi solo un pezzo la
+funzione non parte più e il generatore smette di rispondere.
+
+### 2 · Incollalo su Supabase
+
+1. Vai su **supabase.com** e accedi.
+2. Apri il progetto (quello che nell'indirizzo ha `bixdbnhructlsxuvkmic`).
+3. Colonna di sinistra → **Edge Functions**.
+4. C'è una funzione sola, **`cosa-cucino`**: cliccaci sopra.
+5. Cancella tutto il codice che vedi nel riquadro e incolla il nuovo (**Ctrl+V**).
+6. Premi **Deploy** e aspetta la conferma verde. Ci mette una ventina di secondi.
+
+⚠️ **Verify JWT deve restare spento.** È già così: non toccarlo. Se lo accendessi,
+l'app smetterebbe di parlare con il generatore.
+
+### 3 · Se c'è anche un file SQL da eseguire
+
+Spesso una modifica al generatore ha bisogno anche di una colonna nuova nel database.
+In quel caso Claude ti dice quale file `.sql` eseguire: apri **SQL Editor** nella
+colonna di sinistra, incolla il contenuto del file e premi **Run**.
+
+L'ordine fra le due cose non è importante — l'app è fatta per non rompersi nel
+frattempo — ma è più pulito fare prima il file SQL e poi il deploy.
+
+### Se qualcosa non torna
+
+Non serve che tu capisca l'errore. **Copia il messaggio che vedi e mandalo a Claude**:
+la diagnosi è il suo mestiere, e i tasti di Supabase cambiano ogni tanto.
+
+---
+
 ## File della cartella
 
 | File | A cosa serve | Pubblicato online? |
@@ -311,6 +383,15 @@ I messaggi sono già scritti in italiano semplice. I due più probabili:
 | `limite-generatore.sql` | il tetto giornaliero che protegge il credito | sì |
 | `tabelle-piano-v5.sql` | crea la tabella del calendario (`plan_meals`) | sì |
 | `tabelle-piano-v5-blocco4.sql` | aggiunge la colonna che ricorda i pasti scritti a mano | sì |
+| `tabelle-staffetta.sql` | fa sì che la settimana si generi da sola sul server, col telefono spento | sì |
+| `tabelle-ricette-complete.sql` | dà alle ricette un contenuto vero: ingredienti, grammi, proteine, kcal | sì |
+| `tabelle-spesa-blocco5.sql` | fa sì che una riga della spesa sappia dire per quando serve | sì |
+| `tabelle-costi.sql` | conta i token del generatore, per la stima di spesa nel menu | sì |
+| `tabelle-nutrienti.sql` | i valori per 100 g, facoltativi, sulle voci di dispensa | sì |
+| `tabelle-blocco6.sql` | procedimento, sostituzioni e la settimana svuota-frigo | sì |
+| `tabelle-generatore-v4.sql` | lista della spesa e diario dei pasti | sì |
+| `tabelle-profili-v6.sql` | i due profili, coi loro obiettivi e i loro divieti | sì |
+| `tabelle-voti-v7.sql` | i voti delle ricette, uno per persona | sì |
 | `pulizia-prova-piano.sql` | toglie la settimana finta di collaudo, se ricapita | sì |
 | `prova-piano-v5.sql` | una settimana finta, solo per guardare il calendario | sì |
 | `seed-dati-iniziali.sql` | carica inventario e ricette di partenza | sì |
