@@ -546,9 +546,9 @@ chi guarda.
 ⚠️ **La Edge Function è stata riorganizzata**: le letture dal database, la chiamata ad
 Anthropic, il lettore del JSON incrementale e il flusso NDJSON sono ora scritti **una
 volta sola** e usati da tutti e due i mestieri (proposte del giorno e piano
-settimanale). Il file va **reincollato su Supabase**: il ramo `modo:'settimana'` non
-esiste nella versione online vecchia. Lato client vale lo stesso: `flussoNdjson()` è
-condivisa, `chiamaGeneratore()` ci sta sopra.
+settimanale) — e dal 18/08 anche dal terzo, `modo:'ricetta'`. ✅ Il deploy è in pari.
+Lato client vale lo stesso: `flussoNdjson()` è condivisa, `chiamaGeneratore()` ci sta
+sopra e «Crea la ricetta» ci sta sopra a sua volta.
 
 ### ⚠️ Ogni azione che salva deve dare un esito visibile
 
@@ -581,19 +581,25 @@ collaudare**. In più: si cambia giorno strisciando col pollice.
 `plan_meals.a_mano`). Finché non è eseguito, salvare un pasto a mano non funziona.
 ⚠️ **E `tabelle-staffetta.sql`** (tabella `plan_jobs`): senza, la settimana si genera
 col modo vecchio — telefono acceso e collegato — invece che da sola sul server.
-⚠️ **E `tabelle-ricette-complete.sql`** (il contenuto delle ricette e
-`plan_meals.ricetta_id`): senza, «Crea la ricetta» sul pasto a mano non funziona.
+✅ `tabelle-ricette-complete.sql` (contenuto delle ricette e `plan_meals.ricetta_id`)
+**è stato eseguito il 18/08/2026**: non richiederlo di nuovo.
+⚠️ **Resta `tabelle-spesa-blocco5.sql`** (`shopping_list.serve_il`): senza, la lista
+della spesa funziona com'era e non dà errore, ma le righe non sanno dire per quando
+serve una cosa.
 
 `tabelle-piano-v5.sql` è stato eseguito e la settimana di prova è stata rimossa;
 `prova-piano-v5.sql` resta nella cartella per eventuali collaudi futuri.
 
-⚠️ **In sospeso, un passaggio manuale**: `edge-function-cosa-cucino.ts` va **reincollato
-su Supabase** (Edge Functions → cosa-cucino → Deploy) — la seconda volta il 13/08,
+✅ **Il deploy della Edge Function è in pari**: `edge-function-cosa-cucino.ts` è stato
+reincollato su Supabase (Edge Functions → cosa-cucino → Deploy) **il 18/08/2026**, e la
+versione online contiene tutto quello che segue. ⚠️ Vale però la regola: **ogni volta
+che si tocca il `.ts` serve un deploy a mano dell'utente**, quindi le modifiche alla
+function si raggruppano invece di spargerle.
+La storia dei deploy, perché si capisca cosa c'è dentro — la seconda volta il 13/08,
 per la correzione di `max_tokens`; **la terza il 16/08**, per il piatto unico nei pasti
 condivisi, per i nomi degli ingredienti copiati dalla dispensa e per il **battito** che
 tiene caldo il collegamento; **la quarta il 18/08**, per il terzo mestiere `modo:'ricetta'`
-che completa un piatto scritto a mano. Finché non è reincollato, quelle regole non sono attive: il
-frontend da solo non le può imporre.
+che completa un piatto scritto a mano.
 Collaudo del Blocco 2: `COLLAUDO-V5-BLOCCO2.md`.
 
 **Blocco 2 collaudato su giorni veri il 13/08** (settimana 16-22/08): la **coerenza di
@@ -932,23 +938,77 @@ col campo «che voglia hai?».
 - **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.
 - **Stile: la passata ricca è approvata** nella versione attualmente online.
 
-#### ▶️ PROSSIMO PASSO — collaudare il piatto a mano
+#### ▶️ PROSSIMO PASSO — collaudare il piatto a mano e la spesa collegata
 
 **Aggiornato il 18/08/2026.**
 
-⚠️ **Due passaggi manuali prima di provare**, e senza di loro il bottone non funziona:
+✅ **Già fatti dall'utente, non richiederli di nuovo:**
 
-1. **Su Supabase**: eseguire `tabelle-ricette-complete.sql` (colonne `recipes.ingredienti
-   /prot/kcal/tempo` e `plan_meals.ricetta_id`). Finché non è fatto, il resto dell'app
-   funziona lo stesso — `recipes` si legge con `select('*')` apposta — ma «Crea la
-   ricetta» fallisce e `spiegaErrore()` dice quale file eseguire.
-2. **Reincollare `edge-function-cosa-cucino.ts`** su Supabase (Edge Functions →
-   cosa-cucino → Deploy, Verify JWT resta OFF): il modo `ricetta` non esiste nella
-   versione online.
+- `tabelle-ricette-complete.sql` **eseguito** su Supabase (Success);
+- `edge-function-cosa-cucino.ts` **rideployato** — la versione online contiene il terzo
+  mestiere `modo:'ricetta'`.
 
-Poi il collaudo: scrivere un pasto a mano, toccare «Crea la ricetta», e controllare che
-i nomi degli ingredienti siano quelli della dispensa, che i numeri arrivino, e che il
-TOT del giorno smetta di dirsi parziale.
+Tutti e due **prima** del push del piatto a mano (`87f2653`), e verificato che i due
+file non siano stati toccati fra la conferma e la pubblicazione: quello che è stato
+incollato è quello che sta nel repo.
+
+⚠️ **Resta un passaggio solo**: eseguire `tabelle-spesa-blocco5.sql` (colonna
+`shopping_list.serve_il`). Senza, la lista della spesa funziona com'era e **non dà
+errore** — `inserisciInSpesa()` riprova da sola senza la data — ma le righe non sanno
+dire per quando serve una cosa.
+
+**Il collaudo**, in due parti.
+
+*Il piatto a mano*: matita ✎ su un pasto da oggi in poi, scrivere solo un nome, toccare
+«Crea la ricetta». Controllare che i nomi degli ingredienti siano quelli della dispensa,
+che i numeri arrivino, che il TOT del giorno smetta di dirsi parziale, e che riaprendo
+la matita il riquadro dica «è già nel ricettario» invece di rioffrire il bottone. In tab
+Ricette la ricetta dev'esserci **senza cuore**.
+
+*La spesa*: generare o rigenerare qualcosa che lasci dei mancanti, controllare che in
+lista compaia «serve …» e che l'ordine segua le date; spuntare una riga e accettare
+«Mettilo in dispensa»; poi tornare sul giorno che dipendeva da quella spesa e vedere
+che il riquadro ambra **è sparito**.
+
+#### La v5 — Blocco 5: la spesa collegata al piano (18/08/2026)
+
+⚠️ **Serve un passaggio sul database**: `tabelle-spesa-blocco5.sql` aggiunge
+`shopping_list.serve_il`. Senza, tutto continua a funzionare com'era — la lista si
+legge con `select('*')` e l'inserimento **riprova da solo senza la data**
+(`inserisciInSpesa()`) — ma le righe restano mute.
+
+Tre anelli, ed erano tre buchi dello stesso filo.
+
+**A · La riga sa per quando serve.** I mancanti si portano dietro il giorno che li
+aspetta (`mancantiDaPasti()`), e la lista si ordina per quello: prima ciò che serve
+prima, le voci scritte a mano in fondo. Su una riga si legge «serve domani», e in ambra
+se è oggi o domani. Al supermercato la differenza è tutta lì.
+⚠️ Se la stessa cosa serve per due giorni, **vince il primo**: è quello che decide
+quando conviene averla in casa. La deduplica resta di `aggiungiAllaSpesa()`, che
+confronta i nomi con `stessoNome()` — «uovo» e «uova» sono una riga sola.
+
+**B · Spuntare un acquisto propone di metterlo in dispensa.** Era l'anello mancante: la
+lista si riempiva dal piano, ma quello che compravi restava fuori dalla dispensa e i
+giorni «dipende dalla spesa» aspettavano una cosa che intanto era in frigo.
+⚠️ **Si propone, non si fa**: quanto ne hai preso e dove lo metti non si può sapere, e
+qui non si inventano numeri. Si apre un modulo sulla riga stessa, con la quantità da
+scrivere (testo libero) e la categoria da scegliere. Vuota → `?`, cioè da verificare,
+come ovunque.
+⚠️ Se quella cosa **in dispensa c'è già** non si propone niente: si dice cosa c'è e si
+lascia decidere. Aggiungerla due volte sarebbe la stessa verità scritta in due posti.
+Confermando, la riga **esce dalla lista**: una cosa entrata in dispensa non è più da
+comprare, e lasciarla lì spuntata sarebbe un doppione. L'annulla rimette tutto.
+
+**C · «Dipende dalla spesa» sparisce quando è coperto** (`riquadroSpesa()`).
+`dipende_da_spesa` è una fotografia scattata alla generazione: **un avviso che resta
+acceso quando il problema non c'è più smette di essere un avviso**. Ora si guarda in
+dispensa, e il riquadro dice anche **cosa** manca invece di mandare a controllare la
+lista. ⚠️ Prudenza come sempre: si nomina mancante solo ciò che non si trova né con
+`cercaInDispensa()` né con `forseInCasa()`.
+
+⚠️ **`toast()` ha un quarto parametro, l'etichetta del bottone**, e torna sempre ad
+«Annulla» se non la si passa: un toast che si tenesse addosso la scritta del toast
+precedente prometterebbe la cosa sbagliata.
 
 #### La grafica è CHIUSA (18/08/2026) — non si riapre da soli
 
@@ -1144,7 +1204,8 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `limite-generatore.sql` | tabella e funzione del tetto giornaliero di generazioni |
 | `tabelle-piano-v5.sql` | la tabella `plan_meals` del calendario, coi campi commentati |
 | `tabelle-staffetta.sql` | la tabella `plan_jobs`: la settimana che il server genera da sé. **Da eseguire** |
-| `tabelle-ricette-complete.sql` | il contenuto delle ricette (ingredienti, prot, kcal, tempo) e il filo `plan_meals.ricetta_id`. **Da eseguire** |
+| `tabelle-ricette-complete.sql` | il contenuto delle ricette (ingredienti, prot, kcal, tempo) e il filo `plan_meals.ricetta_id`. ✅ eseguito il 18/08 |
+| `tabelle-spesa-blocco5.sql` | `shopping_list.serve_il`: la riga della spesa sa per quando serve. **Da eseguire** |
 | `prova-piano-v5.sql` | una settimana finta per collaudare il calendario a mano |
 | `COLLAUDO-V5.md` | la checklist di collaudo del calendario. Come tutti i `COLLAUDO-*`, resta **solo sul computer**: è in `.gitignore` |
 | `seed-dati-iniziali.sql` | inventario e ricette di partenza (11/08) |

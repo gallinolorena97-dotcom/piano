@@ -1081,6 +1081,19 @@ select.field{appearance:none;-webkit-appearance:none;
 }
 .sp-item.fatto .sp-box{background:var(--viola)}
 .sp-item.fatto .sp-nome{text-decoration:line-through;color:var(--muted)}
+/* per quando serve. Non è una scadenza e non è un rimprovero: è
+   l'informazione che cambia l'ordine in cui si guardano gli scaffali. */
+.sp-quando{
+  display:block;margin-top:2px;font-size:12.5px;color:var(--muted);
+  text-decoration:none;
+}
+.sp-item.fatto .sp-quando{opacity:.6}
+/* oggi o domani: la sola cosa che vale la pena far notare */
+.sp-quando.presto{color:var(--pesca-ink);font-weight:600}
+/* il modulo «metto in dispensa», aperto sulla riga che hai appena spuntato */
+.sp-agg{
+  padding:14px 16px;border-top:2px solid var(--viola);background:var(--surface-2);
+}
 .sp-nome{flex:1;min-width:0;word-break:break-word}
 
 /* ============================================================
@@ -1649,10 +1662,14 @@ let toastTimer = null, undoFn = null;
  * è visibile ovunque tu sia nella pagina — anche in fondo a un pannello.
  * tipo: 'ok' (verde) oppure 'errore' (corallo).
  */
-function toast(text, onUndo, tipo){
+/* ⚠️ Il quarto parametro è l'ETICHETTA del bottone, e torna sempre ad
+   «Annulla» se non la si passa: un toast che si tenesse addosso la scritta
+   del toast precedente prometterebbe la cosa sbagliata. */
+function toast(text, onUndo, tipo, etichetta){
   clearTimeout(toastTimer);
   $('#toastText').textContent = text;
   undoFn = onUndo || null;
+  $('#toastAction').textContent = etichetta || 'Annulla';
   $('#toastAction').hidden = !onUndo;
   const t = $('#toast');
   t.className = tipo === 'errore' ? 'errore' : '';
@@ -1738,7 +1755,10 @@ async function loadAll(){
       // non è stato eseguito. Con '*' arriva quello che c'è.
       sb.from('recipes').select('*'),
       sb.from('settings').select('key,value'),
-      sb.from('shopping_list').select('id,name,done').order('created_at', { ascending:true }),
+      // '*' e non l'elenco delle colonne: serve_il è facoltativa e su un
+      // database in cui tabelle-spesa-blocco5.sql non è stato eseguito non
+      // esiste. Con '*' arriva quello che c'è.
+      sb.from('shopping_list').select('*').order('created_at', { ascending:true }),
       sb.from('profiles').select('*').order('slug', { ascending:true }),
       sb.from('recipe_votes').select('recipe_id,profile_slug,pref'),
       // la settimana che il server sta generando per conto suo, se c'è
@@ -1755,6 +1775,7 @@ async function loadAll(){
     S.settings = Object.fromEntries((s.data || []).map(x => [x.key, x.value]));
     // la lista della spesa è facoltativa: se la tabella non c'è, il resto vive lo stesso
     S.spesa = sp.error ? [] : (sp.data || []);
+    ordinaSpesa();   // prima quello che serve prima
     // anche i profili sono facoltativi: se la tabella non c'è ancora,
     // l'app continua a funzionare come prima
     S.profili = pf.error ? [] : (pf.data || []);
@@ -2298,6 +2319,37 @@ const riquadro = (stile, eti, testo, nomeIco) =>
 
 const frecciaAvanzo = (t) => /^→/.test(String(t).trim()) ? t : `→ ${t}`;
 
+/**
+ * «Dipende dalla spesa» — ma solo finché è vero.
+ *
+ * `dipende_da_spesa` è una fotografia scattata quando il piano è stato
+ * generato: dice che quel giorno aspettava un acquisto. Se intanto la
+ * spesa è stata fatta, il riquadro continuava a dirlo lo stesso, e un
+ * avviso che resta acceso quando il problema non c'è più smette di
+ * essere un avviso.
+ *
+ * Adesso si guarda in dispensa. E si dice anche COSA manca, invece di
+ * mandare a controllare la lista: se il nome ce l'ho, tanto vale darlo.
+ *
+ * ⚠️ Prudenza uguale a tutto il resto: si nomina come mancante solo
+ * quello che non si trova né in dispensa (`cercaInDispensa`), né sotto
+ * un altro nome (`forseInCasa`). Sbagliare verso il silenzio va bene,
+ * verso il rumore no.
+ */
+function riquadroSpesa(r){
+  if (!r.dipende_da_spesa) return '';
+  const ing = Array.isArray(r.ingredienti) ? r.ingredienti : [];
+  const mancano = ing
+    .map(i => String(i.nome || '').trim())
+    .filter(n => n && !cercaInDispensa(n) && !forseInCasa(n));
+
+  // niente più da comprare: il pasto si può cucinare, e il riquadro tace
+  if (!mancano.length) return '';
+
+  return riquadro('manca', 'Dipende dalla spesa',
+    `Manca ancora: ${[...new Set(mancano)].join(', ')}.`, 'spesa');
+}
+
 /* Si può modificare a mano solo oggi e i giorni futuri: sul passato
    c'è il diario, e quello racconta cos'è successo davvero. */
 const modificabile = (iso) => iso >= oggiISO();
@@ -2342,8 +2394,7 @@ function bloccoPasto(r){
     ${r.scongelamento ? riquadro('freezer', 'Da scongelare', r.scongelamento +
         (r.scongelare_il ? ` — te lo ricordo ${quandoRelativo(r.scongelare_il)}` : ''),
         'freezer') : ''}
-    ${r.dipende_da_spesa ? riquadro('manca', 'Dipende dalla spesa',
-        'Questo pasto aspetta un acquisto: guarda la lista della spesa.', 'spesa') : ''}
+    ${riquadroSpesa(r)}
     ${r.nota   ? `<div class="nota perche">${esc(r.nota)}</div>`   : ''}
     ${r.perche ? `<div class="nota perche">${esc(r.perche)}</div>` : ''}
   </div>`;
@@ -2686,7 +2737,7 @@ function apriModificaPasto(iso, quale, dentro){
     }
     const via = ev.target.closest('[data-togli-ing]');
     if (via){ via.closest('.mano-riga').remove(); return; }
-    if (ev.target.closest('[data-crea-ricetta]')){ creaLaRicetta(box, quale); return; }
+    if (ev.target.closest('[data-crea-ricetta]')){ creaLaRicetta(box, iso, quale); return; }
     if (ev.target.closest('[data-annulla]')){ box.remove(); return; }
     if (ev.target.closest('[data-salva]')) salvaPastoAMano(iso, quale, box);
   });
@@ -2705,7 +2756,7 @@ function apriModificaPasto(iso, quale, dentro){
  *   3. riempie il modulo. ⚠️ NON salva il pasto: quello resta un gesto
  *      tuo, così puoi guardare cosa ha scritto e correggerlo prima.
  */
-async function creaLaRicetta(box, quale){
+async function creaLaRicetta(box, iso, quale){
   const campoPiatto = box.querySelector('[data-piatto]');
   const nome = campoPiatto.value.trim();
   if (!nome){
@@ -2824,7 +2875,8 @@ async function creaLaRicetta(box, quale){
   zona.innerHTML = zonaRicettaHtml({ ricetta_id: idRicetta });
 
   const manca = Array.isArray(dati.manca) ? dati.manca.filter(Boolean) : [];
-  if (manca.length) await aggiungiAllaSpesa(manca, true);
+  // il giorno c'è: la lista della spesa può dire per quando serve
+  if (manca.length) await aggiungiAllaSpesa(manca.map(n => ({ nome:n, giorno:iso })), true);
   toast(eraPiena
     ? `Collegata la ricetta «${trovata.name}» che avevi già.${manca.length ? ' Quello che manca è in lista spesa.' : ''}`
     : `Ricetta pronta.${manca.length ? ' Quello che manca è in lista spesa.' : ''} Controlla e salva il pasto.`);
@@ -3947,9 +3999,14 @@ function righeDaSalvare(soloGiorni){
   return righe;
 }
 
-const mancantiTutti = () => [...new Set(
-  PS.pasti.flatMap(m => (m.manca || []).map(x => String(x).trim())).filter(Boolean)
-)];
+/* ⚠️ I mancanti si portano dietro il GIORNO che li aspetta: è quello che
+   permette alla lista della spesa di dire «serve sabato» invece di restare
+   muta. La deduplica vera la fa aggiungiAllaSpesa(), che sa confrontare i
+   nomi come si deve e tiene il giorno più vicino: qui basta raccogliere. */
+const mancantiDaPasti = (pasti) => pasti.flatMap(m =>
+  (m.manca || []).map(x => ({ nome:String(x).trim(), giorno:m.day })).filter(x => x.nome));
+
+const mancantiTutti = () => mancantiDaPasti(PS.pasti);
 
 /* ==========================================================
    SI SCRIVE SUBITO, BLOCCO PER BLOCCO
@@ -4015,8 +4072,7 @@ async function salvaBlocco(giorni){
 /** Le cose che mancano per i pasti di questi giorni. */
 const mancantiDi = (giorni) => {
   const gg = giorni.map(g => g.day);
-  return [...new Set(PS.pasti.filter(m => gg.includes(m.day))
-    .flatMap(m => (m.manca || []).map(x => String(x).trim())).filter(Boolean))];
+  return mancantiDaPasti(PS.pasti.filter(m => gg.includes(m.day)));
 };
 
 function vistaRiepilogo(){
@@ -4084,7 +4140,8 @@ function vistaRiepilogo(){
 
     ${manca.length ? `<div class="panel">
       <div class="q-label" style="margin-top:0">Cosa ti manca</div>
-      <div style="font-size:14.5px;line-height:1.5">${esc(manca.join(' · '))}</div>
+      <div style="font-size:14.5px;line-height:1.5">${esc(
+        [...new Set(manca.map(x => x.nome))].join(' · '))}</div>
       <p class="hint">Finiscono nella lista della spesa man mano, insieme ai pasti.
         Quelli che li aspettano sono segnati «dipende dalla spesa».</p>
     </div>` : ''}
@@ -5563,10 +5620,109 @@ function renderSpesa(){
     <div class="list">${S.spesa.map(rigaSpesa).join('')}</div>`;
 }
 
+/* ============================================================
+   SPUNTO UN ACQUISTO → LA DISPENSA LO SA
+   ============================================================
+   È l'anello che mancava: la lista si riempiva dal piano, ma quello che
+   compravi restava fuori dalla dispensa, e i giorni «dipende dalla spesa»
+   continuavano ad aspettare una cosa che intanto era in frigo.
+
+   ⚠️ Si PROPONE, non si fa. Quanto ne hai preso e dove lo metti non lo
+   posso sapere, e questa casa non inventa numeri: si apre un modulo con
+   la quantità da scrivere e la categoria da scegliere.
+   ============================================================ */
+
+/** Dopo la spunta: se quella cosa in dispensa c'è già, non c'è niente da
+    proporre — semmai da correggere, e lo si dice. Se non c'è, si offre. */
+function proponiInDispensa(v){
+  const voce = cercaInDispensa(v.name);
+  if (voce){
+    // c'era già con un altro nome o con un'altra scrittura: non si propone
+    // di aggiungerlo due volte, si dice quello che c'è e si lascia decidere
+    toast(`Fatto. In dispensa «${voce.name}» c'era già: ${mostraQta(voce.qty)} — semmai correggi la quantità da lì.`);
+    return;
+  }
+  toast(`Fatto: ${v.name}.`, () => apriAggiuntaDispensa(v), null, 'Mettilo in dispensa');
+}
+
+/** Il modulo, aperto sulla riga stessa della spesa: la cosa che stai
+    guardando resta sotto gli occhi mentre scrivi quanto ne hai preso. */
+function apriAggiuntaDispensa(v){
+  const riga = $(`#spBody .sp-item[data-id="${v.id}"]`);
+  if (!riga || riga.querySelector('.sp-agg')) return;
+
+  riga.insertAdjacentHTML('afterend', `
+    <div class="sp-agg" data-per="${esc(v.id)}">
+      <div class="q-label" style="margin-top:0">Metto in dispensa «${esc(v.name)}»</div>
+      <div class="form-row" style="margin-top:0">
+        <input class="field" data-agg-qta placeholder="quanto ne hai preso" autocomplete="off">
+      </div>
+      <div class="chips mini" data-campo="cat" style="margin-top:8px">
+        ${CAT_ORDER.map(c => `<button data-cat="${c}" aria-pressed="${c === 'dispensa'}"
+          >${esc(CAT_LABEL[c])}</button>`).join('')}
+      </div>
+      <p class="hint">La quantità è testo libero: «500 g», «2 confezioni», «~1 kg».
+        Se la lasci vuota scrivo «?» e la voce nasce da verificare.</p>
+      <div class="form-row">
+        <button class="btn" data-agg-ok style="flex:1">Aggiungi alla dispensa</button>
+        <button class="btn ghost" data-agg-no>Non ora</button>
+      </div>
+    </div>`);
+  riga.nextElementSibling.querySelector('[data-agg-qta]').focus();
+}
+
+/** Scrive la voce nuova. Toglie anche la riga dalla spesa: una cosa che è
+    entrata in dispensa non è più da comprare, e lasciarla lì spuntata
+    sarebbe un doppione con due verità diverse. L'annulla rimette tutto. */
+async function confermaAggiuntaDispensa(box){
+  const v = S.spesa.find(x => x.id === box.dataset.per);
+  if (!v) { box.remove(); return; }
+  const qta = box.querySelector('[data-agg-qta]').value.trim() || '?';
+  const cat = box.querySelector('.chips[data-campo="cat"] button[aria-pressed="true"]')?.dataset.cat
+            || 'dispensa';
+
+  box.querySelectorAll('button, input').forEach(x => x.disabled = true);
+  try{
+    const { data, error } = await sb.from('inventory_items')
+      .insert({ name:v.name, qty:qta, cat }).select().single();
+    if (error) throw error;
+    S.inv.push(data);
+    S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
+
+    const { error: e2 } = await sb.from('shopping_list').delete().eq('id', v.id);
+    if (e2) throw e2;
+    S.spesa = S.spesa.filter(x => x.id !== v.id);
+
+    renderInv(); renderSpesa(); renderPlan();
+    toast(`In dispensa: ${v.name} — ${mostraQta(qta)}.`, async () => {
+      try{
+        await sb.from('inventory_items').delete().eq('id', data.id);
+        S.inv = S.inv.filter(x => x.id !== data.id);
+        const { data: r, error: e3 } = await sb.from('shopping_list')
+          .insert(rimettiInLista(v)).select().single();
+        if (e3) throw e3;
+        S.spesa.push(r); ordinaSpesa();
+        renderInv(); renderSpesa(); renderPlan();
+        toast('Annullato: è tornato in lista.');
+      }catch(e){ esitoErrore(e); }
+    });
+  }catch(e){
+    box.querySelectorAll('button, input').forEach(x => x.disabled = false);
+    esitoErrore(e);
+  }
+}
+
 function rigaSpesa(v){
+  // Per quando serve. Una riga della spesa che sa dirlo cambia la spesa:
+  // quello che serve domani si prende oggi, quello che serve fra cinque
+  // giorni può aspettare. Sulle voci scritte a mano non compare niente.
+  const quando = v.serve_il
+    ? `<span class="sp-quando ${v.serve_il <= addGiorni(oggiISO(),1) ? 'presto' : ''}"
+        >serve ${esc(quandoRelativo(v.serve_il))}</span>`
+    : '';
   return `<div class="sp-item ${v.done ? 'fatto' : ''}" data-id="${v.id}">
     <div class="sp-box" data-act="tog">${v.done ? ico("ok",15) : ""}</div>
-    <div class="sp-nome" data-act="tog">${esc(v.name)}</div>
+    <div class="sp-nome" data-act="tog">${esc(v.name)}${quando}</div>
     <button class="icon-btn" data-act="del" aria-label="Togli">${ico("chiudi",17)}</button>
   </div>`;
 }
@@ -5574,28 +5730,77 @@ function rigaSpesa(v){
 /** Aggiunge nomi alla lista, saltando i doppioni. Restituisce quanti ne ha messi.
     Con "silenzioso" non dice niente: serve quando fa parte di un'azione più
     grande che ha già il suo messaggio d'esito (il salvataggio del piano). */
+/**
+ * Mette in lista quello che manca.
+ *
+ * `nomi` accetta due forme, e sono la stessa cosa vista da due lati:
+ *   'Panini burger'                        → non lo aspetta nessun pasto
+ *   { nome:'Panini burger', giorno:'…' }   → serve per quel giorno del piano
+ * La data è facoltativa apposta: chi scrive una voce a mano non deve
+ * compilare niente.
+ */
 async function aggiungiAllaSpesa(nomi, silenzioso){
   // doppioni: né con quello che c'è già in lista, né fra i nomi in arrivo.
   // «uovo» e «uova» sono la stessa riga (stessoNome), non due.
   const puliti = [];
   for (const grezzo of (Array.isArray(nomi) ? nomi : [nomi])){
-    const n = String(grezzo || '').trim();
+    const n = String(grezzo?.nome ?? grezzo ?? '').trim();
     if (!n) continue;
+    const giorno = grezzo?.giorno || null;
     if (S.spesa.some(v => stessoNome(v.name, n))) continue;
-    if (puliti.some(p => stessoNome(p, n))) continue;
-    puliti.push(n);
+    // se la stessa cosa arriva per due giorni diversi, vince il PRIMO:
+    // è quello che decide quando conviene averla in casa
+    const gia = puliti.find(p => stessoNome(p.name, n));
+    if (gia){
+      if (giorno && (!gia.serve_il || giorno < gia.serve_il)) gia.serve_il = giorno;
+      continue;
+    }
+    puliti.push({ name:n, serve_il:giorno });
   }
   if (!puliti.length){ if (!silenzioso) toast('Erano già tutti in lista.'); return 0; }
   try{
-    const { data, error } = await sb.from('shopping_list')
-      .insert(puliti.map(name => ({ name }))).select();
-    if (error) throw error;
+    const data = await inserisciInSpesa(puliti);
     S.spesa.push(...data);
+    ordinaSpesa();
     renderSpesa();
     if (!silenzioso)
-      toast(puliti.length === 1 ? `In lista: ${puliti[0]}` : `Aggiunti ${puliti.length} articoli.`);
+      toast(puliti.length === 1 ? `In lista: ${puliti[0].name}` : `Aggiunti ${puliti.length} articoli.`);
     return puliti.length;
   }catch(e){ if (!silenzioso) esitoErrore(e); return 0; }
+}
+
+/** ⚠️ La data è facoltativa anche per il DATABASE: su un progetto in cui
+    tabelle-spesa-blocco5.sql non è ancora stato eseguito la colonna non
+    esiste, e la lista della spesa deve continuare a funzionare com'era.
+    Si prova col giorno; se il database non lo conosce, si riprova senza e
+    non lo si dice a nessuno: non è un guasto, è una funzione in meno. */
+async function inserisciInSpesa(righe){
+  const { data, error } = await sb.from('shopping_list').insert(righe).select();
+  if (!error) return data;
+  if (!/serve_il/i.test(String(error.message || ''))) throw error;
+  const { data: d2, error: e2 } = await sb.from('shopping_list')
+    .insert(righe.map(({ name }) => ({ name }))).select();
+  if (e2) throw e2;
+  return d2;
+}
+
+/** La riga da reinserire quando si annulla. ⚠️ `serve_il` si porta dietro
+    SOLO se la voce ce l'aveva: su un database senza quella colonna,
+    mandarla anche vuota farebbe fallire proprio l'annulla — cioè la cosa
+    che deve funzionare quando tutto il resto è già andato storto. */
+const rimettiInLista = (v) => {
+  const r = { id:v.id, name:v.name, done:v.done };
+  if (v.serve_il !== undefined) r.serve_il = v.serve_il;
+  return r;
+};
+
+/** Prima quello che serve prima; le voci senza data in fondo, e fra loro
+    nell'ordine in cui sono state scritte. È l'ordine in cui conviene
+    guardare gli scaffali. */
+function ordinaSpesa(){
+  S.spesa.sort((a,b) =>
+    (a.serve_il || '9999').localeCompare(b.serve_il || '9999') ||
+    String(a.created_at || '').localeCompare(String(b.created_at || '')));
 }
 
 $('#spAdd').onclick = async () => {
@@ -5609,6 +5814,21 @@ $('#spNome').addEventListener('keydown', e => {
 });
 
 $('#spBody').addEventListener('click', async (ev) => {
+  // il modulo «metto in dispensa» vive dentro la lista: i suoi tocchi si
+  // gestiscono qui e non arrivano alle righe sotto
+  const agg = ev.target.closest('.sp-agg');
+  if (agg){
+    const cat = ev.target.closest('.chips[data-campo="cat"] button');
+    if (cat){
+      [...cat.parentElement.children].forEach(b =>
+        b.setAttribute('aria-pressed', String(b === cat)));
+      return;
+    }
+    if (ev.target.closest('[data-agg-no]')){ agg.remove(); return; }
+    if (ev.target.closest('[data-agg-ok]')) await confermaAggiuntaDispensa(agg);
+    return;
+  }
+
   const el = ev.target.closest('[data-act]');
   if (!el) return;
   const riga = el.closest('.sp-item');
@@ -5621,6 +5841,10 @@ $('#spBody').addEventListener('click', async (ev) => {
       const { error } = await sb.from('shopping_list').update({ done:nuovo }).eq('id', v.id);
       if (error) throw error;
       v.done = nuovo; renderSpesa();
+      // ⚠️ Spuntare vuol dire «l'ho preso»: quella cosa adesso è in casa, ma
+      // la dispensa non lo sa. È PROPOSTO, non fatto: quanto ne hai preso e
+      // dove lo metti non posso saperlo, e qui non si inventa niente.
+      if (nuovo) proponiInDispensa(v);
     }catch(e){ esitoErrore(e); }
   }
 
@@ -5632,9 +5856,9 @@ $('#spBody').addEventListener('click', async (ev) => {
       renderSpesa();
       toast(`Tolto: ${v.name}`, async () => {
         const { data, error } = await sb.from('shopping_list')
-          .insert({ id:v.id, name:v.name, done:v.done }).select().single();
+          .insert(rimettiInLista(v)).select().single();
         if (error){ esitoErrore(error); return; }
-        S.spesa.push(data); renderSpesa(); toast('Rimesso in lista.');
+        S.spesa.push(data); ordinaSpesa(); renderSpesa(); toast('Rimesso in lista.');
       });
     }catch(e){ esitoErrore(e); }
   }
