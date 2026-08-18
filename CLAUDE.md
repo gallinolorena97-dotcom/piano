@@ -1066,6 +1066,48 @@ normale **e nessuno se ne accorgerebbe** guardando il risultato.
 `passiPuliti()` e `sostPulite()` esistono **due volte**, nella function e nel frontend,
 e ripuliscono le stesse cose. Se cambia lo schema si toccano tutte e due.
 
+#### L'import della settimana 22-28 agosto (18/08/2026)
+
+Brief: `PROMPT-IMPORT-SETTIMANA.md`. Una settimana decisa a mano in chat (Lorena in
+convalescenza) caricata nel calendario **senza chiamare il generatore**: zero tacche
+consumate. File: `import-settimana-22-28.sql`.
+
+⚠️ **`ingredienti` contiene la lista «Scala», non le porzioni.** Sono due informazioni
+diverse e servono a due cose diverse: quanto si toglie dalla dispensa, e quanto va nel
+piatto di ciascuno. Le porzioni per persona stanno nella **nota** del pasto. Metterle
+negli ingredienti avrebbe fatto scalare la somma sbagliata — e per i pasti «avanzo» la
+somma giusta è **zero**, perché quella roba era già stata contata il giorno prima.
+
+⚠️ **Gli avanzi scalano solo quello che si aggiunge oggi.** Martedì pranzo (torta salata
+di lunedì) scala solo insalata e tonno; giovedì pranzo (burrito di mercoledì) non scala
+niente. Scalare due volte lo stesso ingrediente svuoterebbe la dispensa di roba mai
+usata.
+
+**La cena di domenica è `modo:'libero'`**, col meccanismo che esiste già: il totale del
+giorno scende e lo si dichiara. Non è uno sgarro e non va scritto come tale.
+
+#### ⚠️ Il buco chiuso: «Genera la settimana» passava sopra ai pasti scritti a mano
+
+Trovato verificando il punto 4 di quel brief, e **non era un problema di quell'import**:
+era un difetto vero, che c'era da sempre.
+
+`costruisciPassata()` metteva su «Lascia» i pasti `a_mano` **solo quando `daPiano` era
+vero**, cioè rigenerando. Una **«Genera la settimana» partita da zero** costruiva la
+passata con tutti i pasti su «A casa», e il salvataggio poi cancella e riscrive i giorni
+che tocca: i pasti scritti a mano sparivano **senza che niente lo chiedesse**, e chi li
+aveva scritti se ne accorgeva quando non c'erano più.
+
+La regola dell'app era già scritta — *un pasto scritto a mano è confermato e non si
+rigenera senza chiedere* — semplicemente non era applicata su quel percorso.
+
+⚠️ **È un punto di partenza, non un lucchetto**: basta toccare «A casa» per rigenerarlo
+davvero. Deve restare così — decidere di buttare via quello che si è scritto è una
+scelta di chi guarda, non una porta chiusa.
+
+E la passata **lo dice**: «ci sono 3 pasti scritti da te in questi giorni, sono su
+Lascia e non li tocco». Un «Lascia» comparso da solo, se non si sa perché, sembra un
+errore.
+
 #### La grafica è CHIUSA (18/08/2026) — non si riapre da soli
 
 Giudizio dell'utente sul secondo giro: **«promossa per questo giro — meglio del primo,
@@ -1300,7 +1342,8 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `tabelle-spesa-blocco5.sql` | `shopping_list.serve_il`: la riga della spesa sa per quando serve. ✅ eseguito |
 | `tabelle-costi.sql` | `generator_usage.tok_in/tok_out` e `registra_token()`: la stima di spesa. **Da eseguire** |
 | `tabelle-nutrienti.sql` | `inventory_items.prot_100g/kcal_100g`, facoltativi. **Da eseguire** |
-| `tabelle-blocco6.sql` | procedimento e sostituzioni sui pasti, procedimento sulle ricette, `plan_jobs.svuota_frigo`. **Da eseguire** |
+| `tabelle-blocco6.sql` | procedimento e sostituzioni sui pasti, procedimento sulle ricette, `plan_jobs.svuota_frigo`. ✅ eseguito |
+| `import-settimana-22-28.sql` | i 14 pasti decisi a mano per il 22-28 agosto. **Da eseguire una volta sola** |
 | `prova-piano-v5.sql` | una settimana finta per collaudare il calendario a mano |
 | `COLLAUDO-V5.md` | la checklist di collaudo del calendario. Come tutti i `COLLAUDO-*`, resta **solo sul computer**: è in `.gitignore` |
 | `seed-dati-iniziali.sql` | inventario e ricette di partenza (11/08) |

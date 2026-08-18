@@ -3596,14 +3596,34 @@ function costruisciPassata(dal, quanti, daPiano){
     const day = addGiorni(dal, i);
     const g = { day };
     for (const q of PS_PASTI){
-      const r = daPiano ? pastiDi(day).find(x => x.pasto === q) : null;
+      const esistente = pastiDi(day).find(x => x.pasto === q);
+      // ⚠️ UN PASTO SCRITTO A MANO PARTE SEMPRE SU «LASCIA», anche in una
+      // settimana nuova. Prima valeva solo rigenerando (daPiano): una
+      // «Genera la settimana» partita da zero passava sopra ai pasti
+      // scritti a mano senza chiedere niente, e chi li aveva scritti se ne
+      // accorgeva quando non c'erano più. La regola dell'app è la stessa
+      // da sempre — un pasto scritto da una persona non si rigenera senza
+      // chiederlo — ma qui non era applicata.
+      // ⚠️ È un PUNTO DI PARTENZA, non un lucchetto: basta toccare «A casa»
+      // per rigenerarlo davvero. Deve restare così: decidere di buttare via
+      // quello che hai scritto è una scelta tua, non una porta chiusa.
+      if (esistente?.a_mano){ g[q] = { modo:'lascia', chi:esistente.chi, nota:esistente.nota || '' }; continue; }
+
+      const r = daPiano ? esistente : null;
       g[q] = r
-        ? { modo: r.a_mano ? 'lascia' : r.modo, chi: r.chi, nota: r.nota || '' }
+        ? { modo: r.modo, chi: r.chi, nota: r.nota || '' }
         : { modo: daPiano ? 'lascia' : 'casa', chi:'entrambi', nota:'' };
     }
     return g;
   });
 }
+
+/** Quanti pasti scritti a mano questa passata sta lasciando stare. Serve a
+    dirlo, invece di lasciarlo scoprire: un «Lascia» comparso da solo, se
+    non si sa perché, sembra un errore. */
+const aManoNellaPassata = () =>
+  PS.giorni.reduce((n, g) => n + PS_PASTI.filter(q =>
+    g[q].modo === 'lascia' && pastiDi(g.day).find(x => x.pasto === q)?.a_mano).length, 0);
 
 /**
  * Apre la passata. Senza argomenti fa la settimana intera da oggi.
@@ -3663,7 +3683,15 @@ function vistaPassata(){
       <input class="field" type="date" id="psDal" value="${esc(PS.dal)}" min="${esc(oggiISO())}">
       ${PS.daPiano ? `<p class="hint" style="margin-top:7px">I pasti partono da come sono
         adesso nel calendario. Quelli che hai scritto tu sono su <b>Lascia</b>: non li
-        tocco, a meno che non me lo dica tu.</p>` : ''}
+        tocco, a meno che non me lo dica tu.</p>` : (() => {
+          // anche in una settimana nuova i pasti scritti a mano si salvano:
+          // se non lo dico, un «Lascia» comparso da solo sembra un errore
+          const n = aManoNellaPassata();
+          return n ? `<p class="hint" style="margin-top:7px">Ci ${n === 1 ? 'è' : 'sono'}
+            <b>${n} ${n === 1 ? 'pasto scritto' : 'pasti scritti'} da te</b> in questi
+            giorni: ${n === 1 ? 'è' : 'sono'} su <b>Lascia</b> e non ${n === 1 ? 'lo tocco' : 'li tocco'}.
+            Se vuoi rifar${n === 1 ? 'lo' : 'li'}, mett${n === 1 ? 'ilo' : 'ili'} su «A casa».</p>` : '';
+        })()}
       <div class="q-label">Di solito a tavola ci sono</div>
       <div class="chips" id="psTutti">
         ${PS_CHI.map(c => `<button data-tutti="${c}">${esc(nomeChi(c))}</button>`).join('')}
