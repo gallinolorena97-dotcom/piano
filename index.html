@@ -1139,6 +1139,20 @@ select.field{appearance:none;-webkit-appearance:none;
 .ric-num.nuovo{color:var(--menta-ink);font-weight:600}
 .ric-riga .btn.small{margin-top:5px}
 
+/* I sostituti. ⚠️ Menta e non pesca: una sostituzione è il contrario di un
+   avviso — vuol dire «non devi andare da nessuna parte, hai già questo».
+   È la stessa scelta di colore già fatta per le sostituzioni del piano. */
+.btn-testo.sost{color:var(--menta-ink)}
+.sost-box{
+  margin-top:9px;padding:10px 12px;border-radius:14px;
+  background:var(--surface);border:1px solid var(--linea);
+}
+.sost-mini{
+  display:flex;flex-wrap:wrap;gap:6px;align-items:center;
+  padding:8px 0 4px;
+}
+.sost-mini .hint{flex:1 0 100%}
+
 /* Chi ha mangiato. Sta ACCANTO al piatto e non in una colonna sua: è un
    dettaglio del pasto, non un dato da incolonnare, e su un iPhone una
    quarta colonna spingerebbe fuori i numeri. Lavanda su testo viola-testo,
@@ -2979,6 +2993,26 @@ function apriModificaPasto(iso, quale, dentro){
     }
     const via = ev.target.closest('[data-togli-ing]');
     if (via){ via.closest('.mano-riga').remove(); return; }
+
+    // «Sostituisci»: lo stesso gesto dell'avviso, ma qui il piano non è
+    // ancora scritto — si cambia il testo nel campo e si aggiustano i due
+    // numeri, e a salvare ci pensi tu col bottone di sempre.
+    const cambia = ev.target.closest('[data-sost-ing]');
+    if (cambia){
+      const riga = cambia.closest('.mano-riga');
+      apriSostitutiInRiga(riga, box);
+      return;
+    }
+    const scelto = ev.target.closest('[data-sost-riga]');
+    if (scelto){
+      const riga = scelto.closest('.mano-riga');
+      applicaSostitutoInRiga(riga, box, scelto.dataset.sostRiga);
+      return;
+    }
+    if (ev.target.closest('[data-sost-riga-no]')){
+      ev.target.closest('.sost-mini')?.remove();
+      return;
+    }
     if (ev.target.closest('[data-crea-ricetta]')){ creaLaRicetta(box, iso, quale); return; }
     if (ev.target.closest('[data-annulla]')){ box.remove(); return; }
     if (ev.target.closest('[data-salva]')) salvaPastoAMano(iso, quale, box);
@@ -3146,8 +3180,59 @@ const rigaIngrediente = (i) => `<div class="mano-riga">
          value="${esc(i.nome || '')}" autocomplete="off">
   <input class="field mini" data-ing-qta placeholder="quanto"
          value="${esc(i.qta || '')}" autocomplete="off">
+  ${sostitutiPer(i.nome, i.qta).length
+    ? `<button class="icon-btn" data-sost-ing
+         aria-label="Sostituisci ${esc(i.nome || '')}">${ico("rigenera",17)}</button>` : ''}
   <button class="icon-btn" data-togli-ing aria-label="Togli">${ico("chiudi",17)}</button>
 </div>`;
+
+/** Le alternative, dentro la riga dell'ingrediente. Stessa regola di
+    sempre: stessa categoria e basta. */
+function apriSostitutiInRiga(riga, box){
+  riga.parentElement.querySelectorAll('.sost-mini').forEach(x => x.remove());
+  const nome = riga.querySelector('[data-ing-nome]').value.trim();
+  const qta  = riga.querySelector('[data-ing-qta]').value.trim();
+  const lista = sostitutiPer(nome, qta);
+  if (!lista.length){ toast(`Non ho niente della stessa categoria di «${nome}».`); return; }
+
+  riga.insertAdjacentHTML('afterend', `
+    <div class="sost-mini">
+      <p class="hint" style="margin:0 0 6px">Al posto di «${esc(nome)}», stessa categoria:</p>
+      ${lista.map(v => `<button class="btn small ghost" data-sost-riga="${esc(v.name)}"
+        >${esc(v.name)} · ne hai ${esc(mostraQta(v.qty))}</button>`).join(' ')}
+      <button class="btn-testo" data-sost-riga-no>lascia stare</button>
+    </div>`);
+}
+
+/**
+ * Applica il sostituto nella riga e aggiusta i due numeri del pannello.
+ *
+ * ⚠️ Se i valori per 100 g non si sanno, i numeri si SVUOTANO invece di
+ * restare quelli di prima, e il pannello lo dice. Vale qui la stessa
+ * ragione dell'avviso: un cambio che lascia i numeri vecchi è una bugia.
+ */
+function applicaSostitutoInRiga(riga, box, nuovo){
+  const campoNome = riga.querySelector('[data-ing-nome]');
+  const vecchio = campoNome.value.trim();
+  const qta = riga.querySelector('[data-ing-qta]').value.trim();
+  const cp = box.querySelector('[data-prot]'), ck = box.querySelector('[data-kcal]');
+
+  const n = numeriDopoIlCambio(
+    { prot:Number(cp?.value) || null, kcal:Number(ck?.value) || null }, vecchio, nuovo, qta);
+
+  campoNome.value = nuovo;
+  riga.parentElement.querySelectorAll('.sost-mini').forEach(x => x.remove());
+
+  if (!cp || !ck){ toast(`${nuovo} al posto di ${vecchio}.`); return; }
+  if (n.sicuro){
+    if (n.prot != null) cp.value = n.prot;
+    if (n.kcal != null) ck.value = n.kcal;
+    toast(`${nuovo} al posto di ${vecchio}: numeri aggiustati.`);
+  }else{
+    cp.value = ''; ck.value = '';
+    toast(`${nuovo} al posto di ${vecchio}. Non so i suoi valori per 100 g: riscrivi i numeri, o lasciali vuoti.`);
+  }
+}
 
 async function salvaPastoAMano(iso, quale, box){
   const piatto = box.querySelector('[data-piatto]').value.trim();
@@ -3479,10 +3564,17 @@ function avvisoScorteHtml(){
         // ⚠️ Toccabile: porta al primo pasto che lo richiede. Spesso il
         // «mancante» non manca davvero, è solo scritto con un altro nome —
         // e da lì lo si corregge invece di leggere un elenco e arrangiarsi.
+        // «Non hai il merluzzo» serve a poco se in freezer c'è il nasello:
+        // quando in dispensa c'è qualcosa della stessa categoria, si dice.
+        const alt = sostitutiPer(g.nome, g.serve);
         return `<li>${g.primo
           ? `<button class="btn-testo" data-vai-mancante="${esc(g.primo.day)}"
                 data-vai-pasto="${esc(g.primo.pasto)}">${testo}</button>`
-          : testo}</li>`;
+          : testo}${alt.length ? `
+          <button class="btn-testo sost" data-sost="${esc(g.nome)}"
+                  data-sost-serve="${esc(g.serve || '')}">${alt.length === 1
+            ? `hai ${esc(alt[0].name)}: lo uso al suo posto?`
+            : `hai ${alt.length} cose simili: ne uso una?`}</button>` : ''}</li>`;
       }).join('')}
       ${guai.length > 6 ? `<li>e altre ${guai.length - 6}</li>` : ''}
     </ul>
@@ -3689,6 +3781,46 @@ $('#planBody').addEventListener('click', async (ev) => {
   if (ev.target.closest('[data-rigenera]') && card){
     apriPassata({ dal:card.dataset.day, quanti:1, daPiano:true,
                   titolo:`Rigenero solo ${labelData(card.dataset.day)}` });
+    return;
+  }
+
+  const sost = ev.target.closest('[data-sost]');
+  if (sost){
+    apriSostituti(sost.dataset.sost, sost.dataset.sostServe || '',
+                  sost.closest('.avviso-scorte'));
+    return;
+  }
+
+  if (ev.target.closest('[data-sost-no]')){
+    ev.target.closest('.sost-box')?.remove();
+    return;
+  }
+
+  const ok = ev.target.closest('[data-sost-ok]');
+  if (ok){
+    const nuovo = ok.dataset.sostOk, vecchio = ok.dataset.sostVecchio;
+    const box = ok.closest('.sost-box');
+    box.querySelectorAll('button').forEach(b => b.disabled = true);
+    (async () => {
+      try{
+        const { quanti, prima, senzaNumeri } = await sostituisciIngrediente(vecchio, nuovo);
+        renderPlan();
+        toast(`${nuovo} al posto di ${vecchio}, in ${quanti === 1 ? '1 pasto' : quanti + ' pasti'}.`
+          + (senzaNumeri ? ' I numeri di quei pasti sono da riscrivere.' : ''), async () => {
+            try{
+              for (const p of prima){
+                await sb.from('plan_meals')
+                  .update({ ingredienti:p.ingredienti, prot:p.prot, kcal:p.kcal }).eq('id', p.r.id);
+                Object.assign(p.r, { ingredienti:p.ingredienti, prot:p.prot, kcal:p.kcal });
+              }
+              renderPlan(); toast('Rimesso com’era.');
+            }catch(e){ esitoErrore(e); }
+          });
+      }catch(e){
+        box.querySelectorAll('button').forEach(b => b.disabled = false);
+        esitoErrore(e);
+      }
+    })();
     return;
   }
 
@@ -5139,6 +5271,127 @@ const opzioniCategoria = (scelta) =>
     .concat(CATEGORIE_CIBO.map(c =>
       `<option value="${esc(c)}"${c === scelta ? ' selected' : ''}>${esc(c)}</option>`))
     .join('');
+
+/* ============================================================
+   I SOSTITUTI DELLA STESSA CATEGORIA (v8, Blocco 2)
+
+   «Non hai il merluzzo» è un'informazione mezza inutile se in freezer c'è
+   il nasello. Da qui l'app lo dice, e propone il cambio.
+
+   ⚠️ SOLO DENTRO LA STESSA CATEGORIA, mai fra categorie diverse, nemmeno
+   come proposta: il merluzzo si sostituisce col nasello, non con le
+   lenticchie «perché tanto sono proteine». È la stessa regola che vale già
+   per le sostituzioni del generatore.
+
+   ⚠️ SI PROPONE, NON SI FA. Il cambio tocca il piano, e il piano è tuo.
+   ============================================================ */
+
+/**
+ * I sostituti possibili: le voci di dispensa della stessa categoria.
+ *
+ * ⚠️ Si scarta solo quello che si SA non bastare. Se la quantità che serve
+ * o quella che c'è non sono due numeri confrontabili, la voce resta in
+ * elenco con scritto quanto ce n'è: con il frigo davanti si giudica meglio
+ * che con una regola, e qui sbagliare verso il silenzio costa di più.
+ */
+function sostitutiPer(nome, serve){
+  const cat = categoriaProposta(nome);
+  if (!cat) return [];
+  return S.inv.filter(v => {
+    if (v.categoria !== cat || stessoNome(v.name, nome)) return false;
+    if (String(v.qty).includes('?')) return true;
+    const hai = leggiQta(v.qty), q = serve ? leggiQta(serve) : null;
+    if (!hai || !q || hai.u !== q.u) return true;
+    return hai.n >= q.n;
+  });
+}
+
+/**
+ * I numeri del pasto dopo il cambio.
+ *
+ * ⚠️ Si sposta solo la DIFFERENZA fra il vecchio e il nuovo, non si
+ * ricalcola il pasto da zero: il totale è una stima fatta sul piatto
+ * intero, e rifarla sommando gli ingredienti darebbe un numero diverso e
+ * peggiore di quello che c'è.
+ *
+ * ⚠️ Se i valori per 100 g non si sanno, i numeri si AZZERANO invece di
+ * restare quelli di prima. Salmone e merluzzo non hanno le stesse calorie:
+ * un cambio che lascia i numeri vecchi è una bugia, e il totale del giorno
+ * che si dichiara parziale è la verità.
+ */
+function numeriDopoIlCambio(r, vecchio, nuovo, qta){
+  const g = grammiDi(qta);
+  const a = ricordoDi(vecchio), b = ricordoDi(nuovo);
+  const completo = (x) => x && x.p != null && x.k != null;
+  if (g === null || !completo(a) || !completo(b)) return { prot:null, kcal:null, sicuro:false };
+  return {
+    prot: r.prot == null ? null : Math.max(0, Math.round(r.prot + g * (b.p - a.p) / 100)),
+    kcal: r.kcal == null ? null : Math.max(0, Math.round(r.kcal + g * (b.k - a.k) / 100)),
+    sicuro: true,
+  };
+}
+
+/** I pasti futuri che usano quell'ingrediente. */
+const pastiConIngrediente = (nome) => S.piano.filter(r =>
+  r.day >= oggiISO() && r.modo === 'casa' &&
+  (r.ingredienti || []).some(i => stessoNome(String(i.nome || ''), nome)));
+
+/** Il cambio vero, su tutti i pasti che lo usano. Torna com'era, per
+    l'annulla: un cambio su più giorni deve poter tornare indietro tutto
+    insieme, o si resta a metà senza sapere dove. */
+async function sostituisciIngrediente(vecchio, nuovo){
+  const pasti = pastiConIngrediente(vecchio);
+  const prima = pasti.map(r => ({
+    r, ingredienti:JSON.parse(JSON.stringify(r.ingredienti || [])), prot:r.prot, kcal:r.kcal,
+  }));
+  let senzaNumeri = 0;
+  for (const r of pasti){
+    const ing = (r.ingredienti || []).map(i => ({ ...i }));
+    let qta = null;
+    for (const i of ing) if (stessoNome(String(i.nome || ''), vecchio)){ qta = i.qta; i.nome = nuovo; }
+    const n = numeriDopoIlCambio(r, vecchio, nuovo, qta);
+    if (!n.sicuro) senzaNumeri++;
+    const campi = { ingredienti:ing, prot:n.prot, kcal:n.kcal };
+    const { error } = await sb.from('plan_meals').update(campi).eq('id', r.id);
+    if (error) throw error;
+    Object.assign(r, campi);
+  }
+  return { quanti:pasti.length, prima, senzaNumeri };
+}
+
+/** Il pannello con le alternative, dentro l'avviso delle scorte. */
+function apriSostituti(nome, serve, dentro){
+  dentro.querySelector('.sost-box')?.remove();
+  const lista = sostitutiPer(nome, serve);
+  const quanti = pastiConIngrediente(nome).length;
+  if (!lista.length) return;
+
+  dentro.insertAdjacentHTML('beforeend', `
+    <div class="sost-box">
+      <div class="q-label" style="margin-top:0">Al posto di «${esc(nome)}»</div>
+      <p class="hint" style="margin-top:0">Stessa categoria (${esc(categoriaProposta(nome))}).
+        Il cambio vale per ${quanti === 1 ? 'il pasto che lo usa' : `i ${quanti} pasti che lo usano`},
+        e si può annullare.</p>
+      ${lista.map(v => {
+        const sicuri = pastiConIngrediente(nome).every(r => {
+          const i = (r.ingredienti || []).find(x => stessoNome(String(x.nome || ''), nome));
+          return numeriDopoIlCambio(r, nome, v.name, i?.qta).sicuro;
+        });
+        return `<div class="ric-riga">
+          <div class="item-name">${esc(v.name)}</div>
+          <div class="ric-num">ne hai ${esc(mostraQta(v.qty))}</div>
+          <div class="ric-num${sicuri ? ' nuovo' : ''}">${sicuri
+            ? 'i numeri si aggiustano da soli'
+            : 'non so i valori per 100 g: i numeri di quei pasti restano vuoti e il totale del giorno si dirà parziale'}</div>
+          <button class="btn small" data-sost-ok="${esc(v.name)}"
+                  data-sost-vecchio="${esc(nome)}">Usa questo</button>
+        </div>`;
+      }).join('')}
+      <div class="form-row">
+        <button class="btn small ghost" data-sost-no style="flex:1">Lascia stare</button>
+      </div>
+    </div>`);
+}
 
 /* ============================================================
    LE RICETTE CHE USANO QUELL'INGREDIENTE

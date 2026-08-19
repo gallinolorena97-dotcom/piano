@@ -1389,6 +1389,38 @@ carboidrati* (nel piatto sostituiscono pasta e riso, e un minimo di verdura non 
 raggiunge con le patatine); passata e pesto in *condimenti* per la stessa ragione; il
 maiale in *carne rossa*; salmone e tonno affumicati in *pesce* e non in *salumi*.
 
+#### V8 Blocco 2 — i sostituti della stessa categoria (19/08/2026)
+
+«Non hai il merluzzo» è mezza informazione se in freezer c'è il nasello. Ora l'avviso
+delle scorte lo dice — «hai il nasello: lo uso al suo posto?» — e lo stesso gesto c'è
+aprendo il pasto, sulla riga dell'ingrediente.
+
+⚠️ **Solo dentro la stessa categoria, mai fra categorie diverse, nemmeno come proposta.**
+Il merluzzo si sostituisce col nasello, non con le lenticchie «perché tanto sono
+proteine». È la stessa regola che il generatore ha già per le sue sostituzioni.
+
+⚠️ **Si scarta solo quello che si SA non bastare.** Se la quantità che serve o quella che
+c'è non sono due numeri confrontabili, la voce resta in elenco **con scritto quanto ce
+n'è**: davanti al frigo si giudica meglio che con una regola, e qui sbagliare verso il
+silenzio costa più che sbagliare verso la proposta.
+
+⚠️ **I numeri si spostano della DIFFERENZA, non si ricalcola il pasto da zero**
+(`numeriDopoIlCambio()`). Il totale di un pasto è una stima fatta sul piatto intero:
+rifarla sommando gli ingredienti darebbe un numero diverso e peggiore di quello che c'è.
+
+⚠️ **Se i valori per 100 g non si sanno, i numeri si AZZERANO** invece di restare quelli
+di prima, e il pannello lo dice **prima** di confermare. Salmone e merluzzo non hanno le
+stesse calorie: un cambio che lascia i numeri vecchi è una bugia, e un totale che si
+dichiara parziale è la verità.
+
+⚠️ **Il cambio vale su tutti i pasti futuri che usano quell'ingrediente**, non solo sul
+primo — cambiarne uno su tre lascerebbe il problema in piedi e farebbe credere di averlo
+risolto. L'annulla riporta indietro **tutti** insieme.
+
+Il bottone è **menta e non pesca**: una sostituzione è il contrario di un avviso, vuol
+dire «non devi andare da nessuna parte». Stessa scelta già fatta per le sostituzioni del
+generatore.
+
 #### ⚠️ Il bug trovato collegando la categoria: un dato scritto e mai riletto
 
 `inventory_items` si leggeva con `select('id,name,qty,cat')`, cioè un **elenco fisso di
