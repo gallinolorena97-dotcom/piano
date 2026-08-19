@@ -578,8 +578,8 @@ giorno) e **v5 Blocco 4** (modifica a mano, rigenerazione, «Lascia») — **que
 collaudare**. In più: si cambia giorno strisciando col pollice.
 
 ✅ **I file SQL fino al Blocco 5 sono tutti eseguiti** (18/08/2026), verificati uno per
-uno interrogando il database. ⚠️ **Ne sono nati due dopo**: `tabelle-costi.sql` e
-`tabelle-nutrienti.sql` — vedi «PROSSIMO PASSO».
+uno interrogando il database. ⚠️ **Ne è rimasto indietro uno solo**: `tabelle-costi.sql`
+— `tabelle-nutrienti.sql` risulta eseguito (ricontrollato il 19/08). Vedi «PROSSIMO PASSO».
 `plan_meals.a_mano` · `plan_meals.ricetta_id` · `recipes.ingredienti/prot/kcal/tempo` ·
 `shopping_list.serve_il` · la tabella `plan_jobs`: ci sono tutti.
 
@@ -943,16 +943,20 @@ col campo «che voglia hai?».
 
 #### ▶️ PROSSIMO PASSO — due passaggi su Supabase, poi collaudare
 
-**Aggiornato il 18/08/2026.**
+**Aggiornato il 19/08/2026.**
 
-⚠️ **DUE PASSAGGI IN SOSPESO** (aperti il 18/08 col push di menu, costi e valori per
-100 g). Prima erano zero: quel push ha toccato la function, e ogni volta che si tocca
-il `.ts` serve un deploy a mano.
+⚠️ **PASSAGGI IN SOSPESO SU SUPABASE.** Verificati uno per uno interrogando il database
+il 19/08 (il trucco del `select=<colonna>&limit=0` spiegato più sopra):
+`tabelle-nutrienti.sql` e `tabelle-blocco6.sql` **risultano già eseguiti**.
 
-1. **Su Supabase → SQL Editor**: `tabelle-costi.sql`, `tabelle-nutrienti.sql` e
-   `tabelle-blocco6.sql`.
+1. **Su Supabase → SQL Editor**, in quest'ordine:
+   `tabelle-costi.sql` · `spesa-22-28-v2.sql` · `import-settimana-22-28-v2.sql`.
+   Gli ultimi due sono la settimana 22-28 rifatta il 19/08 e vanno **al posto** dei due
+   file del 18/08, che erano già stati eseguiti.
 2. **Su Supabase → Edge Functions → cosa-cucino → Deploy**: reincollare
-   `edge-function-cosa-cucino.ts` (Verify JWT resta OFF).
+   `edge-function-cosa-cucino.ts` (Verify JWT resta OFF). ⚠️ **Non serve per la
+   settimana 22-28**: quell'import non passa dalla function. Resta in sospeso dal push
+   del 18/08 (menu, costi e valori per 100 g).
 
 Finché non sono fatti l'app non si rompe — le colonne nuove si mandano solo quando
 hanno un valore, e dove serve la scrittura riprova senza — ma «Quanto sto spendendo»
@@ -1106,6 +1110,42 @@ si aggiunge a «Base sempre in casa») e `Grana`, che invece è già dentro la q
 «Base sempre in casa» e quindi `forseInCasa()` lo fa tacere.
 ⚠️ **`Pasta sfoglia` l'ho aggiunta io**: non era nello spesone, ma lunedì sera la torta
 salata non si fa senza.
+
+#### La stessa settimana, rifatta il 19/08/2026 — ⚠️ vale questa, non quella sopra
+
+`PROMPT-IMPORT-SETTIMANA.md` è stato **riscritto** il 19/08: stessa settimana, piatti
+diversi. I file nuovi sono `import-settimana-22-28-v2.sql` e `spesa-22-28-v2.sql`, e
+**sostituiscono** i due del 18/08, che restano nella cartella solo come storia.
+Cinque pasti su quattordici cambiano davvero: domenica pranzo (pasta al sugo **con le
+fettine di vitello**, non più uova sode), mercoledì cena (**polenta** al posto del purè),
+giovedì cena (**zuppa di lenticchie con pastina** al posto del minestrone con ceci),
+venerdì pranzo (**pasta in bianco col cotto magro** al posto di «Avanzi o toast») e
+venerdì cena (**straccetti di tacchino al limone con farro** al posto del pollo alle erbe).
+
+⚠️ **Lo spesone del 18/08 era già sul database, tutto da spuntare.** Per questo il file
+nuovo non si limita ad aggiungere: **toglie dieci voci** che servivano solo al piano
+vecchio (minestrone, ceci, fiocchi di patate, pancarré, e le scorte che non tornano) e
+**aggiorna quantità e data** di quelle rimaste, senza mai toccare la spunta. Una lista
+della spesa con dentro gli avanzi di un piano superato è peggio di nessuna lista: al
+supermercato si compra roba che nessuno userà.
+
+⚠️ **Le voci scritte a mano dall'utente non si toccano** (Prezzemolo, Limone, cipolla,
+Bicarbonato, Tonno in scatola): non sono venute da un import, e cancellarle sarebbe
+decidere al posto suo. Restano però **tre doppioni** che solo lei può sciogliere —
+`Limone`/`limoni`, `cipolla`/`Cipolle`, `Tonno in scatola`/`Tonno` — perché `stessoNome()`
+non li appaia (il singolare non si deduce dal plurale, ed è voluto).
+
+⚠️ **Un ingrediente, un nome solo.** Il brief scriveva «grana» mercoledì sera e
+«parmigiano» negli altri due pasti: nel piano è **`Parmigiano`** dappertutto, che è anche
+il nome della riga di spesa. Due nomi per la stessa cosa vorrebbero dire che l'app non
+riconosce di averla. Stessa ragione per **`Riso Roma`**, che è il nome esatto in dispensa.
+
+⚠️ **`Olio` adesso è nello spesone** (1 litro): era la prima delle due cose scoperte del
+18/08. `Grana` resta coperto da «Base sempre in casa», come prima.
+
+I conti del brief tornano tutti, ed è il modo di accorgersi di un errore di trascrizione:
+pasta 360 g, uova 5, carote 6, riso 290 g, parmigiano 85 g, prosciutto cotto 240 g, petto
+di pollo 350 g — esattamente i numeri che il brief dichiara a fianco delle quantità.
 
 #### ⚠️ Il buco chiuso: «Genera la settimana» passava sopra ai pasti scritti a mano
 
@@ -1362,9 +1402,12 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `tabelle-ricette-complete.sql` | il contenuto delle ricette (ingredienti, prot, kcal, tempo) e il filo `plan_meals.ricetta_id`. ✅ eseguito |
 | `tabelle-spesa-blocco5.sql` | `shopping_list.serve_il`: la riga della spesa sa per quando serve. ✅ eseguito |
 | `tabelle-costi.sql` | `generator_usage.tok_in/tok_out` e `registra_token()`: la stima di spesa. **Da eseguire** |
-| `tabelle-nutrienti.sql` | `inventory_items.prot_100g/kcal_100g`, facoltativi. **Da eseguire** |
+| `tabelle-nutrienti.sql` | `inventory_items.prot_100g/kcal_100g`, facoltativi. ✅ eseguito |
 | `tabelle-blocco6.sql` | procedimento e sostituzioni sui pasti, procedimento sulle ricette, `plan_jobs.svuota_frigo`. ✅ eseguito |
-| `import-settimana-22-28.sql` | i 14 pasti decisi a mano per il 22-28 agosto. **Da eseguire una volta sola** |
+| `import-settimana-22-28.sql` | i 14 pasti del 22-28 agosto, **prima versione (18/08)**. ✅ eseguito, poi superato |
+| `import-spesa-22-28.sql` | lo spesone di quella prima versione. ✅ eseguito, poi superato |
+| `import-settimana-22-28-v2.sql` | ⚠️ **la settimana che vale**, rifatta il 19/08. Sostituisce le 14 righe del 22-28 |
+| `spesa-22-28-v2.sql` | ⚠️ **lo spesone che vale**, rifatto il 19/08. Toglie dieci voci del piano vecchio, aggiorna le altre |
 | `prova-piano-v5.sql` | una settimana finta per collaudare il calendario a mano |
 | `COLLAUDO-V5.md` | la checklist di collaudo del calendario. Come tutti i `COLLAUDO-*`, resta **solo sul computer**: è in `.gitignore` |
 | `seed-dati-iniziali.sql` | inventario e ricette di partenza (11/08) |
