@@ -1100,6 +1100,15 @@ select.field{appearance:none;-webkit-appearance:none;
 .dg-quale{font-size:10.5px;font-weight:700;letter-spacing:.8px;color:var(--muted);
   text-transform:uppercase;min-width:68px}
 .dg-piatto{flex:1;word-break:break-word}
+/* Chi ha mangiato. Sta ACCANTO al piatto e non in una colonna sua: è un
+   dettaglio del pasto, non un dato da incolonnare, e su un iPhone una
+   quarta colonna spingerebbe fuori i numeri. Lavanda su testo viola-testo,
+   la coppia misurata: il viola pieno qui sotto starebbe sotto la AA. */
+.dg-chi{
+  display:inline-block;background:var(--lavanda-soft);color:var(--viola-testo);
+  font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:999px;
+  white-space:nowrap;vertical-align:1px;
+}
 .dg-num{color:var(--muted);font-size:13px;white-space:nowrap;font-variant-numeric:tabular-nums}
 
 /* ============================================================
@@ -1598,6 +1607,12 @@ select.field{appearance:none;-webkit-appearance:none;
             <option value="cena">Cena</option>
           </select>
         </div>
+        <!-- Chi ha mangiato. Le voci le scrive aggiornaChiDiario() coi nomi
+             veri dei profili: qui non si possono scrivere a mano, perché
+             dipendono da chi è selezionato su QUESTO telefono. -->
+        <div class="form-row">
+          <select class="field" id="dgChi"></select>
+        </div>
         <div class="form-row">
           <input class="field" id="dgProt" type="number" inputmode="numeric" placeholder="proteine g">
           <input class="field" id="dgKcal" type="number" inputmode="numeric" placeholder="kcal">
@@ -1878,7 +1893,7 @@ async function loadAll(){
 
 function renderAll(){
   renderTargets(); renderPlan(); renderInv(); renderRec(); renderSpesa(); renderDiario();
-  aggiornaChiMangia();
+  aggiornaChiMangia(); aggiornaChiDiario();
   $('#dgGiorno').value = oggiISO();
 }
 
@@ -1950,12 +1965,21 @@ function quandoRelativo(iso){
    restano scritte sotto: un numero non deve mai arrivare dal nulla.
    Il campo "pasto" è quello che le lega al diario: se per quel giorno
    c'è una colazione vera registrata, quella SOSTITUISCE la voce fissa. */
+/* La base che Ciprian mette insieme tutti i giorni fuori dai pasti del
+   piano: 41 g di proteine e 470 kcal. È il conto del brief del 19/08/2026 —
+   porridge overnight la mattina, shaker a metà mattina, frutta il pomeriggio.
+
+   ⚠️ UNA VOCE SOLA PER TIPO DI PASTO, e non è un dettaglio di stile.
+   fisseDelGiorno() sostituisce ogni voce con le registrazioni di diario che
+   hanno lo STESSO `pasto`. Due voci con pasto:'spuntino' verrebbero
+   sostituite tutte e due dalle stesse righe, cioè contate doppie. Per questo
+   lo shaker e la frutta stanno insieme in una voce sola. */
 const FISSE_CIPRIAN = [
-  { nome:'colazione',    pasto:'colazione', prot:20, kcal:290 },
-  { nome:'yogurt greco', pasto:'spuntino',  prot:17, kcal:100 },
+  { nome:'colazione',        pasto:'colazione', prot:19, kcal:300 },
+  { nome:'shaker e frutta',  pasto:'spuntino',  prot:22, kcal:170 },
 ];
 
-/* ⚠️ Le voci fisse sono di CIPRIAN: la SUA colazione e il SUO yogurt.
+/* ⚠️ Le voci fisse sono di CIPRIAN: la SUA colazione e i SUOI spuntini.
    Un altro profilo che si desse un obiettivo non le eredita — sarebbero
    numeri arrivati dal nulla, ed è esattamente ciò che l'app non fa. */
 const fisseDi = (slug) => slug === SLUG_DI_CHI.ciprian ? FISSE_CIPRIAN : [];
@@ -1971,7 +1995,7 @@ const sommaKcal = (righe) => righe.reduce((s,m) => s + (Number(m.kcal) || 0), 0)
  * Le voci fisse di un giorno, ognuna sostituita dalla registrazione vera
  * se nel diario ce n'è una.
  *
- * ⚠️ REGOLA CONTRO IL DOPPIO CONTEGGIO. La colazione e lo yogurt sono
+ * ⚠️ REGOLA CONTRO IL DOPPIO CONTEGGIO. La colazione e gli spuntini sono
  * dati per scontati ogni giorno. Se però quel giorno una colazione vera
  * finisce nel diario, la voce data per scontata va SOSTITUITA, mai
  * sommata: altrimenti la colazione verrebbe contata due volte.
@@ -2125,6 +2149,27 @@ const giaNelDiario = (day, pasto) => S.diario.some(m => m.day === day && m.pasto
 function chiPerDiario(chiPiano){
   if (chiPiano === 'entrambi') return 'io_e_x';
   return SLUG_DI_CHI[chiPiano] === S.io ? 'io' : 'solo_x';
+}
+
+/**
+ * Il gemello all'incontrario: da meals_log.chi al nome della persona.
+ *
+ * ⚠️ È una traduzione che si può fare SOLO al momento di mostrare, mai una
+ * volta per tutte: 'io' non vuol dire una persona, vuol dire «chi ha in mano
+ * il telefono». La stessa riga letta dall'altro telefono parla di qualcun
+ * altro. Per questo si passa sempre dal profilo selezionato QUI.
+ *
+ * Se il campo è vuoto non si inventa niente e non si scrive niente: le righe
+ * scritte a mano prima d'ora non dicevano chi, e far comparire un nome
+ * sarebbe raccontare una cosa che nessuno ha detto.
+ */
+function chiDalDiario(chi){
+  if (!chi) return '';
+  const mio = ioProfilo(), altro = altroProfilo();
+  if (chi === 'io')     return mio?.nome || 'io';
+  if (chi === 'solo_x') return altro?.nome || 'l’altro';
+  if (chi === 'io_e_x') return (mio && altro) ? `${mio.nome} e ${altro.nome}` : 'tutti e due';
+  return '';
 }
 
 /** Il giorno da verificare: il più recente, fra gli ultimi tre, che ha
@@ -4345,7 +4390,7 @@ function vistaRiepilogo(){
         <b>già nel calendario</b>: viene scritto man mano, per non perderlo se cade la
         connessione. Qui sotto chiudi la settimana e ti dico cosa c’è davvero.</p>` : ''}
       ${perGiorno}
-      <p class="hint">I numeri sono di ${esc(nomeDiChi('ciprian'))}, colazione e yogurt compresi
+      <p class="hint">I numeri sono di ${esc(nomeDiChi('ciprian'))}, colazione e spuntini compresi
         (${FISSE_CIPRIAN.reduce((s,f) => s+f.prot, 0)} g · ${FISSE_CIPRIAN.reduce((s,f) => s+f.kcal, 0)} kcal).
         Nei giorni con un pasto fuori o libero il totale scende, ed è giusto così.</p>
     </div>
@@ -4880,6 +4925,24 @@ function aggiornaChiMangia(){
   if (!voci.some(([v]) => v === CU.chi)) CU.chi = 'io';
   box.innerHTML = voci.map(([v, testo]) =>
     `<button data-v="${v}" aria-pressed="${CU.chi === v}">${esc(testo)}</button>`).join('');
+}
+
+/* --- V6 · Blocco 5: chi ha mangiato, anche sui pasti scritti a mano ---
+   Stesso vocabolario di aggiornaChiMangia() (io · io_e_x · solo_x), perché
+   è lo stesso campo `chi` di meals_log. La prima voce resta vuota: se non
+   te la senti di dirlo, la riga entra senza, come tutte quelle di prima. */
+function aggiornaChiDiario(){
+  const sel = $('#dgChi');
+  if (!sel) return;
+  const prima = sel.value;
+  const mio = ioProfilo(), altro = altroProfilo();
+  const voci = (mio && altro)
+    ? [['', 'Chi ha mangiato? (facoltativo)'], ['io', `Solo ${mio.nome}`],
+       ['io_e_x', 'Tutti e due'], ['solo_x', `Solo ${altro.nome}`]]
+    : [['', 'Chi ha mangiato? (facoltativo)'], ['io', 'Solo io'], ['io_e_x', 'In due']];
+  sel.innerHTML = voci.map(([v, testo]) =>
+    `<option value="${v}">${esc(testo)}</option>`).join('');
+  if (voci.some(([v]) => v === prima)) sel.value = prima;
 }
 
 /* --- il collegamento con la Edge Function, in streaming ---
@@ -5615,7 +5678,11 @@ function cambiaIo(slug){
   S.io = slug;
   try { localStorage.setItem(CHIAVE_IO, S.io); } catch { /* modalità privata */ }
   profModificato = S.io;
-  renderTargets(); aggiornaChiMangia();
+  renderTargets(); aggiornaChiMangia(); aggiornaChiDiario();
+  // ⚠️ Anche il diario: adesso mostra i NOMI, e 'io' vuol dire una persona
+  // diversa a seconda di chi è selezionato. Senza questo, cambiando profilo
+  // il diario continuerebbe a chiamare le righe col nome di prima.
+  renderDiario();
   if (!$('#tab-profilo').hidden) renderProfilo();
   toast(`Su questo telefono sei ${profilo(S.io)?.nome || S.io}.`);
 }
@@ -5835,7 +5902,8 @@ function renderDiario(){
       ${giorno === oggiISO() ? finoraHtml(giorno, S.io) : ''}
       ${pasti.map(m => `<div class="dg-riga" data-id="${m.id}">
         <div class="dg-quale">${esc(m.pasto)}</div>
-        <div class="dg-piatto">${esc(m.piatto)}</div>
+        <div class="dg-piatto">${esc(m.piatto)}${
+          chiDalDiario(m.chi) ? ` <span class="dg-chi">${esc(chiDalDiario(m.chi))}</span>` : ''}</div>
         <div class="dg-num">${[
           m.prot != null ? `${m.prot} g P` : '',
           m.kcal != null ? `${m.kcal} kcal` : '',
@@ -5855,7 +5923,9 @@ $('#dgAdd').onclick = async () => {
     piatto,
     prot: $('#dgProt').value === '' ? null : Number($('#dgProt').value),
     kcal: $('#dgKcal').value === '' ? null : Number($('#dgKcal').value),
-    chi: null,
+    // Vuoto resta vuoto: la riga entra senza dire chi, come tutte quelle
+    // scritte prima che questo campo esistesse.
+    chi: $('#dgChi').value || null,
   };
   try{
     const { data, error } = await sb.from('meals_log').insert(riga).select().single();

@@ -1354,10 +1354,45 @@ salva ancora**, quindi per cambiare solo una quantità i gesti restano quelli di
 SQL non è stato eseguito, la scrittura **riprova senza** e lo dice, invece di far
 fallire un'azione che funzionava da sempre.
 
+#### La v6 — Blocco 5: il diario dice chi ha mangiato (19/08/2026)
+
+Era l'ultima cosa rimasta indietro. Il campo `meals_log.chi` esisteva già e nessuno lo
+guardava: adesso ogni riga del diario porta una pillola col nome, e il modulo «aggiungi a
+mano» ha la sua voce per dirlo.
+
+⚠️ **La traduzione si fa solo al momento di mostrare, mai una volta per tutte.**
+`meals_log.chi` è scritto dal punto di vista di **chi ha in mano il telefono**: `io` non
+è una persona, è «io che sto usando l'app». La stessa riga letta dall'altro telefono
+parla di qualcun altro. `chiDalDiario()` è il gemello all'incontrario di `chiPerDiario()`
+e passa sempre dal profilo selezionato **qui**. Per lo stesso motivo `cambiaIo()` adesso
+richiama anche `renderDiario()`: senza, cambiando profilo il diario continuerebbe a
+chiamare le righe col nome di prima.
+
+⚠️ **Campo vuoto → non si scrive niente.** Le righe scritte prima che il campo esistesse
+non dicevano chi, e far comparire un nome sarebbe raccontare una cosa che nessuno ha
+detto. Anche nel modulo la voce è facoltativa, ed è la prima della tendina.
+
+⚠️ **`finora oggi` NON è stato toccato**, e il limite noto resta: somma tutte le righe
+del giorno senza distinguere chi. Filtrarlo per `chi` sarebbe sbagliato finché quel campo
+è relativo al telefono — prima andrebbe spostato sui nomi veri, come dice il blocco 3.
+Mostrare il nome è una cosa, contarci sopra è un'altra.
+
+#### Le voci fisse di Ciprian: 41 g e 470 kcal (19/08/2026)
+
+Il brief del 19/08 dichiara la base giornaliera fuori dai pasti del piano: porridge
+overnight, shaker a metà mattina, frutta il pomeriggio — **470 kcal e 41 g**. L'app ne
+dava per scontati 37 g e 390 kcal (colazione 20 · yogurt 17), e i totali del giorno
+uscivano più bassi del conto vero. `FISSE_CIPRIAN` ora dice 19 g · 300 kcal la colazione
+e 22 g · 170 kcal lo spuntino.
+
+⚠️ **UNA VOCE SOLA PER TIPO DI PASTO**, e non è stile: `fisseDelGiorno()` sostituisce
+ogni voce con le registrazioni di diario che hanno lo **stesso `pasto`**. Due voci con
+`pasto:'spuntino'` (lo shaker e la frutta, che sarebbe stato più fedele) verrebbero
+sostituite tutte e due dalle stesse righe, cioè **contate doppie**. Per questo shaker e
+frutta stanno insieme in una voce sola, e il nome lo dice.
+
 #### Rimasto indietro, minore
 
-- v6 blocco 5: il diario non mostra ancora **chi** ha mangiato (il campo `chi` in
-  `meals_log` esiste già).
 - La texture di sfondo facoltativa della v7: non fatta. Il brief stesso dice che al
   primo dubbio si lascia perdere.
 
