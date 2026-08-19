@@ -1109,6 +1109,21 @@ select.field{appearance:none;-webkit-appearance:none;
 .dg-quale{font-size:10.5px;font-weight:700;letter-spacing:.8px;color:var(--muted);
   text-transform:uppercase;min-width:68px}
 .dg-piatto{flex:1;word-break:break-word}
+/* Una ricetta nel pannello «rivedi i numeri»: il nome, com'è adesso, come
+   diventerebbe. In colonna e non in riga perché il confronto si legge
+   dall'alto in basso, e su un iPhone tre informazioni affiancate non ci
+   stanno senza diventare illeggibili. */
+.ric-riga{
+  padding:10px 0;border-top:1px solid var(--linea);
+  display:flex;flex-direction:column;gap:3px;align-items:flex-start;
+}
+.ric-riga .item-name{font-weight:600}
+.ric-num{color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}
+/* Il numero nuovo è l'unico che si legge a colpo d'occhio: è la ragione
+   per cui questo pannello esiste. Menta, cioè la buona notizia. */
+.ric-num.nuovo{color:var(--menta-ink);font-weight:600}
+.ric-riga .btn.small{margin-top:5px}
+
 /* Chi ha mangiato. Sta ACCANTO al piatto e non in una colonna sua: è un
    dettaglio del pasto, non un dato da incolonnare, e su un iPhone una
    quarta colonna spingerebbe fuori i numeri. Lavanda su testo viola-testo,
@@ -1539,6 +1554,10 @@ select.field{appearance:none;-webkit-appearance:none;
       </div>
       <p class="hint">Se nella quantità scrivi un <b>?</b>, la voce viene segnata come DA VERIFICARE.</p>
     </div>
+    <!-- Le ricette che usano un ingrediente di cui hai appena scritto i
+         valori per 100 g. Compare solo quando serve, e non aggiorna mai
+         niente da sé: vedi apriRicalcolo(). -->
+    <div id="invRicalcolo" hidden></div>
     <input class="field" id="invSearch" placeholder="🔍 Cerca nell'inventario" autocomplete="off">
     <div id="invBody"><div class="loading">Carico l'inventario…</div></div>
   </section>
@@ -4750,7 +4769,9 @@ $('#invAdd').onclick = async () => {
     await ricordaNutrienti(name, prot, kcal);
     // Un salvataggio che non si vede sembra non essere avvenuto: la riga di
     // dispensa non mostra i valori per 100 g, quindi lo dice il messaggio.
-    toast(`Aggiunto: ${name}${prot != null || kcal != null ? ', coi valori per 100 g' : ''}`);
+    const scritti = prot != null || kcal != null;
+    if (!scritti || !segnalaRicette(name, `Aggiunto: ${name}. `))
+      toast(`Aggiunto: ${name}${scritti ? ', coi valori per 100 g' : ''}`);
   }catch(e){ esitoErrore(e); }
 };
 
@@ -4930,6 +4951,161 @@ async function ricordaNutrienti(nome, prot, kcal){
   catch { /* pazienza: si riproverà alla prossima voce */ }
 }
 
+/* ============================================================
+   LE RICETTE CHE USANO QUELL'INGREDIENTE
+
+   Scrivere che lo yogurt greco ha 10 g di proteine per 100 non cambia solo
+   la voce di dispensa: cambia il conto di ogni ricetta che lo contiene.
+   Quelle ricette però le ha approvate una persona, e i loro numeri erano
+   una stima fatta con criterio.
+
+   ⚠️ QUINDI SI PROPONE, NON SI RISCRIVE. Nessun numero cambia da solo:
+   l'app dice quali ricette sono coinvolte, mostra il vecchio e il nuovo
+   affiancati, e aspetta. È la stessa regola di «Mettilo in dispensa».
+   ============================================================ */
+
+/** I grammi di una quantità scritta, o null. ⚠️ Solo massa: «200 ml» di
+    latte non si converte, perché servirebbe la densità, e «2 fette» o
+    «q.b.» non sono numeri. Fuori dai grammi non si stima: si tace. */
+function grammiDi(testo){
+  const q = leggiQta(testo);
+  if (!q) return null;
+  if (q.u === 'g') return q.n;
+  if (q.u === 'kg') return q.n * 1000;
+  return null;
+}
+
+/** Le ricette che contengono quel nome, confrontato come sempre. */
+const ricetteConIngrediente = (nome) => S.rec.filter(r =>
+  haContenuto(r) && r.ingredienti.some(i => stessoNome(String(i.nome || ''), nome)));
+
+/**
+ * I numeri di una ricetta rifatti dai valori per 100 g.
+ *
+ * ⚠️ O si sa tutto, o non si sa niente: basta un ingrediente senza valori
+ * o con una quantità non pesabile e il conto NON si fa. Sommare solo i
+ * pezzi conosciuti darebbe un totale più basso del vero e dall'aria
+ * precisa — il modo peggiore di sbagliare. `mancano` dice quali sono, così
+ * si può rimediare invece di restare al buio.
+ */
+function ricalcolaRicetta(r){
+  let prot = 0, kcal = 0;
+  const mancano = [];
+  for (const i of (r.ingredienti || [])){
+    const nome = String(i.nome || '').trim();
+    if (!nome) continue;
+    const g = grammiDi(i.qta);
+    const v = ricordoDi(nome);
+    if (g === null || !v || (v.p == null && v.k == null)){ mancano.push(nome); continue; }
+    prot += g * (v.p ?? 0) / 100;
+    kcal += g * (v.k ?? 0) / 100;
+  }
+  const sicuro = !mancano.length && (r.ingredienti || []).length > 0;
+  return { prot:Math.round(prot), kcal:Math.round(kcal), mancano, sicuro };
+}
+
+/** Il pannello. Si apre solo se lo chiedi tu dal messaggio in basso. */
+function apriRicalcolo(nome){
+  const box = $('#invRicalcolo');
+  const ricette = ricetteConIngrediente(nome).map(r => ({ r, calc:ricalcolaRicetta(r) }));
+  if (!ricette.length){ box.hidden = true; return; }
+
+  const rifacibili = ricette.filter(x => x.calc.sicuro);
+  box.innerHTML = `
+    <div class="panel">
+      <div class="q-label" style="margin-top:0">Ricette che usano «${esc(nome)}»</div>
+      <p class="hint" style="margin-top:0">I numeri di una ricetta erano una stima.
+        Qui sotto c'è quello che verrebbe fuori dai valori per 100 g che hai scritto.
+        <b>Non cambio niente finché non me lo dici.</b></p>
+      ${ricette.map(({ r, calc }) => `
+        <div class="ric-riga" data-ric="${esc(r.id)}">
+          <div class="item-name">${esc(r.name)}</div>
+          <div class="ric-num">adesso ${r.prot != null || r.kcal != null
+            ? `${r.prot ?? '—'} g · ${r.kcal ?? '—'} kcal` : 'senza numeri'}</div>
+          ${calc.sicuro
+            ? `<div class="ric-num nuovo">diventa ${calc.prot} g · ${calc.kcal} kcal</div>
+               <button class="btn small" data-ric-ok>Aggiorna</button>`
+            : `<div class="ric-num">non posso rifare il conto: manca il valore di
+                 ${esc(calc.mancano.slice(0,3).join(', '))}${calc.mancano.length > 3
+                   ? ` e altri ${calc.mancano.length - 3}` : ''}</div>`}
+        </div>`).join('')}
+      <div class="form-row">
+        ${rifacibili.length > 1
+          ? '<button class="btn small" data-ric-tutte style="flex:1">Aggiorna tutte</button>' : ''}
+        <button class="btn small ghost" data-ric-chiudi style="flex:1">Chiudi</button>
+      </div>
+    </div>`;
+  box.hidden = false;
+  box.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+/** Scrive i numeri nuovi su una ricetta. Torna com'era, per l'annulla. */
+async function aggiornaNumeriRicetta(r){
+  const calc = ricalcolaRicetta(r);
+  if (!calc.sicuro) return null;
+  const prima = { prot:r.prot, kcal:r.kcal };
+  const { error } = await sb.from('recipes')
+    .update({ prot:calc.prot, kcal:calc.kcal }).eq('id', r.id);
+  if (error) throw error;
+  r.prot = calc.prot; r.kcal = calc.kcal;
+  return prima;
+}
+
+$('#invRicalcolo').addEventListener('click', async (ev) => {
+  const box = $('#invRicalcolo');
+  if (ev.target.closest('[data-ric-chiudi]')){ box.hidden = true; return; }
+
+  const uno = ev.target.closest('[data-ric-ok]');
+  const tutte = ev.target.closest('[data-ric-tutte]');
+  if (!uno && !tutte) return;
+
+  const scelte = tutte
+    ? [...box.querySelectorAll('.ric-riga')].map(el => S.rec.find(r => r.id === el.dataset.ric))
+        .filter(r => r && ricalcolaRicetta(r).sicuro)
+    : [S.rec.find(r => r.id === uno.closest('.ric-riga').dataset.ric)].filter(Boolean);
+  if (!scelte.length) return;
+
+  box.querySelectorAll('button').forEach(b => b.disabled = true);
+  try{
+    const prima = [];
+    for (const r of scelte){
+      const p = await aggiornaNumeriRicetta(r);
+      if (p) prima.push({ r, p });
+    }
+    renderRec();
+    box.hidden = true;
+    toast(prima.length === 1
+      ? `${prima[0].r.name}: numeri aggiornati.`
+      : `${prima.length} ricette aggiornate.`, async () => {
+        try{
+          for (const { r, p } of prima){
+            await sb.from('recipes').update({ prot:p.prot, kcal:p.kcal }).eq('id', r.id);
+            r.prot = p.prot; r.kcal = p.kcal;
+          }
+          renderRec(); toast('Rimessi i numeri di prima.');
+        }catch(e){ esitoErrore(e); }
+      });
+  }catch(e){
+    box.querySelectorAll('button').forEach(b => b.disabled = false);
+    esitoErrore(e);
+  }
+});
+
+/**
+ * Dopo aver salvato un valore per 100 g: se qualche ricetta usa quella
+ * cosa, lo si dice. ⚠️ Solo un messaggio con un bottone: il pannello si
+ * apre se lo chiedi, e i numeri cambiano solo se li fai cambiare tu.
+ */
+function segnalaRicette(nome, prefisso){
+  const n = ricetteConIngrediente(nome).length;
+  if (!n) return false;
+  const quante = n === 1 ? `1 ricetta usa «${nome}»` : `${n} ricette usano «${nome}»`;
+  // ⚠️ Il messaggio dice PRIMA che il salvataggio è andato bene: la notizia
+  // delle ricette non deve mangiarsi la conferma di quello che hai fatto.
+  toast(`${prefisso || ''}${quante}.`, () => apriRicalcolo(nome), null, 'Rivedi i numeri');
+  return true;
+}
+
 /** I campi da mandare al database. ⚠️ Le due colonne si mandano SOLO se
     hanno un valore: su un database dove tabelle-nutrienti.sql non è stato
     eseguito non esistono, e mandarle vuote farebbe fallire un'aggiunta che
@@ -4984,7 +5160,8 @@ async function salvaVoceDispensa(box, item){
     // Quello che hai scritto qui torna da solo la prossima volta che
     // ricompri questa cosa: vedi la memoria dei valori per 100 g.
     await ricordaNutrienti(item.name, campi.prot_100g, campi.kcal_100g);
-    toast('Voce aggiornata.');
+    const scritti = campi.prot_100g != null || campi.kcal_100g != null;
+    if (!scritti || !segnalaRicette(item.name, 'Voce aggiornata. ')) toast('Voce aggiornata.');
   }catch(e){
     box.querySelectorAll('button, input').forEach(x => x.disabled = false);
     esitoErrore(e);

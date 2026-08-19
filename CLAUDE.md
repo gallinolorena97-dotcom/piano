@@ -1354,6 +1354,32 @@ salva ancora**, quindi per cambiare solo una quantità i gesti restano quelli di
 SQL non è stato eseguito, la scrittura **riprova senza** e lo dice, invece di far
 fallire un'azione che funzionava da sempre.
 
+#### Blocco 2b — le ricette che usano quell'ingrediente (19/08/2026)
+
+Il 2a («i valori vivono sul nome, non sulla riga di dispensa») era già stato fatto poche
+ore prima — vedi «I valori per 100 g» più sotto. Questo è il seguito.
+
+Scrivere che lo yogurt greco ha 10 g di proteine per 100 non cambia solo la voce di
+dispensa: cambia il conto di **ogni ricetta che lo contiene**. Quelle ricette però le ha
+approvate una persona, e i loro numeri erano una stima fatta con criterio.
+
+⚠️ **Si propone, non si riscrive.** Dopo il salvataggio il messaggio dice quante ricette
+sono coinvolte e offre «Rivedi i numeri»; il pannello mostra **vecchio e nuovo
+affiancati** e aspetta. C'è anche l'annulla. È la stessa regola di «Mettilo in dispensa»:
+quanto ne hai preso e cosa vuoi tenere non lo può sapere l'app.
+
+⚠️ **O si sa tutto, o non si sa niente.** `ricalcolaRicetta()` rifà il conto **solo** se
+*ogni* ingrediente ha i valori per 100 g e una quantità pesabile. Sommare i pezzi
+conosciuti darebbe un totale più basso del vero e **dall'aria precisa**, che è il modo
+peggiore di sbagliare. Quando non si può, il pannello **dice quali ingredienti mancano**,
+così si rimedia invece di restare al buio.
+
+⚠️ **`grammiDi()` accetta solo massa**, `g` e `kg`. «200 ml» di latte non si converte
+(servirebbe la densità) e «2 fette» non è un numero. Fuori dai grammi non si stima.
+
+⚠️ Il messaggio dice **prima** che il salvataggio è andato bene e **poi** la notizia
+delle ricette: la notizia non deve mangiarsi la conferma di quello che hai appena fatto.
+
 #### Blocco 1 — la spesa si completa da sola (19/08/2026)
 
 **A · La riga nasce con quanto ne manca davvero.** `serveInTutto()` somma il fabbisogno
