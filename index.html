@@ -485,6 +485,15 @@ select.field{appearance:none;-webkit-appearance:none;
   background:var(--surface);color:var(--viola);border:1.5px solid var(--lavanda);
   box-shadow:none;
 }
+/* Un bottone che ha chiesto conferma e sta aspettando il secondo tocco.
+   Tono pesca, cioè «qualcosa non torna e tocca a te» — lo stesso di
+   .avviso.attenzione: non è un colore nuovo, è quello che l'app usa già
+   quando la palla passa a chi guarda. Il testo può andare a capo: dice un
+   numero, e su uno schermo stretto deve restare leggibile per intero. */
+.btn.ghost.armato{
+  background:var(--pesca-soft);color:var(--pesca-ink);border-color:var(--pesca);
+  white-space:normal;line-height:1.25;
+}
 .btn.ghost:hover{background:var(--lavanda-soft)}
 .btn.small{padding:9px 13px;min-height:40px;font-size:14px}
 .btn:disabled{opacity:.5;pointer-events:none}
@@ -1659,6 +1668,12 @@ select.field{appearance:none;-webkit-appearance:none;
     <div class="form-row" id="spAzioni" hidden>
       <button class="btn ghost" id="spCopia" style="flex:1">Copia la lista</button>
       <button class="btn ghost" id="spPulisci">Togli le spuntate</button>
+    </div>
+    <!-- Su una riga sua, e non di fianco alle altre due: è l'unica azione
+         della lista che porta via anche quello che non hai spuntato, e non
+         deve stare a un dito di distanza da «Copia la lista». -->
+    <div class="form-row" id="spAzioniTutto" hidden>
+      <button class="btn ghost" id="spSvuota" style="flex:1">Svuota la lista</button>
     </div>
   </section>
 </main>
@@ -5990,6 +6005,10 @@ $('#dgCopia').onclick = () => {
 function renderSpesa(){
   const box = $('#spBody');
   $('#spAzioni').hidden = !S.spesa.length;
+  $('#spAzioniTutto').hidden = !S.spesa.length;
+  // Se la lista cambia mentre «Svuota» è in attesa del secondo tocco, il
+  // numero scritto sul bottone non è più vero: si torna al punto di partenza.
+  disarmaSvuota();
 
   if (!S.spesa.length){
     box.innerHTML = `<div class="empty vuoto-ill">
@@ -6255,6 +6274,25 @@ $('#spBody').addEventListener('click', async (ev) => {
   }
 });
 
+/**
+ * L'annulla di una cancellazione in blocco: «Togli le spuntate» e
+ * «Svuota la lista» tornano indietro tutte e due da qui.
+ *
+ * ⚠️ Passa da rimettiInLista(), che è l'unico posto che sa riportare
+ * indietro anche la QUANTITÀ e la data. Prima qui c'era un
+ * {id, name, done} scritto a mano: le voci tornavano in lista nude, senza
+ * «2 barattoli da 400 g» e senza «serve il 27», e chi annullava si
+ * ritrovava una lista peggiore di quella che aveva. Un annulla che
+ * restituisce una cosa diversa da quella tolta non è un annulla.
+ */
+async function rimettiTutte(voci){
+  const { data, error } = await sb.from('shopping_list')
+    .insert(voci.map(v => rimettiInLista(v))).select();
+  if (error){ esitoErrore(error); return false; }
+  S.spesa.push(...data); ordinaSpesa(); renderSpesa();
+  return true;
+}
+
 $('#spPulisci').onclick = async () => {
   const fatte = S.spesa.filter(x => x.done);
   if (!fatte.length){ toast('Non c’è niente di spuntato.'); return; }
@@ -6263,12 +6301,52 @@ $('#spPulisci').onclick = async () => {
     if (error) throw error;
     S.spesa = S.spesa.filter(x => !x.done);
     renderSpesa();
-    toast(fatte.length === 1 ? 'Tolta 1 voce spuntata.' : `Tolte ${fatte.length} voci spuntate.`, async () => {
-      const { data, error } = await sb.from('shopping_list')
-        .insert(fatte.map(x => ({ id:x.id, name:x.name, done:x.done }))).select();
-      if (error){ esitoErrore(error); return; }
-      S.spesa.push(...data); renderSpesa(); toast('Rimesse in lista.');
-    });
+    toast(fatte.length === 1 ? 'Tolta 1 voce spuntata.' : `Tolte ${fatte.length} voci spuntate.`,
+      async () => { if (await rimettiTutte(fatte)) toast('Rimesse in lista.'); });
+  }catch(e){ esitoErrore(e); }
+};
+
+/* --- Svuota la lista: la spesa è fatta, si riparte da zero ---
+
+   ⚠️ DUE TOCCHI, e il primo dice quante voci porta via. È l'unica azione
+   della lista che cancella anche quello che NON hai spuntato: dopo la spesa
+   è proprio quello che serve, ma un tocco per sbaglio con il telefono in
+   tasca non deve poter buttare via la settimana. Il primo tocco non
+   cancella niente, mostra il numero e aspetta cinque secondi; se non
+   arriva il secondo, il bottone torna com'era da solo.
+
+   L'annulla c'è lo stesso, ed è il vero paracadute: le voci tornano tutte,
+   con la quantità e la data che avevano. */
+let svuotaTimer = null;
+
+function disarmaSvuota(){
+  clearTimeout(svuotaTimer); svuotaTimer = null;
+  const b = $('#spSvuota');
+  if (b){ b.classList.remove('armato'); b.textContent = 'Svuota la lista'; }
+}
+
+$('#spSvuota').onclick = async () => {
+  const tutte = S.spesa.slice();
+  if (!tutte.length){ toast('La lista è già vuota.'); return; }
+
+  if (!svuotaTimer){
+    const b = $('#spSvuota');
+    b.classList.add('armato');
+    b.textContent = tutte.length === 1
+      ? 'Sicura? Tocca ancora: 1 voce'
+      : `Sicura? Tocca ancora: ${tutte.length} voci`;
+    svuotaTimer = setTimeout(disarmaSvuota, 5000);
+    return;
+  }
+  disarmaSvuota();
+
+  try{
+    const { error } = await sb.from('shopping_list').delete().in('id', tutte.map(x => x.id));
+    if (error) throw error;
+    S.spesa = [];
+    renderSpesa();
+    toast(`Lista svuotata: ${tutte.length} voci tolte.`,
+      async () => { if (await rimettiTutte(tutte)) toast('Rimesse in lista.'); });
   }catch(e){ esitoErrore(e); }
 };
 

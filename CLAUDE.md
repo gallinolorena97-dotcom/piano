@@ -1354,6 +1354,29 @@ salva ancora**, quindi per cambiare solo una quantità i gesti restano quelli di
 SQL non è stato eseguito, la scrittura **riprova senza** e lo dice, invece di far
 fallire un'azione che funzionava da sempre.
 
+#### «Svuota la lista» nella Spesa (19/08/2026)
+
+Chiesto dall'utente: dopo aver fatto la spesa si vuole azzerare la lista **senza spuntare
+una voce per volta**. C'era solo «Togli le spuntate», che presuppone il lavoro che si
+vuole evitare.
+
+⚠️ **Due tocchi, e il primo dice quante voci porta via.** È l'unica azione della lista
+che cancella anche ciò che **non** è spuntato: dopo la spesa è proprio quello che serve,
+ma un tocco per sbaglio col telefono in tasca butterebbe via la settimana. Il primo tocco
+non cancella, mostra il numero e aspetta cinque secondi; poi il bottone si disarma da sé.
+`renderSpesa()` chiama `disarmaSvuota()`: se la lista cambia mentre il bottone aspetta, il
+numero scritto sopra non è più vero.
+
+⚠️ **Sta su una riga sua**, non di fianco a «Copia la lista»: un'azione che cancella tutto
+non deve stare a un dito di distanza da una che non cancella niente.
+
+⚠️ **Il bug che si portava dietro l'annulla di «Togli le spuntate»**, trovato facendo
+questo: reinseriva `{id, name, done}` scritto a mano e **perdeva quantità e `serve_il`**.
+Le voci tornavano nude, senza «2 barattoli da 400 g» e senza «serve il 27». Ora tutte e
+due le cancellazioni in blocco annullano da `rimettiTutte()`, che passa da
+`rimettiInLista()` — l'unico posto che sa riportare indietro una riga intera.
+**Un annulla che restituisce una cosa diversa da quella tolta non è un annulla.**
+
 #### La v6 — Blocco 5: il diario dice chi ha mangiato (19/08/2026)
 
 Era l'ultima cosa rimasta indietro. Il campo `meals_log.chi` esisteva già e nessuno lo
