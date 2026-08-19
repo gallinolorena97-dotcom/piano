@@ -604,6 +604,10 @@ select.field{appearance:none;-webkit-appearance:none;
   padding:11px 16px;text-align:right;font-size:13.5px;font-weight:700;color:var(--ink);
   font-variant-numeric:tabular-nums;
 }
+/* Il totale di Lorena: lavanda e non menta, così le due righe non si
+   leggono come una sola cifra spezzata in due. ⚠️ Stesso peso visivo,
+   però: sono due persone, non una principale e una in nota. */
+.day-tot.lorena{background:var(--lavanda-soft);border-top:1px solid var(--linea)}
 .day-tot .tot-nota{
   display:block;margin-top:4px;font-size:12px;font-weight:500;color:var(--muted);
 }
@@ -844,6 +848,9 @@ select.field{appearance:none;-webkit-appearance:none;
   background:var(--surface-2);border-radius:var(--r-m);
 }
 .mano-box.senza-numeri [data-numeri]{display:none}
+/* E il gemello all'incontrario: le calorie di Lorena non hanno senso in un
+   pasto che mangia solo Ciprian. */
+.mano-box.solo-ciprian [data-numeri-lorena]{display:none}
 .mano-riga{display:flex;gap:7px;align-items:center;margin-top:6px}
 .mano-riga .field{flex:1;min-width:0;margin-top:0}
 .mano-riga .field[data-ing-qta]{flex:0 0 92px}
@@ -1901,6 +1908,12 @@ function spiegaErrore(e){
     return 'Manca una colonna nel database. Esegui tabelle-piano-v5-blocco4.sql su Supabase e riprova.';
   if (/ricetta_id|ingredienti.* column|column .*ingredienti/i.test(m))
     return 'Manca una colonna nel database. Esegui tabelle-ricette-complete.sql su Supabase e riprova.';
+  if (/kcal_lorena/i.test(m))
+    return 'Manca una colonna nel database. Esegui tabelle-kcal-lorena.sql su Supabase e riprova.';
+  if (/categoria_principale|frequenze_categorie/i.test(m))
+    return 'Manca una colonna nel database. Esegui tabelle-frequenze-v8.sql su Supabase e riprova.';
+  if (/categoria/i.test(m))
+    return 'Manca una colonna nel database. Esegui tabelle-categorie-v8.sql su Supabase e riprova.';
   if (/Could not find the table|schema cache|does not exist/i.test(m)){
     const t = (m.match(/public\.([a-z_]+)/i) || [])[1];
     const quale = { recipe_votes:'tabelle-voti-v7.sql', profiles:'tabelle-profili-v6.sql',
@@ -2647,14 +2660,25 @@ function bloccoPasto(r){
     </div>`;
   }
 
-  // I numeri sono di Ciprian soltanto: nei pasti di sola Lorena non
-  // compaiono, coerentemente col resto dell'app.
-  const num = mangiaCiprian(r) && (r.prot != null || r.kcal != null)
-    ? `<div class="pasto-num">Per ${esc(nomeDiChi('ciprian'))}: ${[
-        r.prot != null ? `<b>${esc(String(r.prot))} g</b> proteine` : '',
-        r.kcal != null ? `${esc(String(r.kcal))} kcal` : '',
-      ].filter(Boolean).join(' · ')}</div>`
-    : '';
+  /* ⚠️ LE PROTEINE RESTANO DI CIPRIAN, LE CALORIE SONO DI TUTTI E DUE.
+     Chiesto il 19/08/2026. Le due righe stanno separate perché sono due
+     porzioni diverse dello stesso piatto — 620 kcal per lui e 430 per lei
+     non sono lo stesso numero visto da due parti.
+     ⚠️ Niente obiettivo e niente confronto per Lorena: si mostra il numero
+     e basta. Un numero accanto a un tetto diventa un voto, e qui non si
+     danno pagelle. */
+  const mangiaLorena = (x) => x.chi === 'lorena' || x.chi === 'entrambi';
+  const num = [
+    mangiaCiprian(r) && (r.prot != null || r.kcal != null)
+      ? `<div class="pasto-num">Per ${esc(nomeDiChi('ciprian'))}: ${[
+          r.prot != null ? `<b>${esc(String(r.prot))} g</b> proteine` : '',
+          r.kcal != null ? `${esc(String(r.kcal))} kcal` : '',
+        ].filter(Boolean).join(' · ')}</div>`
+      : '',
+    mangiaLorena(r) && r.kcal_lorena != null
+      ? `<div class="pasto-num">Per ${esc(nomeDiChi('lorena'))}: ${esc(String(r.kcal_lorena))} kcal</div>`
+      : '',
+  ].filter(Boolean).join('');
 
   return `<div class="pasto">
     ${testa}
@@ -2749,7 +2773,35 @@ function totaliHtml(righe, iso){
   ].filter(Boolean).join(' · ');
 
   return `<div class="day-tot">TOT ${esc(nomeDiChi('ciprian'))} ${prot} g proteine · ${kcal} kcal
-    <span class="tot-nota">${esc(note)}</span></div>`;
+    <span class="tot-nota">${esc(note)}</span></div>${totaleLorenaHtml(righe)}`;
+}
+
+/**
+ * Le calorie di Lorena nella giornata.
+ *
+ * ⚠️ Nessun obiettivo e nessun confronto: è un numero, non un voto. Per
+ * questo non c'è nessuna percentuale e nessun «ti restano».
+ *
+ * ⚠️ Le voci fisse NON si sommano qui: colazione e yogurt sono di Ciprian
+ * (`fisseDi()`), e attribuirle anche a lei sarebbe inventare una colazione
+ * che nessuno ha dichiarato.
+ *
+ * ⚠️ Se manca anche un solo numero il totale si dichiara parziale, come
+ * ovunque: un buco che non si dichiara è peggio del buco. Se mancano TUTTI
+ * non si scrive niente — uno zero sarebbe una bugia, non un'assenza.
+ */
+function totaleLorenaHtml(righe){
+  const suoi = righe.filter(r => r.modo === 'casa' && (r.chi === 'lorena' || r.chi === 'entrambi'));
+  if (!suoi.length) return '';
+  const conNumero = suoi.filter(r => r.kcal_lorena != null);
+  if (!conNumero.length) return '';
+
+  const kcal = conNumero.reduce((s,r) => s + (Number(r.kcal_lorena) || 0), 0);
+  const mancano = suoi.length - conNumero.length;
+  return `<div class="day-tot lorena">TOT ${esc(nomeDiChi('lorena'))} ${kcal} kcal
+    <span class="tot-nota">${mancano
+      ? esc(`su ${mancano === 1 ? 'un pasto' : mancano + ' pasti'} manca il numero: totale parziale`)
+      : ''}</span></div>`;
 }
 
 /**
@@ -2946,7 +2998,9 @@ function apriModificaPasto(iso, quale, dentro){
   const chi0 = r?.chi || 'entrambi';
 
   const box = document.createElement('div');
-  box.className = 'mano-box' + (chi0 === 'lorena' ? ' senza-numeri' : '');
+  box.className = 'mano-box'
+    + (chi0 === 'lorena'  ? ' senza-numeri' : '')
+    + (chi0 === 'ciprian' ? ' solo-ciprian' : '');
   // se il pasto aveva già una ricetta, il filo si porta dietro: salvare una
   // modifica non deve scollegarla
   box.dataset.ricettaId = r?.ricetta_id || '';
@@ -2989,6 +3043,17 @@ function apriModificaPasto(iso, quale, dentro){
         si dichiara <b>parziale</b>.</p>
     </div>
 
+    <!-- ⚠️ FUORI da [data-numeri], ed è il punto: quel blocco sparisce nei
+         pasti di sola Lorena perché contiene le proteine, che sono di
+         Ciprian. Le sue calorie invece devono restare visibili proprio lì. -->
+    <div data-numeri-lorena>
+      <div class="q-label">Per ${esc(nomeDiChi('lorena'))} <span>— facoltative</span></div>
+      <div class="form-row" style="margin-top:0">
+        <input class="field" data-kcal-lorena type="number" inputmode="numeric"
+               placeholder="kcal" value="${r?.kcal_lorena ?? ''}">
+      </div>
+    </div>
+
     <div class="q-label">Tocco dolce e nota <span>— facoltativi</span></div>
     <input class="field" data-dolce autocomplete="off"
            placeholder="Il dolce di ${esc(nomeDiChi('lorena'))}" value="${esc(r?.dolce || '')}">
@@ -3009,6 +3074,7 @@ function apriModificaPasto(iso, quale, dentro){
         b.setAttribute('aria-pressed', String(b === chi)));
       // i numeri sono di Ciprian: in un pasto di sola Lorena non esistono
       box.classList.toggle('senza-numeri', chi.dataset.chi === 'lorena');
+      box.classList.toggle('solo-ciprian', chi.dataset.chi === 'ciprian');
       return;
     }
     if (ev.target.closest('[data-piu]')){
@@ -3166,11 +3232,16 @@ async function creaLaRicetta(box, iso, quale){
     box.querySelector('.mano-ing').innerHTML =
       righe.map(i => rigaIngrediente({ nome:i.nome, qta:i.qta })).join('');
   }
-  // i numeri sono di Ciprian: in un pasto di sola Lorena restano vuoti
+  // le proteine sono di Ciprian: in un pasto di sola Lorena restano vuote
   if (chi !== 'lorena'){
     const p = numeroONull(dati.pasto_prot), k = numeroONull(dati.pasto_kcal);
     if (p != null) box.querySelector('[data-prot]').value = p;
     if (k != null) box.querySelector('[data-kcal]').value = k;
+  }
+  // le calorie di Lorena, nei pasti che mangia lei
+  if (chi !== 'ciprian'){
+    const kl = numeroONull(dati.pasto_kcal_lorena);
+    if (kl != null) box.querySelector('[data-kcal-lorena]').value = kl;
   }
   if (dati.dolce) box.querySelector('[data-dolce]').value = dati.dolce;
   if (dati.nota && !box.querySelector('[data-nota]').value)
@@ -3316,6 +3387,13 @@ async function salvaPastoAMano(iso, quale, box){
   // cui tabelle-ricette-complete.sql non è ancora stato eseguito — e
   // scrivere un pasto a mano funzionava già da prima: non deve smettere.
   if (box.dataset.ricettaId) riga.ricetta_id = box.dataset.ricettaId;
+
+  // ⚠️ Le calorie di Lorena si mandano SOLO se le hai scritte, e solo se
+  // quel pasto lo mangia lei: stessa prudenza di ogni colonna aggiunta
+  // dopo. Su un database senza tabelle-kcal-lorena.sql mandarla sempre
+  // farebbe fallire un salvataggio che ha sempre funzionato.
+  const kl = box.querySelector('[data-kcal-lorena]')?.value.trim();
+  if (kl && chi !== 'ciprian') riga.kcal_lorena = Number(kl);
   // stessa prudenza per le colonne del Blocco 6
   if (box.dataset.procedimento) riga.procedimento = JSON.parse(box.dataset.procedimento);
   if (box.dataset.sostituzioni) riga.sostituzioni = JSON.parse(box.dataset.sostituzioni);

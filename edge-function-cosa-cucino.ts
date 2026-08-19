@@ -704,6 +704,18 @@ Le scatolette e la roba secca possono aspettare la fine.
   pasti. Un pasto libero fa parte del metodo, non è uno sgarro da recuperare.
 - I campi "prot" e "kcal" sono SOLO di Ciprian. Nei pasti che mangia solo l'altra
   persona scrivi 0 in tutti e due: l'app non mostrerà nessun numero.
+- ⚠️ "kcal_lorena" sono invece le calorie della porzione di LORENA in quel pasto, e
+  vanno scritte in TUTTI i pasti che mangia lei — quelli condivisi e i suoi. Nei pasti
+  di solo Ciprian scrivi 0.
+  Non è "kcal" copiato: è un piatto di dimensione diversa. Se lui ha 150 g di pollo e
+  lei 100, le calorie non sono le stesse, e nei pasti condivisi la sua porzione è quasi
+  sempre più piccola. Le aggiunte proteiche a lato di Ciprian (gli ingredienti con
+  "per": "ciprian") NON entrano in questo numero.
+  ⚠️ LORENA NON HA UN OBIETTIVO e non deve averne uno: il numero si scrive perché lo si
+  vuole vedere, non per stare sotto una soglia. Non scrivere mai commenti sul suo
+  totale, non proporle porzioni più piccole per far tornare un conto, non trattare le
+  sue calorie come un vincolo. Le uniche cose che comandano sul suo piatto restano i
+  suoi divieti e i suoi gusti.
 
 ## 4 bis. I CONDIMENTI E I GRASSI DI COTTURA
 ${CONDIMENTI}
@@ -918,6 +930,9 @@ const SCHEMA_SETTIMANA = {
           tempo:               { type: 'integer' },
           prot:                { type: 'integer' },  // solo Ciprian, 0 se non lo riguarda
           kcal:                { type: 'integer' },  // idem
+          // le kcal della porzione di LORENA in questo pasto: numero diverso,
+          // perche' e' un piatto di dimensione diversa. 0 se lei non mangia.
+          kcal_lorena:         { type: 'integer' },
           scongelamento:       { type: 'string' },
           scongelare_il:       { type: 'string' },   // AAAA-MM-GG, di solito il giorno prima
           avanzo_per:          { type: 'string' },
@@ -934,7 +949,7 @@ const SCHEMA_SETTIMANA = {
         },
         required: ['day','pasto','piatto','perche','ingredienti','dolce','tempo','prot','kcal',
                    'scongelamento','scongelare_il','avanzo_per','manca','procedimento',
-                   'sostituzioni','proteina_principale','categoria_principale','formato'],
+                   'sostituzioni','proteina_principale','categoria_principale','formato','kcal_lorena'],
         additionalProperties: false,
       },
     },
@@ -1006,10 +1021,16 @@ la carne), altre no (un cucchiaio di olio, mezza cipolla, il sale).
    Se il piatto scritto a mano contiene qualcosa di vietato per chi lo mangia, NON
    cambiare il piatto: scrivilo lo stesso e dillo in "nota".
 
-3. **I NUMERI SONO DI CIPRIAN E DI NESSUN ALTRO.** "pasto_prot" e "pasto_kcal" sono la
-   porzione di Ciprian in questo pasto: se Ciprian in questo pasto non mangia, valgono
-   0 tutti e due. "ricetta_prot" e "ricetta_kcal" sono invece la porzione di UNA
-   persona, sempre.
+3. **LE PROTEINE SONO DI CIPRIAN, LE CALORIE DI TUTTI E DUE.** "pasto_prot" e
+   "pasto_kcal" sono la porzione di Ciprian in questo pasto: se Ciprian in questo pasto
+   non mangia, valgono 0 tutti e due. "pasto_kcal_lorena" sono le calorie della porzione
+   di LORENA nello stesso pasto, e vale 0 solo se lei non mangia.
+   ⚠️ Non è "pasto_kcal" copiato: è un piatto di dimensione diversa, e le aggiunte a
+   lato di Ciprian (ingredienti con "per": "ciprian") non entrano nel suo numero.
+   ⚠️ LORENA NON HA UN OBIETTIVO: quel numero si scrive perché lo si vuole vedere, non
+   per stare sotto una soglia. Niente commenti sul suo totale, nessuna porzione ridotta
+   per far tornare un conto.
+   "ricetta_prot" e "ricetta_kcal" sono invece la porzione di UNA persona, sempre.
    Stimali con onestà: meglio un numero ragionevole che nessun numero, perché senza
    numeri il totale della giornata si dichiara parziale e non serve più a niente.
    ⚠️ Se in dispensa una voce porta i valori per 100 g, quelli sono la verità: usali e
@@ -1083,6 +1104,7 @@ const SCHEMA_RICETTA = {
     pasto_ingredienti:   { type: 'array', items: INGREDIENTE_PIANO },
     pasto_prot:          { type: 'integer' },   // solo Ciprian, 0 se non lo riguarda
     pasto_kcal:          { type: 'integer' },   // idem
+    pasto_kcal_lorena:   { type: 'integer' },   // la porzione di Lorena, 0 se non mangia
     dolce:               { type: 'string' },
     nota:                { type: 'string' },
     tempo:               { type: 'integer' },
@@ -1094,7 +1116,7 @@ const SCHEMA_RICETTA = {
     proteina_principale: { type: 'string' },
   },
   required: ['piatto','ricetta_ingredienti','ricetta_prot','ricetta_kcal',
-             'pasto_ingredienti','pasto_prot','pasto_kcal','dolce','nota','tempo',
+             'pasto_ingredienti','pasto_prot','pasto_kcal','pasto_kcal_lorena','dolce','nota','tempo',
              'manca','procedimento','sostituzioni','proteina_principale'],
   additionalProperties: false,
 };
@@ -1670,6 +1692,12 @@ function rigaDiPasto(g: GiornoPassata, quale: string, m: any, oggi: string) {
     // tabelle-frequenze-v8.sql quella colonna non esiste.
     ...(String(m?.categoria_principale ?? '').trim()
       ? { categoria_principale: String(m.categoria_principale).trim().toLowerCase() } : {}),
+    // ⚠️ Le calorie di Lorena: solo se ci sono e solo nei pasti che mangia
+    // lei. Stessa prudenza delle altre colonne aggiunte dopo — su un
+    // database senza tabelle-kcal-lorena.sql mandarla sempre romperebbe la
+    // generazione, che funzionava già.
+    ...(p.chi !== 'ciprian' && Number(m?.kcal_lorena) > 0
+      ? { kcal_lorena: Math.round(Number(m.kcal_lorena)) } : {}),
   };
 }
 

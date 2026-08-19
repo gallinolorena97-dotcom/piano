@@ -1389,6 +1389,42 @@ carboidrati* (nel piatto sostituiscono pasta e riso, e un minimo di verdura non 
 raggiunge con le patatine); passata e pesto in *condimenti* per la stessa ragione; il
 maiale in *carne rossa*; salmone e tonno affumicati in *pesce* e non in *salumi*.
 
+#### Le calorie di Lorena (19/08/2026) — ⚠️ SQL + DEPLOY
+
+⚠️ **Serve `tabelle-kcal-lorena.sql`** (`plan_meals.kcal_lorena`) **e un deploy**: il
+numero lo scrive il generatore.
+
+Fino a oggi `prot` e `kcal` erano di Ciprian e di nessun altro, e nei pasti di sola
+Lorena non compariva niente. Ora le **calorie** sono di tutti e due.
+
+⚠️ **Solo le calorie, non le proteine.** Le proteine sono il vincolo di Ciprian e
+restano sue: metterle anche di là vorrebbe dire tirare su un obiettivo che nessuno ha
+chiesto.
+
+⚠️ **Colonna nuova, non campo riusato.** Lo stesso piatto vale 620 kcal per lui e 430
+per lei: un numero solo non può dire due cose. E le **aggiunte a lato di Ciprian**
+(ingredienti con `per: "ciprian"`) non entrano nel numero di lei.
+
+⚠️ **NIENTE OBIETTIVO, ed è scritto anche nel prompt in tutti e due i mestieri.** Il
+numero si mostra e basta: nessun tetto, nessuna percentuale, nessun «ti restano». Al
+modello è vietato commentare il suo totale o ridurle le porzioni per far tornare un
+conto. *Un numero accanto a un tetto diventa un voto*, e qui non si danno pagelle — è
+la stessa ragione per cui non esistono streak né punteggi.
+Se un giorno vorrà contare, le basterà compilare `kcal_target` nel suo profilo: il
+meccanismo c'è già (`haObiettivo()`).
+
+⚠️ **Il totale di giornata di Lorena non somma le voci fisse**: colazione e yogurt sono
+di Ciprian (`fisseDi()`), e attribuirgliele sarebbe inventare una colazione che nessuno
+ha dichiarato. Se manca anche un solo numero il totale si dichiara parziale; se mancano
+tutti **non si scrive niente** — uno zero sarebbe una bugia, non un'assenza.
+
+⚠️ Nel pannello «scrivo io» il campo sta **fuori** da `[data-numeri]`: quel blocco
+sparisce nei pasti di sola Lorena perché contiene le proteine, ed è proprio lì che le
+sue calorie devono restare visibili. Il gemello all'incontrario è `.solo-ciprian`.
+
+**Lo vedrai dalla prossima settimana generata**: i pasti già in calendario non hanno quel
+numero, e il totale lo dichiara invece di far finta.
+
 #### V8 Blocco 3 — le frequenze settimanali (19/08/2026) — ⚠️ RICHIEDE IL DEPLOY
 
 ⚠️ **Serve un passaggio sul database**: `tabelle-frequenze-v8.sql` (tabella
@@ -1755,6 +1791,7 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `tabelle-spesa-blocco5.sql` | `shopping_list.serve_il`: la riga della spesa sa per quando serve. ✅ eseguito |
 | `tabelle-costi.sql` | `generator_usage.tok_in/tok_out` e `registra_token()`: la stima di spesa. **Da eseguire** |
 | `tabelle-nutrienti.sql` | `inventory_items.prot_100g/kcal_100g`, facoltativi. ✅ eseguito |
+| `tabelle-kcal-lorena.sql` | `plan_meals.kcal_lorena`: le calorie della porzione di Lorena. **Da eseguire** |
 | `tabelle-frequenze-v8.sql` | `frequenze_categorie` + `plan_meals.categoria_principale`: la griglia della nutrizionista. **Da eseguire** |
 | `tabelle-categorie-v8.sql` | `inventory_items.categoria`: che COSA è un alimento, più la migrazione delle 59 voci. **Da eseguire** |
 | `tabelle-blocco6.sql` | procedimento e sostituzioni sui pasti, procedimento sulle ricette, `plan_jobs.svuota_frigo`. ✅ eseguito |
