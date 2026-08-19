@@ -725,8 +725,10 @@ conta, che senza queste regole la griglia produce assurdità.
 4. **"categoria_principale" è il campo con cui si conta**, e va scritto su ogni pasto:
    è la categoria di cui il pasto è fatto, quella del piatto — non un ingrediente di
    contorno. Un pasto conta UNA VOLTA SOLA, per la sua categoria principale.
-   L'unica eccezione è la verdura, che si conta come PRESENZA: basta che ci sia fra gli
-   ingredienti, non deve essere il piatto.
+   L'unica eccezione è la verdura, che si conta come PRESENZA e A GIORNI: basta che ci
+   sia fra gli ingredienti, non deve essere il piatto, e il suo minimo è un numero di
+   GIORNI con verdura, non di pasti. Due pasti con verdura nello stesso giorno fanno
+   un giorno solo.
 5. **SETTIMANE CORTE: non si forza e non si tace.** I minimi sommati chiedono più pasti
    di quanti a volte ce ne siano (fra fuori, liberi e pasti di solo Ciprian i
    conteggiabili possono essere 6 invece di 8). In quel caso NON stravolgere la

@@ -5358,12 +5358,16 @@ function verificaFrequenze(righe){
     const c = String(r.categoria_principale || '').toLowerCase().trim();
     if (c) per.set(c, (per.get(c) || 0) + 1);
   }
-  // la verdura: presenza, non portata
-  let conVerdura = 0;
+  /* La verdura: presenza, e ⚠️ SI CONTA A GIORNI, NON A PASTI.
+     La regola dell'utente è «ogni giorno», e con un minimo di 7 contato sui
+     pasti bastavano 7 pasti su 13 — cioè si poteva passare restando due
+     giorni interi senza verdura. Un vincolo che si può rispettare senza
+     fare la cosa che chiede non è un vincolo. */
+  const giorniVerdi = new Set();
   for (const r of conta)
     if (ingredientiChContano(r).some(i => categoriaProposta(String(i.nome || '')) === 'verdura'))
-      conVerdura++;
-  per.set('verdura', conVerdura);
+      giorniVerdi.add(r.day);
+  per.set('verdura', giorniVerdi.size);
 
   const sotto = [], sopra = [];
   for (const f of S.frequenze){
@@ -5395,7 +5399,8 @@ function frequenzeHtml(righe){
   return `<div class="avviso ${v.sopra.length ? 'attenzione' : 'info'}">
     <b>Questa settimana contavano ${v.conteggiabili} pasti.</b>
     ${v.sotto.length ? `<ul class="avviso-lista">
-      ${v.sotto.map(x => `<li>${esc(x.categoria)}: ${x.ha} invece di ${x.serve}</li>`).join('')}
+      ${v.sotto.map(x => `<li>${esc(x.categoria)}: ${x.ha} invece di ${x.serve}${
+        x.categoria === 'verdura' ? ' (si contano i giorni, non i pasti)' : ''}</li>`).join('')}
     </ul>
     <p class="hint" style="margin:6px 0 0">Con meno pasti conteggiabili non tutti i minimi
       ci stanno. L'ordine con cui si coprono è pesce, legumi, carne bianca, uova: quello
