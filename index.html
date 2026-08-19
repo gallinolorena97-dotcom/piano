@@ -3304,6 +3304,54 @@ const inListaSpesa = (nome) => S.spesa.some(v => !v.done && stessoNome(v.name, n
  * «?» non producono avvisi — meglio tacere che gridare al lupo.
  * Un avviso che grida sempre smette di essere letto.
  */
+/**
+ * Quanto di una certa cosa serve, in tutto, a una lista di pasti.
+ *
+ * ⚠️ Prudenza uguale a tutto il resto: si somma solo quando il conto è
+ * sicuro. Basta una quantità non numerica («q.b.», «~1 kg», «2×100 g») o
+ * un'unità diversa fra due pasti e il totale si dichiara inservibile
+ * (`sicuro:false`), invece di inventare una somma verosimile.
+ */
+function serveInTutto(nome, pasti){
+  let n = 0, u = null, sicuro = true, trovato = false;
+  for (const r of pasti){
+    for (const i of (Array.isArray(r.ingredienti) ? r.ingredienti : [])){
+      if (!stessoNome(String(i.nome || ''), nome)) continue;
+      trovato = true;
+      const q = leggiQta(i.qta);
+      if (!q){ sicuro = false; continue; }
+      if (u === null) u = q.u;
+      if (u !== q.u){ sicuro = false; continue; }
+      n += q.n;
+    }
+  }
+  return { n, u, sicuro: sicuro && trovato, trovato };
+}
+
+/**
+ * Quanto ne MANCA davvero: il fabbisogno di tutti i pasti futuri meno
+ * quello che c'è già in dispensa. Torna il testo da scrivere sulla riga
+ * della spesa («450 g»), oppure null quando il conto non è sicuro.
+ *
+ * ⚠️ null non è un errore, è la risposta onesta: una riga senza quantità
+ * si compra a occhio come si è sempre fatto, una riga con la quantità
+ * sbagliata fa comprare la cosa sbagliata.
+ */
+function quantoManca(nome, pasti){
+  const s = serveInTutto(nome, pasti || S.piano.filter(r => r.day >= oggiISO() && r.modo === 'casa'));
+  if (!s.sicuro || !(s.n > 0)) return null;
+
+  const voce = cercaInDispensa(nome);
+  if (!voce) return scriviQta(s.n, s.u);          // non c'è niente: serve tutto
+
+  const qty = String(voce.qty);
+  if (qty.includes('?')) return null;             // quanto ce n'è non lo sa nessuno
+  const hai = leggiQta(qty);
+  if (!hai || hai.u !== s.u) return null;         // unità diverse: non si sottrae
+  const resta = s.n - hai.n;
+  return resta > 0 ? scriviQta(resta, s.u) : null;
+}
+
 function scorteMancanti(){
   const futuri = S.piano.filter(r => r.day > oggiISO() && r.modo === 'casa');
   const serve = new Map();
@@ -4280,8 +4328,21 @@ const sostPulite = (v) => (Array.isArray(v) ? v : [])
    permette alla lista della spesa di dire «serve sabato» invece di restare
    muta. La deduplica vera la fa aggiungiAllaSpesa(), che sa confrontare i
    nomi come si deve e tiene il giorno più vicino: qui basta raccogliere. */
+/* ⚠️ La quantità si calcola sui pasti che si stanno salvando, NON su
+   S.piano: mentre la settimana si genera, il piano nuovo non è ancora
+   quello che l'app ha in mano.
+
+   ⚠️ Oggi resta quasi sempre vuota, ed è voluto, non un difetto: il
+   generatore tiene le cose che mancano FUORI dagli ingredienti del pasto,
+   quindi non c'è niente da sommare. Si riempirà quando la function dirà
+   anche QUANTO ne serve — e per quello questa funzione accetta già sia un
+   nome scritto («Olio») sia un oggetto ({nome, qta}), così quel giorno non
+   ci sarà da tornare qui. */
 const mancantiDaPasti = (pasti) => pasti.flatMap(m =>
-  (m.manca || []).map(x => ({ nome:String(x).trim(), giorno:m.day })).filter(x => x.nome));
+  (m.manca || []).map(x => {
+    const nome = String(x?.nome ?? x ?? '').trim();
+    return { nome, giorno:m.day, qta: x?.qta || quantoManca(nome, pasti) };
+  }).filter(x => x.nome));
 
 const mancantiTutti = () => mancantiDaPasti(PS.pasti);
 
@@ -6225,7 +6286,13 @@ function apriAggiuntaDispensa(v){
         <button class="btn ghost" data-agg-no>Non ora</button>
       </div>
     </div>`);
-  riga.nextElementSibling.querySelector('[data-agg-qta]').focus();
+  // ⚠️ Il fuoco SOLO se non c'è già niente scritto. Con la quantità
+  // precompilata il gesto giusto è un tocco su «Aggiungi»: mettere il
+  // cursore nel campo aprirebbe la tastiera dell'iPhone, che si mangia
+  // mezzo schermo e spinge fuori proprio il bottone da premere. La mano si
+  // usa per correggere, non per confermare.
+  const campo = riga.nextElementSibling.querySelector('[data-agg-qta]');
+  if (!campo.value) campo.focus();
 }
 
 /** Scrive la voce nuova. Toglie anche la riga dalla spesa: una cosa che è
@@ -6315,15 +6382,21 @@ async function aggiungiAllaSpesa(nomi, silenzioso){
     const n = String(grezzo?.nome ?? grezzo ?? '').trim();
     if (!n) continue;
     const giorno = grezzo?.giorno || null;
+    // Quanto ne manca davvero. ⚠️ Se non arriva da chi chiama, si prova a
+    // calcolarlo dal piano; se il conto non è sicuro resta vuoto, e la riga
+    // è quella di sempre. Una quantità sbagliata fa comprare la cosa
+    // sbagliata: peggio che non averla.
+    const qta = grezzo?.qta ?? quantoManca(n) ?? null;
     if (S.spesa.some(v => stessoNome(v.name, n))) continue;
     // se la stessa cosa arriva per due giorni diversi, vince il PRIMO:
     // è quello che decide quando conviene averla in casa
     const gia = puliti.find(p => stessoNome(p.name, n));
     if (gia){
       if (giorno && (!gia.serve_il || giorno < gia.serve_il)) gia.serve_il = giorno;
+      if (!gia.qta && qta) gia.qta = qta;
       continue;
     }
-    puliti.push({ name:n, serve_il:giorno });
+    puliti.push({ name:n, serve_il:giorno, qta });
   }
   if (!puliti.length){ if (!silenzioso) toast('Erano già tutti in lista.'); return 0; }
   try{

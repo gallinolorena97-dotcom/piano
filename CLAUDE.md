@@ -1354,6 +1354,34 @@ salva ancora**, quindi per cambiare solo una quantità i gesti restano quelli di
 SQL non è stato eseguito, la scrittura **riprova senza** e lo dice, invece di far
 fallire un'azione che funzionava da sempre.
 
+#### Blocco 1 — la spesa si completa da sola (19/08/2026)
+
+**A · La riga nasce con quanto ne manca davvero.** `serveInTutto()` somma il fabbisogno
+di un nome su tutti i pasti futuri, `quantoManca()` ci toglie quello che c'è in dispensa,
+e `aggiungiAllaSpesa()` scrive il risultato in `qta`.
+
+⚠️ **Prudenza uguale a tutto il resto: `null` non è un errore, è la risposta onesta.**
+Basta una quantità non numerica («q.b.», «~1 kg», «2×100 g»), un'unità diversa fra due
+pasti, o un «?» sulla voce di dispensa, e la quantità resta vuota invece di essere
+verosimile. Una riga senza quantità si compra a occhio come si è sempre fatto; **una riga
+con la quantità sbagliata fa comprare la cosa sbagliata**.
+
+⚠️ **Oggi si riempie di rado, ed è la function che deve cambiare, non questo.** Il
+generatore tiene le cose che mancano **fuori** dagli ingredienti del pasto (regola 9 dei
+prompt): se non sono fra gli ingredienti, non c'è niente da sommare. Per questo
+`mancantiDaPasti()` accetta **già** sia un nome scritto (`"Olio"`) sia un oggetto
+(`{nome, qta}`): quando la function imparerà a dire anche quanto ne serve, non ci sarà da
+tornare qui. **Quella modifica va nel deploy unico di fine giro.**
+
+⚠️ La quantità si calcola sui **pasti che si stanno salvando**, non su `S.piano`: mentre
+la settimana si genera, il piano nuovo non è ancora quello che l'app ha in mano.
+
+**B · «Mettilo in dispensa» era già precompilato** (`apriAggiuntaDispensa()` scriveva già
+`v.qta` nel campo). Quello che mancava era il gesto: ⚠️ **il fuoco ora si mette SOLO se
+il campo è vuoto.** Con la quantità già scritta, mettere il cursore nel campo apre la
+tastiera dell'iPhone, che si mangia mezzo schermo e spinge fuori proprio il bottone da
+premere. La mano serve per correggere, non per confermare.
+
 #### I valori per 100 g: si scrivono all'aggiunta, e l'app se li ricorda (19/08/2026)
 
 Due cose chieste insieme dall'utente, ed erano due facce dello stesso difetto.
