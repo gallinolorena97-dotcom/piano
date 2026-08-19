@@ -3227,10 +3227,25 @@ function applicaSostitutoInRiga(riga, box, nuovo){
   if (n.sicuro){
     if (n.prot != null) cp.value = n.prot;
     if (n.kcal != null) ck.value = n.kcal;
-    toast(`${nuovo} al posto di ${vecchio}: numeri aggiustati.`);
+    // Se non c'era nessun numero da spostare non si può dire «aggiustati»:
+    // sarebbe una conferma di un lavoro che nessuno ha fatto.
+    toast(n.prot == null && n.kcal == null
+      ? `${nuovo} al posto di ${vecchio}. I numeri erano vuoti e restano vuoti.`
+      : `${nuovo} al posto di ${vecchio}: numeri aggiustati.`);
   }else{
+    // ⚠️ Si dice QUALE dei due manca. La differenza ha due estremi: se
+    // l'ignoto è quello che esce, provare un altro sostituto non serve a
+    // niente, e un messaggio che punta al colpevole sbagliato manda a
+    // sbattere. Un'informazione che indica la cosa sbagliata è come un
+    // numero che arriva dal nulla.
     cp.value = ''; ck.value = '';
-    toast(`${nuovo} al posto di ${vecchio}. Non so i suoi valori per 100 g: riscrivi i numeri, o lasciali vuoti.`);
+    const chiManca = !valoriNoti(vecchio)
+      ? (!valoriNoti(nuovo) ? `né di «${vecchio}» né di «${nuovo}»` : `di «${vecchio}»`)
+      : `di «${nuovo}»`;
+    const perche = grammiDi(qta) === null
+      ? `«${qta || 'quanto'}» non è un peso in grammi`
+      : `non so i valori per 100 g ${chiManca}`;
+    toast(`${nuovo} al posto di ${vecchio}. ${perche}: i numeri li riscrivi tu, o restano vuoti.`);
   }
 }
 
@@ -5360,11 +5375,26 @@ async function sostituisciIngrediente(vecchio, nuovo){
 }
 
 /** Il pannello con le alternative, dentro l'avviso delle scorte. */
+/** I valori per 100 g di quel nome si sanno tutti e due? */
+const valoriNoti = (nome) => {
+  const v = ricordoDi(nome);
+  return !!v && v.p != null && v.k != null;
+};
+
 function apriSostituti(nome, serve, dentro){
   dentro.querySelector('.sost-box')?.remove();
   const lista = sostitutiPer(nome, serve);
   const quanti = pastiConIngrediente(nome).length;
   if (!lista.length) return;
+
+  /* ⚠️ IL DELTA HA DUE ESTREMI, E TUTTI E DUE DEVONO ESSERE NOTI.
+     Se non si sanno i valori di quello che ESCE, la differenza non è
+     calcolabile qualunque cosa entri: la base su cui si sottrae è ignota, e
+     un delta su base ignota è un numero inventato. In quel caso nessun
+     candidato può aggiustare i numeri, e va detto UNA VOLTA qui sopra —
+     ripeterlo su ogni riga farebbe credere che dipenda dal candidato e
+     manderebbe a provarne un altro per niente. */
+  const baseIgnota = !valoriNoti(nome);
 
   dentro.insertAdjacentHTML('beforeend', `
     <div class="sost-box">
@@ -5372,17 +5402,22 @@ function apriSostituti(nome, serve, dentro){
       <p class="hint" style="margin-top:0">Stessa categoria (${esc(categoriaProposta(nome))}).
         Il cambio vale per ${quanti === 1 ? 'il pasto che lo usa' : `i ${quanti} pasti che lo usano`},
         e si può annullare.</p>
+      ${baseIgnota ? `<p class="hint"><b>Di «${esc(nome)}» non so i valori per 100 g</b>,
+        quindi non posso calcolare la differenza con nessuno di questi: qualunque cambio
+        scegli, i numeri di quei pasti restano vuoti e il totale del giorno si dirà
+        parziale. Per evitarlo, scrivi i valori di «${esc(nome)}» in dispensa
+        e torna qui.</p>` : ''}
       ${lista.map(v => {
-        const sicuri = pastiConIngrediente(nome).every(r => {
+        const sicuri = !baseIgnota && pastiConIngrediente(nome).every(r => {
           const i = (r.ingredienti || []).find(x => stessoNome(String(x.nome || ''), nome));
           return numeriDopoIlCambio(r, nome, v.name, i?.qta).sicuro;
         });
         return `<div class="ric-riga">
           <div class="item-name">${esc(v.name)}</div>
           <div class="ric-num">ne hai ${esc(mostraQta(v.qty))}</div>
-          <div class="ric-num${sicuri ? ' nuovo' : ''}">${sicuri
+          ${baseIgnota ? '' : `<div class="ric-num${sicuri ? ' nuovo' : ''}">${sicuri
             ? 'i numeri si aggiustano da soli'
-            : 'non so i valori per 100 g: i numeri di quei pasti restano vuoti e il totale del giorno si dirà parziale'}</div>
+            : `di «${esc(v.name)}» non so i valori per 100 g: i numeri di quei pasti restano vuoti e il totale si dirà parziale`}</div>`}
           <button class="btn small" data-sost-ok="${esc(v.name)}"
                   data-sost-vecchio="${esc(nome)}">Usa questo</button>
         </div>`;

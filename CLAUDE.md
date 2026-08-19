@@ -1413,6 +1413,19 @@ di prima, e il pannello lo dice **prima** di confermare. Salmone e merluzzo non 
 stesse calorie: un cambio che lascia i numeri vecchi è una bugia, e un totale che si
 dichiara parziale è la verità.
 
+⚠️ **IL DELTA HA DUE ESTREMI, E VALE PER TUTTI E DUE** — chiesto esplicitamente
+dall'utente il 19/08. Il conto salta anche quando l'ignoto è l'ingrediente che **esce**:
+la base da cui sottrarre non si sa, e *un delta su base ignota è un numero inventato*.
+Nel codice era già così (`completo(a) && completo(b)`), **il messaggio no**: diceva «non
+so i valori per 100 g» senza dire di chi, e nel pannello lo ripeteva su ogni candidato —
+facendo credere che dipendesse dal candidato e mandando a provarne un altro per niente.
+
+Ora: se l'ignoto è quello che esce, lo si dice **una volta sola in cima** («di «merluzzo»
+non so i valori, qualunque cambio scegli…»), col rimedio vero — scrivili in dispensa e
+torna qui. Se l'ignoto è il candidato, lo dice la sua riga. Se il problema è la quantità
+non pesabile, lo dice quella. ⚠️ **Un'informazione che indica la cosa sbagliata è come un
+numero che arriva dal nulla**: fa agire nella direzione sbagliata.
+
 ⚠️ **Il cambio vale su tutti i pasti futuri che usano quell'ingrediente**, non solo sul
 primo — cambiarne uno su tre lascerebbe il problema in piedi e farebbe credere di averlo
 risolto. L'annulla riporta indietro **tutti** insieme.
