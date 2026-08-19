@@ -969,6 +969,14 @@ select.field{appearance:none;-webkit-appearance:none;
   border:1px solid var(--pesca);color:var(--pesca-ink);background:var(--surface);
   font-size:10px;font-weight:700;letter-spacing:.7px;padding:3px 8px;border-radius:99px;
 }
+/* Che cos'è. ⚠️ Deliberatamente più spenta di .tag-verifica: quella è un
+   allarme e deve saltare all'occhio, questa è un'etichetta e deve solo
+   farsi trovare. Due tag con lo stesso peso e nessuno dei due si nota. */
+.tag-categoria{
+  color:var(--muted);background:var(--bg);
+  font-size:10px;font-weight:600;letter-spacing:.4px;padding:3px 8px;border-radius:99px;
+  white-space:nowrap;
+}
 
 /* ricette: una riga di voto per persona, così da un colpo d'occhio
    si capisce chi ha votato cosa */
@@ -1545,6 +1553,13 @@ select.field{appearance:none;-webkit-appearance:none;
           <option value="dispensa">Dispensa</option>
         </select>
       </div>
+      <!-- Che COSA è. La posizione qui sopra dice DOVE sta, ed è un'altra
+           domanda. Si riempie da sola quando il nome è riconoscibile, e si
+           corregge sempre: vedi categoriaProposta(). -->
+      <div class="form-row">
+        <select class="field" id="invCategoria"></select>
+      </div>
+
       <!-- ⚠️ Facoltativi, come nell'editor: questo NON è un database alimenti.
            C'erano solo in modifica, cioè li potevi scrivere solo DOPO aver
            creato la voce — che è il momento in cui non hai più la confezione
@@ -1887,7 +1902,14 @@ async function loadAll(){
     const [p, i, r, s, sp, pf, vt, lv] = await Promise.all([
       sb.from('plan_meals').select('*').gte('day', daISO).lte('day', aISO)
         .order('day', { ascending:true }),
-      sb.from('inventory_items').select('id,name,qty,cat'),
+      // ⚠️ '*' e NON l'elenco delle colonne, per la stessa ragione per cui
+      // lo fa la Edge Function: le colonne facoltative aggiunte dopo
+      // (prot_100g, kcal_100g, categoria) esistono su questo database ma
+      // non su uno appena creato, e un elenco fisso le lascia fuori.
+      // Era già successo: i valori per 100 g si salvavano e non tornavano
+      // più indietro, quindi l'editor li mostrava sempre vuoti. Un dato
+      // scritto e mai riletto è un dato perso, e non se ne accorge nessuno.
+      sb.from('inventory_items').select('*'),
       // ⚠️ '*' e non l'elenco delle colonne: da quando una ricetta ha un
       // CONTENUTO (ingredienti, prot, kcal, tempo) chiedere le colonne per
       // nome romperebbe l'intera app finché tabelle-ricette-complete.sql
@@ -1946,6 +1968,9 @@ async function loadAll(){
 function renderAll(){
   renderTargets(); renderPlan(); renderInv(); renderRec(); renderSpesa(); renderDiario();
   aggiornaChiMangia(); aggiornaChiDiario();
+  // Le voci del menu delle categorie si scrivono una volta sola: rifarle a
+  // ogni render cancellerebbe la scelta a metà di una compilazione.
+  if (!$('#invCategoria').options.length) $('#invCategoria').innerHTML = opzioniCategoria();
   $('#dgGiorno').value = oggiISO();
 }
 
@@ -4744,6 +4769,7 @@ function rigaInv(i){
   return `<div class="item ${v ? 'verifica' : ''}" data-id="${i.id}">
     <div class="item-name">${esc(i.name)}</div>
     ${v ? '<span class="tag-verifica">VERIFICA</span>' : ''}
+    ${i.categoria ? `<span class="tag-categoria">${esc(i.categoria)}</span>` : ''}
     <div class="item-qty editable" data-act="qty">${esc(mostraQta(i.qty))}</div>
     <button class="icon-btn modifica" data-act="qty" aria-label="Modifica la quantità di ${esc(i.name)}">
       ${ico("matita",19)}
@@ -4784,9 +4810,20 @@ function pulisciNutrientiProposti(){
   $('#invRicordo').hidden = true;
 }
 
-$('#invName').addEventListener('input', proponiNutrienti);
+/* La categoria proposta dal nome. Stessa regola dei valori per 100 g: la
+   propongo finché non scegli tu, poi non la tocco più. */
+let categoriaScelta = false;
+
+function proponiCategoria(){
+  if (categoriaScelta) return;
+  const sel = $('#invCategoria');
+  sel.value = categoriaProposta($('#invName').value.trim()) || '';
+}
+
+$('#invName').addEventListener('input', () => { proponiNutrienti(); proponiCategoria(); });
 $('#invProt').addEventListener('input', pulisciNutrientiProposti);
 $('#invKcal').addEventListener('input', pulisciNutrientiProposti);
+$('#invCategoria').addEventListener('change', () => { categoriaScelta = true; });
 
 $('#invAdd').onclick = async () => {
   const name = $('#invName').value.trim();
@@ -4794,18 +4831,22 @@ $('#invAdd').onclick = async () => {
   const cat  = $('#invCat').value;
   const prot = nutriente($('#invProt').value);
   const kcal = nutriente($('#invKcal').value);
+  const categoria = $('#invCategoria').value || null;
   if (!name) { toast('Scrivi almeno il nome.'); return; }
   try{
-    const { riga, senzaNutrienti } = await inserisciInDispensa(
-      conNutrienti({ name, qty, cat }, prot, kcal));
+    const campi = conNutrienti({ name, qty, cat }, prot, kcal);
+    if (categoria) campi.categoria = categoria;
+    const { riga, mancanti } = await inserisciInDispensa(campi);
     S.inv.push(riga);
     S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
     $('#invName').value = ''; $('#invQty').value = '';
     $('#invProt').value = ''; $('#invKcal').value = '';
+    $('#invCategoria').value = ''; categoriaScelta = false;
     pulisciNutrientiProposti();
     renderInv();
-    if (senzaNutrienti){
-      toast(`Aggiunto: ${name}. I valori per 100 g no: esegui tabelle-nutrienti.sql.`);
+    if (mancanti.length){
+      toast(`Aggiunto: ${name}. Non ${mancanti.includes('categoria') ? 'la categoria' : 'i valori per 100 g'}: `
+        + `esegui ${mancanti.includes('categoria') ? 'tabelle-categorie-v8.sql' : 'tabelle-nutrienti.sql'}.`);
       return;
     }
     await ricordaNutrienti(name, prot, kcal);
@@ -4877,6 +4918,17 @@ function apriEditorQty(cell, item){
         <label class="campo">
           <span class="campo-eti">Quantità</span>
           <input class="field" data-e-qta value="${esc(item.qty)}" autocomplete="off">
+        </label>
+      </div>
+
+      <!-- ⚠️ Che COSA è, non DOVE sta: la posizione (frigo/freezer/
+           dispensa) è un'altra cosa e si cambia dalla riga. Questa serve
+           alle sostituzioni e alle frequenze. -->
+      <div class="form-row" style="margin-top:8px">
+        <label class="campo">
+          <span class="campo-eti">Che cos'è</span>
+          <select class="field" data-e-categoria>${
+            opzioniCategoria(item.categoria || categoriaProposta(item.name))}</select>
         </label>
       </div>
 
@@ -4992,6 +5044,101 @@ async function ricordaNutrienti(nome, prot, kcal){
   try { await sb.from('settings').upsert({ key:CHIAVE_NUTRIENTI, value }); }
   catch { /* pazienza: si riproverà alla prossima voce */ }
 }
+
+/* ============================================================
+   LA CATEGORIA ALIMENTARE (v8, Blocco 1)
+
+   ⚠️ NON sostituisce la posizione, si aggiunge. `cat` (frigo/freezer/
+   dispensa) dice DOVE sta una cosa e comanda scongelamenti e deperibili;
+   `categoria` dice CHE COSA è e comanda sostituzioni e frequenze. Il
+   salmone sta in freezer oggi e in frigo domani, ma resta pesce: sono due
+   domande diverse e vanno tenute separate.
+
+   ⚠️ Resta VUOTA finché qualcuno non sceglie. Un «altro» messo d'ufficio
+   sarebbe una risposta inventata, e le frequenze ci conterebbero sopra.
+   ============================================================ */
+const CATEGORIE_CIBO = [
+  'pesce', 'carne bianca', 'carne rossa', 'salumi', 'uova', 'latticini',
+  'legumi', 'cereali e carboidrati', 'verdura', 'frutta',
+  'frutta secca e semi', 'condimenti e grassi', 'dolci', 'altro',
+];
+
+/* I nomi comuni, per proporre la categoria da soli quando si scrive una
+   voce nuova. ⚠️ È un aiuto, non una verità: si può sempre correggere, e
+   quello che NON è qui dentro lascia il campo da scegliere invece di
+   inventare. Si allunga quando salta fuori un caso nuovo, come ALIAS_NOMI. */
+const DIZIONARIO_CATEGORIE = {
+  'pesce': ['salmone', 'trancio salmone', 'salmone affumicato', 'merluzzo',
+    'filetti di merluzzo', 'nasello', 'orata', 'branzino', 'platessa', 'tonno',
+    'tonno affumicato', 'gamberi', 'gamberetti', 'polpo', 'calamari', 'seppie',
+    'cozze', 'vongole', 'acciughe', 'sgombro', 'bastoncini di pesce', 'surimi',
+    'pesce spada', 'sogliola', 'trota'],
+  'carne bianca': ['pollo', 'petto di pollo', 'filetti di pollo', 'kebab di pollo',
+    'pulled chicken', 'tacchino', 'fesa tacchino', 'straccetti di tacchino',
+    'coniglio', 'cotolette di pollo', 'alette di pollo'],
+  'carne rossa': ['manzo', 'vitello', 'fettine di vitello', 'macinato', 'hamburger',
+    'polpette pronte', 'polpette', 'maiale', 'pulled pork', 'salsiccia', 'agnello',
+    'costine', 'arrosto', 'spezzatino', 'braciole'],
+  'salumi': ['prosciutto cotto', 'prosciutto crudo', 'prosciutto cubetti',
+    'prosciutto cotto magro', 'bresaola', 'speck', 'mortadella', 'salame',
+    'pancetta', 'guanciale', 'wurstel'],
+  'uova': ['uova', 'albumi'],
+  'latticini': ['mozzarella', 'mozzarelle', 'scamorza', 'cheddar', 'provolone',
+    'stracchino', 'ricotta', 'ricottina', 'parmigiano', 'parmigiano grattugiato',
+    'grana', 'pecorino', 'philadelphia', 'formaggio spalmabile', 'yogurt greco',
+    'yogurt bianco', 'yogurt', 'kefir', 'skyr', 'latte', 'panna', 'burro',
+    'mascarpone', 'feta', 'gorgonzola', 'brie', 'fontina', 'emmental'],
+  'legumi': ['ceci', 'ceci cotti', 'fagioli', 'fagioli neri', 'lenticchie',
+    'piselli', 'fave', 'soia', 'edamame', 'hummus'],
+  'cereali e carboidrati': ['pasta', 'pastina', 'riso', 'riso roma', 'riso carnaroli',
+    'noodles', 'spaghetti di riso', 'gnocchi', 'piadine', 'panini burger', 'pane',
+    'pancarre', 'pasta sfoglia', 'tortillas', 'patate', 'patate crude',
+    'patate da friggere', 'patate per friggitrice ad aria', 'polenta',
+    'polenta istantanea', 'farro', 'farro perlato', 'orzo', 'cous cous', 'quinoa',
+    'farina', 'farina di avena', 'avena', 'crackers', 'fette biscottate', 'grissini',
+    'couscous', 'bulgur', 'pizza surgelata', 'focaccia'],
+  'verdura': ['zucchine', 'melanzane', 'carote', 'cipolle', 'cipolle bianche e scalogno',
+    'scalogno', 'aglio', 'insalata', 'spinaci', 'fagiolini', 'finocchi', 'peperoni',
+    'broccoli', 'cavolfiore', 'zucca', 'sedano', 'porri', 'funghi', 'porcini secchi',
+    'pomodori', 'pomodori cuore di bue', 'pomodorini', 'datterini', 'radicchio',
+    'rucola', 'cetrioli', 'asparagi', 'verza', 'cavolo', 'minestrone surgelato',
+    'bietole', 'catalogna', 'ravanelli'],
+  'frutta': ['pesche', 'pesche gialle', 'mele', 'pere', 'banane', 'kiwi', 'kiwi gold',
+    'uva', 'limoni', 'lime', 'arance', 'mandarini', 'fragole', 'more', 'ribes',
+    'mirtilli', 'lamponi', 'albicocche', 'susine', 'prugne', 'anguria', 'melone',
+    'ananas', 'avocado', 'more o ribes'],
+  'frutta secca e semi': ['noci', 'mandorle', 'nocciole', 'anacardi', 'pistacchi',
+    'arachidi', 'burro d’arachidi', "burro d'arachidi", 'semi di chia', 'semi di lino',
+    'semi di zucca', 'semi di girasole', 'uvetta', 'datteri'],
+  'condimenti e grassi': ['olio', 'olio extravergine di oliva', 'aceto', 'maionese',
+    'ketchup', 'senape', 'salsa di soia', 'salsa tartara', 'pesto', 'pesto calabrese',
+    'passata', 'passata di pomodoro', 'passata pomodori', 'polpa di pomodoro',
+    'pelati', 'olive nere', 'olive', 'capperi', 'brodo granulare', 'dado',
+    'sale', 'pepe', 'spezie', 'erbe aromatiche', 'basilico', 'rosmarino', 'prezzemolo'],
+  'dolci': ['biscotti', 'grisbi', 'cioccolato', 'budini', 'budino', 'gelato',
+    'marmellata', 'miele', 'nutella', 'merendine', 'torta', 'ciambella', 'zucchero',
+    'crostata', 'wafer'],
+};
+
+/** La categoria che l'app propone per un nome, o '' se non la sa.
+    ⚠️ Quello che hai già in dispensa vince sul dizionario: è una scelta
+    tua, e una scelta tua non si corregge con una lista scritta da me. */
+function categoriaProposta(nome){
+  if (!String(nome || '').trim()) return '';
+  const gia = S.inv.find(v => v.categoria && stessoNome(v.name, nome));
+  if (gia) return gia.categoria;
+  for (const [cat, nomi] of Object.entries(DIZIONARIO_CATEGORIE))
+    if (nomi.some(n => stessoNome(n, nome))) return cat;
+  return '';
+}
+
+/** Le voci del menu a tendina. La prima è vuota apposta: «da scegliere» è
+    una risposta onesta, «altro» messo d'ufficio no. */
+const opzioniCategoria = (scelta) =>
+  [`<option value="">— che cos'è? —</option>`]
+    .concat(CATEGORIE_CIBO.map(c =>
+      `<option value="${esc(c)}"${c === scelta ? ' selected' : ''}>${esc(c)}</option>`))
+    .join('');
 
 /* ============================================================
    LE RICETTE CHE USANO QUELL'INGREDIENTE
@@ -5159,19 +5306,49 @@ function conNutrienti(base, prot, kcal){
   return c;
 }
 
-/** Scrive una voce nuova in dispensa, riprovando senza i valori per 100 g
-    se quelle colonne non ci sono. Torna { riga, senzaNutrienti }. */
+/* Le colonne aggiunte dopo, in ordine di comparsa. Tutte facoltative anche
+   per il DATABASE: se il file SQL non è stato eseguito non esistono. */
+const COLONNE_OPZIONALI = ['prot_100g', 'kcal_100g', 'categoria'];
+
+/**
+ * Scrive una voce nuova in dispensa.
+ *
+ * ⚠️ Se il database non conosce una colonna, si toglie SOLO QUELLA e si
+ * riprova — non tutte. Prima si buttava via anche il resto: chi non aveva
+ * ancora eseguito un file SQL perdeva pure il lavoro già fatto per gli
+ * altri campi. Postgres nomina una colonna per volta, quindi si gira
+ * finché non entra. Torna { riga, mancanti }.
+ */
 async function inserisciInDispensa(campi){
-  let { data, error } = await sb.from('inventory_items').insert(campi).select().single();
-  if (error && /prot_100g|kcal_100g/i.test(String(error.message || ''))){
-    const { name, qty, cat } = campi;
-    ({ data, error } = await sb.from('inventory_items')
-      .insert({ name, qty, cat }).select().single());
-    if (error) throw error;
-    return { riga:data, senzaNutrienti:true };
+  const prova = { ...campi };
+  const mancanti = [];
+  for (let giro = 0; giro <= COLONNE_OPZIONALI.length; giro++){
+    const { data, error } = await sb.from('inventory_items').insert(prova).select().single();
+    if (!error) return { riga:data, mancanti };
+    const c = COLONNE_OPZIONALI.find(x => x in prova && x !== undefined
+      && String(error.message || '').toLowerCase().includes(x));
+    if (!c) throw error;
+    delete prova[c];
+    mancanti.push(c);
   }
-  if (error) throw error;
-  return { riga:data, senzaNutrienti:false };
+  throw new Error('Non riesco a scrivere in dispensa.');
+}
+
+/** Lo stesso, per una modifica. Torna l'elenco dei campi che il database
+    non ha saputo scrivere, così l'app può dirlo invece di tacere. */
+async function aggiornaInDispensa(id, campi){
+  const prova = { ...campi };
+  const mancanti = [];
+  for (let giro = 0; giro <= COLONNE_OPZIONALI.length; giro++){
+    const { error } = await sb.from('inventory_items').update(prova).eq('id', id);
+    if (!error) return mancanti;
+    const c = COLONNE_OPZIONALI.find(x => x in prova
+      && String(error.message || '').toLowerCase().includes(x));
+    if (!c) throw error;
+    delete prova[c];
+    mancanti.push(c);
+  }
+  throw new Error('Non riesco ad aggiornare la voce.');
 }
 
 async function salvaVoceDispensa(box, item){
@@ -5179,33 +5356,29 @@ async function salvaVoceDispensa(box, item){
     qty: box.querySelector('[data-e-qta]').value.trim() || '—',
     prot_100g: nutriente(box.querySelector('[data-e-prot]').value),
     kcal_100g: nutriente(box.querySelector('[data-e-kcal]').value),
+    categoria: box.querySelector('[data-e-categoria]').value || null,
   };
 
-  box.querySelectorAll('button, input').forEach(x => x.disabled = true);
+  box.querySelectorAll('button, select, input').forEach(x => x.disabled = true);
   try{
-    let { error } = await sb.from('inventory_items').update(campi).eq('id', item.id);
-    // ⚠️ Le due colonne nuove sono facoltative anche per il DATABASE: se
-    // tabelle-nutrienti.sql non è stato eseguito non esistono, e cambiare
-    // una quantità — che funzionava da sempre — non deve smettere.
-    if (error && /prot_100g|kcal_100g/i.test(String(error.message || ''))){
-      ({ error } = await sb.from('inventory_items').update({ qty:campi.qty }).eq('id', item.id));
-      if (!error){
-        Object.assign(item, { qty:campi.qty });
-        renderInv();
-        toast('Quantità aggiornata. I valori per 100 g no: esegui tabelle-nutrienti.sql.');
-        return;
-      }
-    }
-    if (error) throw error;
+    const mancanti = await aggiornaInDispensa(item.id, campi);
+    mancanti.forEach(c => delete campi[c]);
     Object.assign(item, campi);
     renderInv();
+    if (mancanti.length){
+      // Non si tace su un pezzo non salvato: si dice cosa manca e quale
+      // file eseguire, che è l'unica cosa che si può fare davvero.
+      toast(`Salvato, ma non ${mancanti.includes('categoria') ? 'la categoria' : 'i valori per 100 g'}: `
+        + `esegui ${mancanti.includes('categoria') ? 'tabelle-categorie-v8.sql' : 'tabelle-nutrienti.sql'}.`);
+      return;
+    }
     // Quello che hai scritto qui torna da solo la prossima volta che
     // ricompri questa cosa: vedi la memoria dei valori per 100 g.
     await ricordaNutrienti(item.name, campi.prot_100g, campi.kcal_100g);
     const scritti = campi.prot_100g != null || campi.kcal_100g != null;
     if (!scritti || !segnalaRicette(item.name, 'Voce aggiornata. ')) toast('Voce aggiornata.');
   }catch(e){
-    box.querySelectorAll('button, input').forEach(x => x.disabled = false);
+    box.querySelectorAll('button, select, input').forEach(x => x.disabled = false);
     esitoErrore(e);
   }
 }
@@ -6498,6 +6671,13 @@ function apriAggiuntaDispensa(v){
         ${CAT_ORDER.map(c => `<button data-cat="${c}" aria-pressed="${c === 'dispensa'}"
           >${esc(CAT_LABEL[c])}</button>`).join('')}
       </div>
+      <!-- Che COSA è, oltre a dove si mette. Proposta dal nome, sempre
+           correggibile: da qui entrano quasi tutte le voci nuove dopo la
+           spesa, e senza questo campo nascerebbero tutte senza categoria. -->
+      <div class="form-row" style="margin-top:8px">
+        <select class="field" data-agg-categoria>${
+          opzioniCategoria(categoriaProposta(v.name))}</select>
+      </div>
       <p class="hint">${v.qta ? 'Ho scritto quanto ne dovevi comprare: correggilo se ne hai preso di più o di meno. ' : ''}La quantità è testo libero: «500 g», «2 confezioni», «~1 kg».
         Se la lasci vuota scrivo «?» e la voce nasce da verificare.</p>
       <div class="form-row">
@@ -6529,12 +6709,15 @@ async function confermaAggiuntaDispensa(box){
   // dopo la spesa, e senza questo la memoria servirebbe proprio dove serve
   // meno. Sono numeri tuoi, non inventati, e il messaggio finale lo dice.
   const ricordo = ricordoDi(v.name);
+  const categoria = box.querySelector('[data-agg-categoria]')?.value || null;
 
-  box.querySelectorAll('button, input').forEach(x => x.disabled = true);
+  box.querySelectorAll('button, select, input').forEach(x => x.disabled = true);
   try{
-    const { riga: data, senzaNutrienti } = await inserisciInDispensa(
-      conNutrienti({ name:v.name, qty:qta, cat }, ricordo?.p ?? null, ricordo?.k ?? null));
-    const rimessi = !!ricordo && !senzaNutrienti;
+    const campi = conNutrienti({ name:v.name, qty:qta, cat },
+      ricordo?.p ?? null, ricordo?.k ?? null);
+    if (categoria) campi.categoria = categoria;
+    const { riga: data, mancanti } = await inserisciInDispensa(campi);
+    const rimessi = !!ricordo && !mancanti.includes('prot_100g');
     S.inv.push(data);
     S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
 
@@ -6557,7 +6740,7 @@ async function confermaAggiuntaDispensa(box){
       }catch(e){ esitoErrore(e); }
     });
   }catch(e){
-    box.querySelectorAll('button, input').forEach(x => x.disabled = false);
+    box.querySelectorAll('button, select, input').forEach(x => x.disabled = false);
     esitoErrore(e);
   }
 }

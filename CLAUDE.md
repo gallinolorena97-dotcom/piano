@@ -1354,6 +1354,53 @@ salva ancora**, quindi per cambiare solo una quantità i gesti restano quelli di
 SQL non è stato eseguito, la scrittura **riprova senza** e lo dice, invece di far
 fallire un'azione che funzionava da sempre.
 
+#### V8 Blocco 1 — la categoria alimentare (19/08/2026)
+
+⚠️ **Serve un passaggio sul database**: `tabelle-categorie-v8.sql` aggiunge
+`inventory_items.categoria` e assegna la categoria alle 59 voci esistenti (elenco
+approvato dall'utente in chat). Senza, l'app continua a funzionare: la colonna si manda
+solo quando ha un valore e la scrittura riprova senza, dicendolo.
+
+⚠️ **CATEGORIA ≠ POSIZIONE, e non vanno mai confuse.** `cat` (frigo/freezer/dispensa)
+dice **dove** sta una cosa e comanda scongelamenti e deperibili; `categoria` dice **che
+cosa è** e comanda sostituzioni e frequenze. Il salmone sta in freezer oggi e in frigo
+domani, ma resta pesce. Sono due domande diverse: la posizione **non è stata toccata**.
+
+**Le quattordici**: pesce · carne bianca · carne rossa · salumi · uova · latticini ·
+legumi · cereali e carboidrati · verdura · frutta · frutta secca e semi · condimenti e
+grassi · dolci · altro. Le tredici del brief più `frutta secca e semi`, che serviva a
+noci e burro d'arachidi.
+
+⚠️ **Nessun vincolo sui valori nel database**, ed è voluto: aggiungere una categoria un
+domani non deve costringere a una migrazione. A tenerle pulite pensa il menu a tendina,
+che è l'unico modo per scriverle.
+
+⚠️ **Vuota resta vuota.** La prima voce del menu è «— che cos'è? —», non «altro»: un
+«altro» messo d'ufficio è una risposta inventata, e le frequenze ci conterebbero sopra.
+
+**La proposta automatica** (`categoriaProposta()`) guarda in quest'ordine: ⓵ una voce di
+dispensa con lo stesso nome (`stessoNome`) che ha già una categoria — **una scelta tua
+vince sempre sul dizionario**; ⓶ `DIZIONARIO_CATEGORIE`, ~180 nomi comuni; ⓷ niente, e il
+campo resta da scegliere. Si propone in tutti e tre i punti d'ingresso: modulo di
+aggiunta, editor della voce, e «Mettilo in dispensa» dalla spesa.
+
+⚠️ **Scelte di merito già discusse e approvate**: le patate stanno in *cereali e
+carboidrati* (nel piatto sostituiscono pasta e riso, e un minimo di verdura non si
+raggiunge con le patatine); passata e pesto in *condimenti* per la stessa ragione; il
+maiale in *carne rossa*; salmone e tonno affumicati in *pesce* e non in *salumi*.
+
+#### ⚠️ Il bug trovato collegando la categoria: un dato scritto e mai riletto
+
+`inventory_items` si leggeva con `select('id,name,qty,cat')`, cioè un **elenco fisso di
+colonne**. Quando il 18/08 sono arrivate `prot_100g` e `kcal_100g`, il lato che scrive è
+stato aggiornato e **il lato che legge no**: i valori per 100 g finivano nel database e
+non tornavano più indietro. L'editor li mostrava sempre vuoti, e nessuno se ne accorgeva
+perché non c'era nessun errore da nessuna parte.
+
+Ora è `select('*')`, per la stessa ragione per cui lo fa la Edge Function (c'era già
+l'avvertenza, lì). ⚠️ **La regola: un dato scritto e mai riletto è un dato perso**, e i
+lati che scrivono e che leggono si toccano insieme.
+
 #### Blocco 4 — dal mancante al pasto (19/08/2026)
 
 Nell'avviso «da X in poi il piano conta su cose che non hai più», ogni riga è **toccabile**
@@ -1612,6 +1659,7 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `tabelle-spesa-blocco5.sql` | `shopping_list.serve_il`: la riga della spesa sa per quando serve. ✅ eseguito |
 | `tabelle-costi.sql` | `generator_usage.tok_in/tok_out` e `registra_token()`: la stima di spesa. **Da eseguire** |
 | `tabelle-nutrienti.sql` | `inventory_items.prot_100g/kcal_100g`, facoltativi. ✅ eseguito |
+| `tabelle-categorie-v8.sql` | `inventory_items.categoria`: che COSA è un alimento, più la migrazione delle 59 voci. **Da eseguire** |
 | `tabelle-blocco6.sql` | procedimento e sostituzioni sui pasti, procedimento sulle ricette, `plan_jobs.svuota_frigo`. ✅ eseguito |
 | `import-settimana-22-28.sql` | i 14 pasti del 22-28 agosto, **prima versione (18/08)**. ✅ eseguito, poi superato |
 | `import-spesa-22-28.sql` | lo spesone di quella prima versione. ✅ eseguito, poi superato |
