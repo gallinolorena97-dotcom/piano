@@ -1523,6 +1523,17 @@ select.field{appearance:none;-webkit-appearance:none;
           <option value="dispensa">Dispensa</option>
         </select>
       </div>
+      <!-- ⚠️ Facoltativi, come nell'editor: questo NON è un database alimenti.
+           C'erano solo in modifica, cioè li potevi scrivere solo DOPO aver
+           creato la voce — che è il momento in cui non hai più la confezione
+           in mano. Qui li scrivi mentre guardi l'etichetta. -->
+      <div class="form-row">
+        <input class="field" id="invProt" type="number" step="0.1" inputmode="decimal"
+               placeholder="proteine per 100 g">
+        <input class="field" id="invKcal" type="number" step="1" inputmode="numeric"
+               placeholder="kcal per 100 g">
+      </div>
+      <p class="hint" id="invRicordo" hidden></p>
       <div class="form-row">
         <button class="btn" id="invAdd" style="flex:1">+ Aggiungi</button>
       </div>
@@ -4621,19 +4632,64 @@ function rigaInv(i){
 
 $('#invSearch').addEventListener('input', renderInv);
 
+/* Se i due campi li ho riempiti io col ricordo, posso anche svuotarli quando
+   il nome cambia. Se invece li hai scritti tu, non li tocco più: quello che
+   scrivi vince sempre su quello che mi ricordo. */
+let nutriProposti = false;
+
+function proponiNutrienti(){
+  const p = $('#invProt'), k = $('#invKcal'), nota = $('#invRicordo');
+  const scrittiDaTe = !nutriProposti && (p.value !== '' || k.value !== '');
+  if (scrittiDaTe) return;
+
+  const nome = $('#invName').value.trim();
+  const r = ricordoDi(nome);
+  if (!r){
+    if (nutriProposti){ p.value = ''; k.value = ''; nutriProposti = false; }
+    nota.hidden = true;
+    return;
+  }
+  p.value = r.p ?? '';
+  k.value = r.k ?? '';
+  nutriProposti = true;
+  // Un numero non deve mai arrivare dal nulla: si dice da dove viene.
+  nota.textContent = `Proteine e kcal li avevi già scritti per «${nome}»: li ho rimessi. Cambiali se l'etichetta dice altro.`;
+  nota.hidden = false;
+}
+
+function pulisciNutrientiProposti(){
+  nutriProposti = false;
+  $('#invRicordo').hidden = true;
+}
+
+$('#invName').addEventListener('input', proponiNutrienti);
+$('#invProt').addEventListener('input', pulisciNutrientiProposti);
+$('#invKcal').addEventListener('input', pulisciNutrientiProposti);
+
 $('#invAdd').onclick = async () => {
   const name = $('#invName').value.trim();
   const qty  = $('#invQty').value.trim() || '—';
   const cat  = $('#invCat').value;
+  const prot = nutriente($('#invProt').value);
+  const kcal = nutriente($('#invKcal').value);
   if (!name) { toast('Scrivi almeno il nome.'); return; }
   try{
-    const { data, error } = await sb.from('inventory_items')
-      .insert({ name, qty, cat }).select().single();
-    if (error) throw error;
-    S.inv.push(data);
+    const { riga, senzaNutrienti } = await inserisciInDispensa(
+      conNutrienti({ name, qty, cat }, prot, kcal));
+    S.inv.push(riga);
     S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
     $('#invName').value = ''; $('#invQty').value = '';
-    renderInv(); toast(`Aggiunto: ${name}`);
+    $('#invProt').value = ''; $('#invKcal').value = '';
+    pulisciNutrientiProposti();
+    renderInv();
+    if (senzaNutrienti){
+      toast(`Aggiunto: ${name}. I valori per 100 g no: esegui tabelle-nutrienti.sql.`);
+      return;
+    }
+    await ricordaNutrienti(name, prot, kcal);
+    // Un salvataggio che non si vede sembra non essere avvenuto: la riga di
+    // dispensa non mostra i valori per 100 g, quindi lo dice il messaggio.
+    toast(`Aggiunto: ${name}${prot != null || kcal != null ? ', coi valori per 100 g' : ''}`);
   }catch(e){ esitoErrore(e); }
 };
 
@@ -4746,6 +4802,99 @@ const nutriente = (v) => {
   return Number.isFinite(n) && n >= 0 ? n : null;
 };
 
+/* ============================================================
+   LA MEMORIA DEI VALORI PER 100 g
+
+   Lo yogurt greco ha gli stessi valori a giugno e ad agosto: riscriverli
+   ogni volta che la confezione finisce e se ne ricompra una è lavoro che
+   non serve a niente. Quello che scrivi una volta torna da solo.
+
+   ⚠️ NON È UN DATABASE ALIMENTI, e la decisione che li vieta resta in
+   piedi: qui dentro finiscono SOLO i nomi passati da questa cucina, coi
+   numeri copiati da una persona dall'etichetta. Niente archivi importati,
+   niente scanner, nessun valore che nessuno ha mai scritto.
+
+   ⚠️ Sta in `settings`, non in localStorage, e non è un ripiego: i telefoni
+   sono due. Un ricordo che vive sul telefono lo avrebbe uno solo dei due, e
+   l'altro continuerebbe a riscrivere gli stessi numeri a mano. La tabella
+   `settings` è una chiave→valore e serve esattamente a questo, quindi non
+   c'è nessun file SQL da eseguire.
+   ============================================================ */
+const CHIAVE_NUTRIENTI = 'nutrienti_noti';
+
+function nutrientiNoti(){
+  try { return JSON.parse(S.settings[CHIAVE_NUTRIENTI] || '{}') || {}; }
+  catch { return {}; }   // se il valore è illeggibile si riparte da zero
+}
+
+/** ⚠️ La chiave si cerca con stessoNome(), il confronto unico dell'app:
+    «uovo» e «Uova» sono la stessa cosa qui come dappertutto. */
+const chiaveRicordo = (noti, nome) =>
+  Object.keys(noti).find(n => stessoNome(n, nome));
+
+/** Quello che sai già di un alimento, o null se non l'hai mai scritto. */
+function ricordoDi(nome){
+  if (!String(nome || '').trim()) return null;
+  const noti = nutrientiNoti();
+  const k = chiaveRicordo(noti, nome);
+  if (k) return noti[k];
+
+  /* ⚠️ Anche quello che è GIÀ in dispensa è un ricordo, ed è il motivo per
+     cui questa memoria funziona dal primo giorno invece che dalla seconda
+     volta in poi: i valori scritti prima che esistesse non sono persi. Serve
+     anche al caso più comune di tutti — la confezione nuova che si aggiunge
+     accanto a quella che sta finendo. */
+  const v = S.inv.find(x =>
+    (x.prot_100g != null || x.kcal_100g != null) && stessoNome(x.name, nome));
+  return v ? { p:v.prot_100g ?? null, k:v.kcal_100g ?? null } : null;
+}
+
+/**
+ * Segna quello che hai appena scritto. Si ricorda solo se almeno uno dei
+ * due numeri c'è: un ricordo vuoto non è un ricordo.
+ *
+ * ⚠️ Se il salvataggio non riesce non si dice niente e non si ferma niente.
+ * La voce di dispensa a questo punto è già salvata, e questo è soltanto un
+ * promemoria per la prossima volta: farlo fallire rumorosamente vorrebbe
+ * dire spaventare per una comodità mancata.
+ */
+async function ricordaNutrienti(nome, prot, kcal){
+  if (prot == null && kcal == null) return;
+  const noti = nutrientiNoti();
+  const chiave = chiaveRicordo(noti, nome) || String(nome).trim();
+  noti[chiave] = { p:prot, k:kcal };
+  const value = JSON.stringify(noti);
+  S.settings[CHIAVE_NUTRIENTI] = value;
+  try { await sb.from('settings').upsert({ key:CHIAVE_NUTRIENTI, value }); }
+  catch { /* pazienza: si riproverà alla prossima voce */ }
+}
+
+/** I campi da mandare al database. ⚠️ Le due colonne si mandano SOLO se
+    hanno un valore: su un database dove tabelle-nutrienti.sql non è stato
+    eseguito non esistono, e mandarle vuote farebbe fallire un'aggiunta che
+    ha sempre funzionato. */
+function conNutrienti(base, prot, kcal){
+  const c = { ...base };
+  if (prot != null) c.prot_100g = prot;
+  if (kcal != null) c.kcal_100g = kcal;
+  return c;
+}
+
+/** Scrive una voce nuova in dispensa, riprovando senza i valori per 100 g
+    se quelle colonne non ci sono. Torna { riga, senzaNutrienti }. */
+async function inserisciInDispensa(campi){
+  let { data, error } = await sb.from('inventory_items').insert(campi).select().single();
+  if (error && /prot_100g|kcal_100g/i.test(String(error.message || ''))){
+    const { name, qty, cat } = campi;
+    ({ data, error } = await sb.from('inventory_items')
+      .insert({ name, qty, cat }).select().single());
+    if (error) throw error;
+    return { riga:data, senzaNutrienti:true };
+  }
+  if (error) throw error;
+  return { riga:data, senzaNutrienti:false };
+}
+
 async function salvaVoceDispensa(box, item){
   const campi = {
     qty: box.querySelector('[data-e-qta]').value.trim() || '—',
@@ -4771,6 +4920,9 @@ async function salvaVoceDispensa(box, item){
     if (error) throw error;
     Object.assign(item, campi);
     renderInv();
+    // Quello che hai scritto qui torna da solo la prossima volta che
+    // ricompri questa cosa: vedi la memoria dei valori per 100 g.
+    await ricordaNutrienti(item.name, campi.prot_100g, campi.kcal_100g);
     toast('Voce aggiornata.');
   }catch(e){
     box.querySelectorAll('button, input').forEach(x => x.disabled = false);
@@ -6086,11 +6238,17 @@ async function confermaAggiuntaDispensa(box){
   const cat = box.querySelector('.chips[data-campo="cat"] button[aria-pressed="true"]')?.dataset.cat
             || 'dispensa';
 
+  // ⚠️ Se questa cosa l'avevi già avuta e ne avevi scritto i valori per
+  // 100 g, rientrano con lei: è la strada da cui le voci entrano davvero
+  // dopo la spesa, e senza questo la memoria servirebbe proprio dove serve
+  // meno. Sono numeri tuoi, non inventati, e il messaggio finale lo dice.
+  const ricordo = ricordoDi(v.name);
+
   box.querySelectorAll('button, input').forEach(x => x.disabled = true);
   try{
-    const { data, error } = await sb.from('inventory_items')
-      .insert({ name:v.name, qty:qta, cat }).select().single();
-    if (error) throw error;
+    const { riga: data, senzaNutrienti } = await inserisciInDispensa(
+      conNutrienti({ name:v.name, qty:qta, cat }, ricordo?.p ?? null, ricordo?.k ?? null));
+    const rimessi = !!ricordo && !senzaNutrienti;
     S.inv.push(data);
     S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
 
@@ -6099,7 +6257,8 @@ async function confermaAggiuntaDispensa(box){
     S.spesa = S.spesa.filter(x => x.id !== v.id);
 
     renderInv(); renderSpesa(); renderPlan();
-    toast(`In dispensa: ${v.name} — ${mostraQta(qta)}.`, async () => {
+    toast(`In dispensa: ${v.name} — ${mostraQta(qta)}.${
+      rimessi ? ' Proteine e kcal per 100 g: le tue di prima.' : ''}`, async () => {
       try{
         await sb.from('inventory_items').delete().eq('id', data.id);
         S.inv = S.inv.filter(x => x.id !== data.id);

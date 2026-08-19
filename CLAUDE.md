@@ -1354,6 +1354,52 @@ salva ancora**, quindi per cambiare solo una quantità i gesti restano quelli di
 SQL non è stato eseguito, la scrittura **riprova senza** e lo dice, invece di far
 fallire un'azione che funzionava da sempre.
 
+#### I valori per 100 g: si scrivono all'aggiunta, e l'app se li ricorda (19/08/2026)
+
+Due cose chieste insieme dall'utente, ed erano due facce dello stesso difetto.
+
+**1 · I campi c'erano solo in MODIFICA.** Cioè si potevano scrivere solo *dopo* aver
+creato la voce — che è esattamente il momento in cui la confezione non è più in mano.
+Ora `prot_100g` e `kcal_100g` stanno anche nel modulo di aggiunta della Dispensa, e
+restano **facoltativi** come sempre.
+
+**2 · La memoria.** Lo yogurt greco ha gli stessi valori a giugno e ad agosto: riscriverli
+a ogni confezione è lavoro che non serve. Quello che si scrive una volta torna da solo.
+
+⚠️ **NON è un database alimenti**, e la decisione del 13/08 che li vieta resta in piedi:
+qui dentro finiscono **solo i nomi passati da questa cucina**, coi numeri copiati da una
+persona dall'etichetta. Nessun archivio importato, nessuno scanner, nessun valore che
+nessuno ha mai scritto.
+
+⚠️ **Sta in `settings`, non in `localStorage`, e non è un ripiego: i telefoni sono due.**
+Un ricordo che vive sul telefono lo avrebbe uno solo dei due, e l'altro continuerebbe a
+riscrivere gli stessi numeri a mano. `settings` è una tabella chiave→valore e serve
+esattamente a questo: la chiave è `nutrienti_noti`, il valore un JSON.
+**Nessun file SQL da eseguire** — la riga è già stata creata, vuota.
+
+⚠️ **La chiave si cerca con `stessoNome()`**, come ogni confronto fra nomi di cibo in
+questa app: «uovo» e «Uova» sono la stessa cosa qui come dappertutto.
+
+⚠️ **`ricordoDi()` guarda anche la dispensa vera**, non solo la memoria: è ciò che fa
+funzionare la cosa **dal primo giorno** invece che dalla seconda volta in poi — i valori
+scritti prima che questa memoria esistesse non sono persi — e copre il caso più comune,
+la confezione nuova aggiunta accanto a quella che sta finendo.
+
+⚠️ **Quello che scrivi vince su quello che l'app ricorda.** I due campi si riempiono da
+soli solo se sono vuoti o se li aveva riempiti l'app (`nutriProposti`); appena ci si
+scrive dentro, non li tocca più. E **lo dichiara**: sotto i campi compare da dove
+vengono quei numeri. Un numero non deve mai arrivare dal nulla, neanche quando è comodo.
+
+⚠️ **Entra anche dalla spesa.** `confermaAggiuntaDispensa()` applica il ricordo, perché è
+da lì che le voci entrano davvero dopo la spesa: senza, la memoria sarebbe servita
+proprio dove serve meno. Il messaggio finale dice che quei numeri sono i tuoi di prima.
+
+⚠️ **`inserisciInDispensa()` riprova senza le due colonne** se non esistono, e
+`conNutrienti()` le manda **solo quando hanno un valore**: su un database dove
+`tabelle-nutrienti.sql` non è stato eseguito, aggiungere una voce — che ha sempre
+funzionato — non deve smettere. Se il ricordo non si salva **non si dice niente e non si
+ferma niente**: la voce di dispensa è già salvata, e quello è solo un promemoria.
+
 #### «Svuota la lista» nella Spesa (19/08/2026)
 
 Chiesto dall'utente: dopo aver fatto la spesa si vuole azzerare la lista **senza spuntare
