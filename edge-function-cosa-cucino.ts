@@ -321,6 +321,34 @@ function descriviRecenti(c: Contesto): string {
 // ------------------------------------------------------------
 //  IL METODO — questo è il cuore del generatore
 // ------------------------------------------------------------
+// ------------------------------------------------------------
+//  I CONDIMENTI
+//  ⚠️ Scritta UNA volta sola e usata da tutti e tre i mestieri (proposte
+//  del giorno, settimana, «Crea la ricetta»). Se la regola cambia, cambia
+//  in un posto: due copie si scollano alla prima modifica, ed è già
+//  successo con altre regole di questo file.
+// ------------------------------------------------------------
+const CONDIMENTI = `Un piatto non si cucina a secco, e le calorie del condimento sono
+calorie vere: un piano che le dimentica racconta una giornata più leggera di quella che
+è stata davvero.
+
+- I condimenti che PESANO vanno scritti FRA GLI INGREDIENTI, coi grammi, esattamente
+  come gli altri: olio, burro, panna, formaggio grattugiato, maionese, pesto, salse.
+  ⚠️ Per queste cose non scrivere mai "q.b.": nei conti "q.b." vale zero.
+- Riferimenti da usare quando non hai di meglio:
+  · verdure o contorno saltati, al forno, in padella -> mezzo cucchiaio d'olio, ~6 g
+  · carne o pesce da rosolare -> un cucchiaio d'olio, ~12 g
+  · insalata condita a crudo -> mezzo cucchiaio d'olio, ~6 g
+  · un filo per ungere una teglia -> ~5 g
+  Sono riferimenti, non un tetto: se il piatto ne chiede di più, scrivi quanto ne serve.
+- I condimenti che NON pesano restano "q.b." e non entrano nei conti: sale, pepe,
+  aceto, limone spremuto, erbe, spezie, aglio.
+- I numeri di proteine e kcal COMPRENDONO questi grammi. Un olio scritto fra gli
+  ingredienti e non contato nelle kcal è peggio che non averlo scritto: fa sembrare
+  fatto un lavoro che non è stato fatto.
+- ⚠️ I condimenti di base si danno per PRESENTI in casa: olio, sale, pepe, aceto.
+  Non metterli mai in "manca" e non farli pesare sul limite delle cose che mancano.`;
+
 const REGOLE = `Sei l'aiuto cucina di una persona che segue un metodo preciso.
 Proponi piatti costruiti sulla SUA dispensa reale, non ricette generiche.
 
@@ -346,6 +374,9 @@ Proponi piatti costruiti sulla SUA dispensa reale, non ricette generiche.
 ## 2. CALORIE
 Circa 2200 kcal al giorno. Un pasto principale sta fra 600 e 900 kcal.
 Non sacrificare mai le proteine per stare sotto: semmai riduci i carboidrati.
+
+## 2 bis. I CONDIMENTI E I GRASSI DI COTTURA
+${CONDIMENTI}
 
 ## 3. DEPERIBILI E SCADENZE
 Proponi per primi i freschi in scadenza e i deperibili già aperti.
@@ -645,6 +676,9 @@ Le scatolette e la roba secca possono aspettare la fine.
 - I campi "prot" e "kcal" sono SOLO di Ciprian. Nei pasti che mangia solo l'altra
   persona scrivi 0 in tutti e due: l'app non mostrerà nessun numero.
 
+## 4 bis. I CONDIMENTI E I GRASSI DI COTTURA
+${CONDIMENTI}
+
 ## 5. LA CATENA DELLE DOPPIE PORZIONI — si guarda avanti e indietro
 Dove ha senso, cucina doppio e manda l'avanzo al pasto dopo: scrivilo in "avanzo_per"
 sul pasto che cucina ("→ pranzo di mercoledì") e ripeti il piatto nel pasto che lo
@@ -930,6 +964,11 @@ la carne), altre no (un cucchiaio di olio, mezza cipolla, il sale).
    ⚠️ MAI SULLA FONTE PROTEICA: il pollo non si sostituisce col tonno «perché tanto
    sono proteine». Vale per erbe, aromi, contorni, latticini di rifinitura.
    "uso" deve esserci DAVVERO in dispensa, col nome della dispensa.
+
+10. **I CONDIMENTI E I GRASSI DI COTTURA ESISTONO.**
+${CONDIMENTI}
+   Vale sia per "ricetta_ingredienti" sia per "pasto_ingredienti", e i quattro numeri
+   ("ricetta_prot", "ricetta_kcal", "pasto_prot", "pasto_kcal") li comprendono.
 
 Campi che non servono: stringa vuota "" per i testi, 0 per i numeri, [] per le liste.
 Scrivi in italiano semplice e concreto. Niente tono da dieta, niente premi, niente colpe.`;

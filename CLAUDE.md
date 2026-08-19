@@ -1354,6 +1354,36 @@ salva ancora**, quindi per cambiare solo una quantità i gesti restano quelli di
 SQL non è stato eseguito, la scrittura **riprova senza** e lo dice, invece di far
 fallire un'azione che funzionava da sempre.
 
+#### Blocco 3 — i condimenti esistono (19/08/2026) — ⚠️ RICHIEDE IL DEPLOY
+
+Le ricette generate ignoravano olio, burro e grassi di cottura: non comparivano fra gli
+ingredienti e non pesavano sui numeri. **Le calorie del condimento sono calorie vere**, e
+un piano che le dimentica racconta una giornata più leggera di quella che è stata.
+
+⚠️ **La regola è scritta UNA volta sola**, nella costante `CONDIMENTI`, e i tre mestieri
+la interpolano: `REGOLE` (§2 bis), `REGOLE_SETTIMANA` (§4 bis), `REGOLE_RICETTA` (regola
+10). Due copie si scollerebbero alla prima modifica — è già successo in questo file.
+
+⚠️ **La riga di confine è il peso, non la categoria.** Quelli che pesano (olio, burro,
+panna, formaggio grattugiato, maionese, pesto) vanno **fra gli ingredienti coi grammi** e
+**dentro i conti**; quelli che non pesano (sale, pepe, aceto, limone, erbe, spezie,
+aglio) restano `q.b.` e fuori dai conti. Riferimenti dati al modello: mezzo cucchiaio
+(~6 g) per verdure e insalata, un cucchiaio (~12 g) per rosolare carne o pesce, ~5 g per
+ungere una teglia — riferimenti, non un tetto.
+
+⚠️ **«q.b.» vale zero nei conti**, ed è il motivo per cui è vietato sui condimenti che
+pesano: un olio scritto e non contato è peggio che non averlo scritto, perché fa sembrare
+fatto un lavoro che non è stato fatto.
+
+⚠️ **I condimenti di base si danno per presenti** (olio, sale, pepe, aceto): non vanno
+mai in `manca` e non pesano sul limite delle cose che mancano. Senza questa riga ogni
+pasto sarebbe nato con «manca: Olio», e la regola «almeno un piatto fattibile» sarebbe
+saltata su tutta la settimana.
+
+Effetti collaterali controllati, nessun intervento necessario: l'olio in grammi contro un
+«1 litro» in dispensa ha **unità diverse**, quindi `scorteMancanti()` non dà falsi allarmi
+e `calcolaRiga()` non scala niente — la prudenza che c'era già copre il caso.
+
 #### Blocco 2b — le ricette che usano quell'ingrediente (19/08/2026)
 
 Il 2a («i valori vivono sul nome, non sulla riga di dispensa») era già stato fatto poche
