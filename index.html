@@ -608,6 +608,18 @@ select.field{appearance:none;-webkit-appearance:none;
    leggono come una sola cifra spezzata in due. ⚠️ Stesso peso visivo,
    però: sono due persone, non una principale e una in nota. */
 .day-tot.lorena{background:var(--lavanda-soft);border-top:1px solid var(--linea)}
+
+/* L'interruttore del menu, spento.
+   ⚠️ Si nasconde e basta: i numeri continuano a essere calcolati, scritti e
+   salvati. Per questo è CSS e non un ramo nel codice — così è impossibile
+   che «non mostrarli» diventi per sbaglio «non scriverli», e riaccendendo
+   l'interruttore c'è tutto lo storico invece di un buco.
+   Il campo del pannello «scrivo io» sparisce anche lui, ma conserva il suo
+   valore: display:none non svuota niente, e al salvataggio il numero
+   riparte da dov'era. */
+body.no-kcal-lorena .pasto-num.lorena,
+body.no-kcal-lorena .day-tot.lorena,
+body.no-kcal-lorena [data-numeri-lorena]{display:none}
 .day-tot .tot-nota{
   display:block;margin-top:4px;font-size:12px;font-weight:500;color:var(--muted);
 }
@@ -1554,6 +1566,17 @@ select.field{appearance:none;-webkit-appearance:none;
        l'anno, quando la nutrizionista cambia la griglia. Una tab per una
        cosa che si tocca due volte l'anno ruba il posto a quelle di ogni
        giorno. -->
+  <!-- ⚠️ Governa SOLO cosa si vede: i numeri si calcolano e si salvano
+       comunque. Sta nel telefono e non nel database, come «su questo
+       telefono sono»: è una preferenza di chi guarda, e i telefoni sono
+       due — uno può volerle vedere e l'altro no. -->
+  <div class="form-row" style="align-items:center;gap:10px">
+    <span id="kclEtichetta" style="flex:1;font-size:14px"></span>
+    <div class="chips mini" id="kclSwitch">
+      <button data-v="1">Sì</button>
+      <button data-v="0">No</button>
+    </div>
+  </div>
   <div class="form-row">
     <button class="btn ghost" id="menuFrequenze" style="flex:1">Quante volte a settimana ›</button>
   </div>
@@ -2022,6 +2045,8 @@ function renderAll(){
   // Le voci del menu delle categorie si scrivono una volta sola: rifarle a
   // ogni render cancellerebbe la scelta a metà di una compilazione.
   if (!$('#invCategoria').options.length) $('#invCategoria').innerHTML = opzioniCategoria();
+  // l'etichetta porta il nome vero, che arriva coi profili: si scrive qui
+  applicaKclLorena(leggiKclLorena());
   $('#dgGiorno').value = oggiISO();
 }
 
@@ -2676,7 +2701,7 @@ function bloccoPasto(r){
         ].filter(Boolean).join(' · ')}</div>`
       : '',
     mangiaLorena(r) && r.kcal_lorena != null
-      ? `<div class="pasto-num">Per ${esc(nomeDiChi('lorena'))}: ${esc(String(r.kcal_lorena))} kcal</div>`
+      ? `<div class="pasto-num lorena">Per ${esc(nomeDiChi('lorena'))}: ${esc(String(r.kcal_lorena))} kcal</div>`
       : '',
   ].filter(Boolean).join('');
 
@@ -5392,6 +5417,40 @@ const opzioniCategoria = (scelta) =>
     .concat(CATEGORIE_CIBO.map(c =>
       `<option value="${esc(c)}"${c === scelta ? ' selected' : ''}>${esc(c)}</option>`))
     .join('');
+
+/* --- L'interruttore delle calorie di Lorena ---
+   ⚠️ ACCESO DI DEFAULT: è stato chiesto, quindi la prima volta si vede.
+   Solo un «0» scritto a mano lo spegne — così un localStorage vuoto (o una
+   modalità privata che non salva niente) non lo spegne per sbaglio. */
+const CHIAVE_KCAL_LORENA = 'piano-kcal-lorena';
+
+function leggiKclLorena(){
+  try { return localStorage.getItem(CHIAVE_KCAL_LORENA) !== '0'; }
+  catch { return true; }
+}
+
+function applicaKclLorena(acceso){
+  document.body.classList.toggle('no-kcal-lorena', !acceso);
+  const eti = $('#kclEtichetta');
+  if (eti) eti.innerHTML = `Mostra le calorie anche per <b>${esc(nomeDiChi('lorena'))}</b>`;
+  $$('#kclSwitch button').forEach(b =>
+    b.setAttribute('aria-pressed', String((b.dataset.v === '1') === acceso)));
+}
+
+$('#kclSwitch').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button');
+  if (!b) return;
+  const acceso = b.dataset.v === '1';
+  try { localStorage.setItem(CHIAVE_KCAL_LORENA, acceso ? '1' : '0'); }
+  catch { /* modalità privata: vale per questa sessione */ }
+  applicaKclLorena(acceso);
+  // ⚠️ Nessun renderPlan(): non c'è niente da ricalcolare, i numeri sono
+  // già nel documento e cambia solo se si vedono. Ridisegnare farebbe
+  // credere che l'interruttore tocchi i dati.
+  toast(acceso
+    ? `Calorie di ${nomeDiChi('lorena')}: si vedono.`
+    : `Calorie di ${nomeDiChi('lorena')}: nascoste. Continuano a essere salvate.`);
+});
 
 /* ============================================================
    LE FREQUENZE SETTIMANALI (v8, Blocco 3)

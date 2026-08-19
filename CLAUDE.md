@@ -1425,6 +1425,24 @@ sue calorie devono restare visibili. Il gemello all'incontrario è `.solo-cipria
 **Lo vedrai dalla prossima settimana generata**: i pasti già in calendario non hanno quel
 numero, e il totale lo dichiara invece di far finta.
 
+**L'interruttore nel menu** — «Mostra le calorie anche per Lorena», **acceso di
+default** perché è stato chiesto.
+
+⚠️ **Governa solo la vista, ed è CSS apposta** (`body.no-kcal-lorena`). I numeri
+continuano a essere calcolati, scritti e salvati: farlo in CSS invece che con un ramo nel
+codice rende **impossibile** che «non mostrarli» diventi per sbaglio «non scriverli», e
+riaccendendolo si ritrova tutto lo storico invece di un buco. Il campo del pannello
+«scrivo io» sparisce anche lui ma **conserva il valore** — `display:none` non svuota
+niente e al salvataggio il numero riparte da dov'era.
+
+⚠️ **Sta in `localStorage`, non nel database**, come `piano-io`: è una preferenza di chi
+guarda, e i telefoni sono due — uno può volerle vedere e l'altro no. ⚠️ **Solo uno «0»
+scritto spegne**, così un `localStorage` vuoto o una modalità privata che non salva non
+lo spengono per sbaglio.
+
+⚠️ **Non chiama `renderPlan()`**: non c'è niente da ricalcolare, e ridisegnare farebbe
+credere che l'interruttore tocchi i dati.
+
 #### V8 Blocco 3 — le frequenze settimanali (19/08/2026) — ⚠️ RICHIEDE IL DEPLOY
 
 ⚠️ **Serve un passaggio sul database**: `tabelle-frequenze-v8.sql` (tabella
