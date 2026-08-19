@@ -1354,6 +1354,27 @@ salva ancora**, quindi per cambiare solo una quantità i gesti restano quelli di
 SQL non è stato eseguito, la scrittura **riprova senza** e lo dice, invece di far
 fallire un'azione che funzionava da sempre.
 
+#### Blocco 4 — dal mancante al pasto (19/08/2026)
+
+Nell'avviso «da X in poi il piano conta su cose che non hai più», ogni riga è **toccabile**
+e porta al **primo pasto che la richiede**, col pannello di modifica già aperto.
+
+⚠️ **Serve soprattutto quando il mancante non manca davvero.** Il caso vero è il nome
+scritto diverso: `stessoNome()` copre i residui ma non tutto, e prima l'unica via era
+leggere l'elenco e andarsi a cercare il pasto a mano. Adesso si apre da lì e si corregge.
+
+⚠️ **Non c'è un secondo modo di aprire quel pannello**: l'handler chiama `vaiAlGiorno()` e
+poi **preme la matita vera** (`b.click()`). Riscrivere la stessa apertura sarebbe un
+secondo posto da tenere allineato, e si scollerebbe.
+
+`scorteMancanti()` ora tiene `dove` (giorno **e pasto**, non più solo il giorno) e ne
+espone il primo in `primo`, col pranzo prima della cena dentro la stessa giornata.
+
+⚠️ Le righe toccabili sono alte **36 px e non 44**, contro la regola: sei righe da 44
+spingerebbero la striscia dei giorni fuori schermo proprio mentre l'avviso chiede di
+guardare il piano. La riga è larga quanto l'avviso, quindi il bersaglio orizzontale è
+tutto — ed è quello che conta col pollice.
+
 #### Blocco 3 — i condimenti esistono (19/08/2026) — ⚠️ RICHIEDE IL DEPLOY
 
 Le ricette generate ignoravano olio, burro e grassi di cottura: non comparivano fra gli

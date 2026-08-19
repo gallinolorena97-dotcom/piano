@@ -868,6 +868,13 @@ select.field{appearance:none;-webkit-appearance:none;
 /* gli avvisi in cima alla tab Piano */
 .avviso-lista{margin:7px 0 0;padding-left:19px;font-size:13.5px;line-height:1.5}
 .avviso-lista li{margin-bottom:2px}
+/* Le righe dell'avviso sono toccabili: portano al pasto che le richiede.
+   ⚠️ Qui il bottone è più basso dei 44 px canonici, ed è una scelta: sei
+   righe da 44 px spingerebbero la striscia dei giorni fuori schermo proprio
+   mentre l'avviso chiede di guardare il piano. La riga resta larga quanto
+   l'avviso, quindi il bersaglio orizzontale è tutto — ed è quello che conta
+   con un pollice. */
+.avviso-lista .btn-testo{min-height:36px;font-size:13.5px}
 
 /* ------------------------------------------------------------
    8-quinquies · V5 · LA VERIFICA DEL GIORNO (Blocco 3)
@@ -3386,9 +3393,12 @@ function scorteMancanti(){
       if (!k) for (const [kk, s] of serve)
         if (!s.voce && stessoNome(s.nome, nome)){ k = kk; break; }
       if (!k) k = 'x:' + paroleNome(nome).join(' ');
-      if (!serve.has(k)) serve.set(k, { voce, nome, giorni:[], n:0, u:null, sicuro:true });
+      if (!serve.has(k)) serve.set(k, { voce, nome, giorni:[], dove:[], n:0, u:null, sicuro:true });
       const s = serve.get(k);
       if (!s.giorni.includes(r.day)) s.giorni.push(r.day);
+      // Dove serve, pasto per pasto: è quello che permette di aprire il
+      // pasto colpevole invece di andarlo a cercare a mano.
+      s.dove.push({ day:r.day, pasto:r.pasto });
       const q = leggiQta(i.qta);
       if (!q){ s.sicuro = false; continue; }
       if (s.u === null) s.u = q.u;
@@ -3414,7 +3424,14 @@ function scorteMancanti(){
     if (s.n > hai.n)
       guai.push({ ...s, tipo:'poco', serve:scriviQta(s.n, s.u), hai:scriviQta(hai.n, hai.u) });
   }
-  guai.forEach(g => g.giorni.sort());
+  guai.forEach(g => {
+    g.giorni.sort();
+    // il primo pasto che lo richiede: prima il giorno, e dentro il giorno
+    // il pranzo prima della cena
+    const chiave = (x) => x.day + (x.pasto === 'pranzo' ? '0' : '1');
+    g.dove.sort((a,b) => chiave(a).localeCompare(chiave(b)));
+    g.primo = g.dove[0] || null;
+  });
   return guai.sort((a,b) => a.giorni[0].localeCompare(b.giorni[0]));
 }
 
@@ -3430,11 +3447,22 @@ function avvisoScorteHtml(){
        data-quanti="${giorniFra(dal, ultimo) + 1}">
     <b>Da ${esc(quandoRelativo(dal))} in poi il piano conta su cose che non hai più.</b>
     <ul class="avviso-lista">
-      ${guai.slice(0, 6).map(g => `<li>${esc(g.nome)} — ${g.tipo === 'assente'
-        ? 'non è in dispensa'
-        : `servono ${esc(g.serve)}, ne hai ${esc(g.hai)}`}</li>`).join('')}
+      ${guai.slice(0, 6).map(g => {
+        const testo = `${esc(g.nome)} — ${g.tipo === 'assente'
+          ? 'non è in dispensa'
+          : `servono ${esc(g.serve)}, ne hai ${esc(g.hai)}`}`;
+        // ⚠️ Toccabile: porta al primo pasto che lo richiede. Spesso il
+        // «mancante» non manca davvero, è solo scritto con un altro nome —
+        // e da lì lo si corregge invece di leggere un elenco e arrangiarsi.
+        return `<li>${g.primo
+          ? `<button class="btn-testo" data-vai-mancante="${esc(g.primo.day)}"
+                data-vai-pasto="${esc(g.primo.pasto)}">${testo}</button>`
+          : testo}</li>`;
+      }).join('')}
       ${guai.length > 6 ? `<li>e altre ${guai.length - 6}</li>` : ''}
     </ul>
+    <p class="hint" style="margin:6px 0 0">Tocca una riga per aprire il pasto che la usa
+      per primo: se è solo un nome scritto diverso, si corregge da lì.</p>
     <div class="form-row">
       <button class="btn small" data-rigenera-coda style="flex:1">Rigenera da ${esc(quandoRelativo(dal))}</button>
       <button class="btn small ghost" data-avviso-via>Non ora</button>
@@ -3636,6 +3664,20 @@ $('#planBody').addEventListener('click', async (ev) => {
   if (ev.target.closest('[data-rigenera]') && card){
     apriPassata({ dal:card.dataset.day, quanti:1, daPiano:true,
                   titolo:`Rigenero solo ${labelData(card.dataset.day)}` });
+    return;
+  }
+
+  const vai = ev.target.closest('[data-vai-mancante]');
+  if (vai){
+    const giorno = vai.dataset.vaiMancante, quale = vai.dataset.vaiPasto;
+    // ⚠️ Non si riscrive quello che fa la matita: si va al giorno e si preme
+    // la matita vera. Un secondo modo di aprire lo stesso pannello sarebbe
+    // un secondo posto da tenere allineato, e si scollerebbe.
+    vaiAlGiorno(giorno);
+    const b = $(`#pnCard [data-modifica="${quale}"]`);
+    if (!b){ toast('Quel pasto non è più nel piano.'); return; }
+    b.click();
+    b.closest('.pasto')?.scrollIntoView({ behavior:'smooth', block:'center' });
     return;
   }
 
