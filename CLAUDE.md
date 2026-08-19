@@ -1389,6 +1389,57 @@ carboidrati* (nel piatto sostituiscono pasta e riso, e un minimo di verdura non 
 raggiunge con le patatine); passata e pesto in *condimenti* per la stessa ragione; il
 maiale in *carne rossa*; salmone e tonno affumicati in *pesce* e non in *salumi*.
 
+#### V8 Blocco 3 — le frequenze settimanali (19/08/2026) — ⚠️ RICHIEDE IL DEPLOY
+
+⚠️ **Serve un passaggio sul database**: `tabelle-frequenze-v8.sql` (tabella
+`frequenze_categorie` + `plan_meals.categoria_principale`). Senza, la griglia resta vuota
+e il piano si genera come prima, senza quel vincolo: non si rompe niente.
+
+La griglia della nutrizionista, confermata dall'utente il 19/08. Si guarda e si corregge
+dal **menu** («Quante volte a settimana ›»), non da una tab: si tocca due volte l'anno, e
+una tab per una cosa del genere ruba il posto a quelle di ogni giorno.
+
+**Le cinque regole di conteggio**, tutte dettate dall'utente, tutte nel prompt (§4 ter):
+
+1. **Solo i pasti condivisi e quelli di Lorena.** Mai quelli di solo Ciprian, e dentro un
+   pasto condiviso **un ingrediente con `per: "ciprian"` non conta**: le sue 3 uova sode
+   a lato di una cena di gnocchi lasciano le uova della griglia a zero. Altrimenti le sue
+   proteine bruciano i minimi e i massimi di lei — il contrario di quello che serve.
+2. **Liberi e fuori casa restano fuori.** La pizza non consuma il massimo dei formaggi.
+3. **Un avanzo conta come pasto suo**: merluzzo a cena + avanzo a pranzo = 2 pesci. Non
+   si deduplica niente.
+4. **Si conta su `categoria_principale`**, un campo nuovo che scrive il generatore. ⚠️
+   **Non è `proteina_principale`**: quella dice l'alimento («pollo»), questa la categoria
+   («carne bianca»). Un pasto conta **una volta sola**. L'unica eccezione è la **verdura**,
+   che si conta come **presenza** fra gli ingredienti e non come piatto — è la risposta
+   dell'utente alla domanda su «ogni giorno».
+5. **Settimane corte: non si forza e non si tace.** Quando i pasti conteggiabili sono
+   meno di quanti ne chiedono i minimi, la priorità è **pesce → legumi → carne bianca →
+   uova** e il resto resta scoperto, **dichiarato** nel riepilogo insieme a quanti pasti
+   contavano davvero. ⚠️ **I massimi valgono sempre**: con meno pasti sono solo più
+   facili da rispettare, non diventano elastici.
+
+⚠️ **IL CONTEGGIO LO FA L'APP, NON IL MODELLO** (`verificaFrequenze()`, sulle righe vere
+di `plan_meals`). Il generatore riceve la griglia e cerca di rispettarla, ma quello che
+compare nel riepilogo è contato dopo: **un vincolo verificato da chi lo doveva rispettare
+non è una verifica, è una promessa.**
+
+⚠️ **L'ordine in cui si dichiarano i minimi scoperti è quello di priorità**, non
+alfabetico: dichiararli in ordine sbagliato farebbe sembrare grave la cosa che l'utente
+ha messo per ultima.
+
+⚠️ **Minimo maggiore del massimo si rifiuta al salvataggio**: non è un vincolo, è una
+cosa che non si può soddisfare, e salvarla lascerebbe il generatore a sbatterci contro
+ogni volta senza che nessuno capisca perché.
+
+**La rotazione dei formati** — la verifica mai chiusa, che avevo confermato **mancante** —
+entra qui come §4 quater: stesso formato (risotto, zuppa, polpette, insalatona, pasta
+asciutta, al forno, panino, torta salata) **al massimo 2 volte** a settimana, e ⚠️ **una
+catena di avanzi conta come una scelta sola**. Il campo `formato` è nello schema.
+⚠️ È un asse **diverso** dalla rotazione dei cereali (`rotazione_max`): quella riguarda
+l'ingrediente, questa la forma del piatto. Tre risotti diversi sono tre piatti sulla
+carta e la stessa cena nel piatto.
+
 #### V8 Blocco 2 — i sostituti della stessa categoria (19/08/2026)
 
 «Non hai il merluzzo» è mezza informazione se in freezer c'è il nasello. Ora l'avviso
@@ -1704,6 +1755,7 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `tabelle-spesa-blocco5.sql` | `shopping_list.serve_il`: la riga della spesa sa per quando serve. ✅ eseguito |
 | `tabelle-costi.sql` | `generator_usage.tok_in/tok_out` e `registra_token()`: la stima di spesa. **Da eseguire** |
 | `tabelle-nutrienti.sql` | `inventory_items.prot_100g/kcal_100g`, facoltativi. ✅ eseguito |
+| `tabelle-frequenze-v8.sql` | `frequenze_categorie` + `plan_meals.categoria_principale`: la griglia della nutrizionista. **Da eseguire** |
 | `tabelle-categorie-v8.sql` | `inventory_items.categoria`: che COSA è un alimento, più la migrazione delle 59 voci. **Da eseguire** |
 | `tabelle-blocco6.sql` | procedimento e sostituzioni sui pasti, procedimento sulle ricette, `plan_jobs.svuota_frigo`. ✅ eseguito |
 | `import-settimana-22-28.sql` | i 14 pasti del 22-28 agosto, **prima versione (18/08)**. ✅ eseguito, poi superato |

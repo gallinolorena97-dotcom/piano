@@ -1143,6 +1143,17 @@ select.field{appearance:none;-webkit-appearance:none;
    avviso — vuol dire «non devi andare da nessuna parte, hai già questo».
    È la stessa scelta di colore già fatta per le sostituzioni del piano. */
 .btn-testo.sost{color:var(--menta-ink)}
+
+/* Una riga della griglia delle frequenze: nome a sinistra, i due numeri
+   stretti a destra. La nota va a capo sotto, perché spiega e non si legge
+   di sfuggita. */
+.freq-riga{
+  display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end;
+  padding:9px 0;border-top:1px solid var(--linea);
+}
+.freq-riga .item-name{flex:1;font-weight:600;text-transform:capitalize}
+.freq-riga .campo{flex:0 0 62px}
+.freq-riga .field.mini{text-align:center}
 .sost-box{
   margin-top:9px;padding:10px 12px;border-radius:14px;
   background:var(--surface);border:1px solid var(--linea);
@@ -1532,6 +1543,14 @@ select.field{appearance:none;-webkit-appearance:none;
        Function se lo rilegge da sé. Al suo posto le due cose che servono
        davvero: sapere quanto costa, e potersi portare via i propri dati.
        Il copia-riepilogo del Diario resta dov'è: quello serve ancora. -->
+  <!-- Le frequenze stanno nel menu e non in una tab: si guardano due volte
+       l'anno, quando la nutrizionista cambia la griglia. Una tab per una
+       cosa che si tocca due volte l'anno ruba il posto a quelle di ogni
+       giorno. -->
+  <div class="form-row">
+    <button class="btn ghost" id="menuFrequenze" style="flex:1">Quante volte a settimana ›</button>
+  </div>
+  <div id="menuFrequenzeBox" hidden></div>
   <div class="form-row">
     <button class="btn ghost" id="menuCosti" style="flex:1">Quanto sto spendendo ›</button>
   </div>
@@ -1767,7 +1786,7 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY, { auth:{ persistSession:fals
 
 /* ---------- stato dell'app ---------- */
 const S = {
-  piano:[], inv:[], rec:[], settings:{}, spesa:[], diario:[],
+  piano:[], inv:[], rec:[], settings:{}, spesa:[], diario:[], frequenze:[],
   profili:[],            // i due profili, letti dal database
   voti:{},               // voti per ricetta: { idRicetta: { slug: 'fav' } }
   io:'lorena',           // chi sono su QUESTO telefono (salvato nel dispositivo)
@@ -1913,7 +1932,7 @@ async function loadAll(){
   const aISO  = addGiorni(oggiISO(), 20);
 
   try{
-    const [p, i, r, s, sp, pf, vt, lv] = await Promise.all([
+    const [p, i, r, s, sp, pf, vt, lv, fq] = await Promise.all([
       sb.from('plan_meals').select('*').gte('day', daISO).lte('day', aISO)
         .order('day', { ascending:true }),
       // ⚠️ '*' e NON l'elenco delle colonne, per la stessa ragione per cui
@@ -1938,6 +1957,8 @@ async function loadAll(){
       sb.from('recipe_votes').select('recipe_id,profile_slug,pref'),
       // la settimana che il server sta generando per conto suo, se c'è
       sb.from('plan_jobs').select('*').order('creato_il', { ascending:false }).limit(1),
+      // la griglia delle frequenze: facoltativa come tutto il resto
+      sb.from('frequenze_categorie').select('*').order('categoria', { ascending:true }),
     ]);
     for (const res of [i,r,s]) if (res.error) throw res.error;
 
@@ -1962,6 +1983,9 @@ async function loadAll(){
     }
     // La staffetta è facoltativa come tutto il resto: se la tabella non
     // c'è ancora, l'app genera come prima e lo dice quando serve.
+    // Le frequenze sono facoltative: senza tabelle-frequenze-v8.sql la
+    // griglia resta vuota e il piano si genera come prima, senza quel vincolo.
+    S.frequenze = fq.error ? [] : (fq.data || []);
     S.staffetta = !lv.error;
     S.lavoro = (!lv.error && (lv.data || [])[0]) || null;
     // un lavoro finito o vecchio non è una notizia: non deve restare in cima
@@ -4710,6 +4734,10 @@ function vistaRiepilogo(){
         <b>già nel calendario</b>: viene scritto man mano, per non perderlo se cade la
         connessione. Qui sotto chiudi la settimana e ti dico cosa c’è davvero.</p>` : ''}
       ${perGiorno}
+      <!-- ⚠️ Il conteggio delle frequenze è fatto QUI sulle righe vere, non
+           chiesto al modello: un vincolo verificato da chi lo doveva
+           rispettare non è una verifica, è una promessa. -->
+      ${frequenzeHtml(S.piano.filter(r => PS.giorni.some(g => g.day === r.day)))}
       <p class="hint">I numeri sono di ${esc(nomeDiChi('ciprian'))}, colazione e spuntini compresi
         (${FISSE_CIPRIAN.reduce((s,f) => s+f.prot, 0)} g · ${FISSE_CIPRIAN.reduce((s,f) => s+f.kcal, 0)} kcal).
         Nei giorni con un pasto fuori o libero il totale scende, ed è giusto così.</p>
@@ -5286,6 +5314,169 @@ const opzioniCategoria = (scelta) =>
     .concat(CATEGORIE_CIBO.map(c =>
       `<option value="${esc(c)}"${c === scelta ? ' selected' : ''}>${esc(c)}</option>`))
     .join('');
+
+/* ============================================================
+   LE FREQUENZE SETTIMANALI (v8, Blocco 3)
+
+   La griglia della nutrizionista: quante volte a settimana una categoria
+   fa da piatto. Si guarda e si corregge dal menu.
+
+   ⚠️ IL CONTEGGIO NON LO FA IL MODELLO, LO FA L'APP. Il generatore riceve
+   la griglia e cerca di rispettarla, ma quello che finisce nel riepilogo è
+   contato qui sulle righe vere di `plan_meals`. Un vincolo verificato da
+   chi lo doveva rispettare non è una verifica, è una promessa.
+   ============================================================ */
+
+/**
+ * I pasti CONTEGGIABILI di una settimana, secondo le regole date
+ * dall'utente il 19/08/2026:
+ *  · solo i pasti condivisi e quelli di Lorena — mai quelli di solo Ciprian;
+ *  · fuori dal conteggio i pasti liberi e quelli fuori casa;
+ *  · un avanzo conta come pasto suo (non si deduplica niente).
+ */
+const pastiConteggiabili = (righe) => righe.filter(r =>
+  r.modo === 'casa' && (r.chi === 'entrambi' || r.chi === 'lorena'));
+
+/** Gli ingredienti che contano per la presenza: quelli di Ciprian a lato no.
+    ⚠️ Se lui aggiunge 3 uova sode a una cena di gnocchi, quelle uova NON
+    entrano nella griglia: altrimenti le sue proteine bruciano i minimi e i
+    massimi di lei, che è il contrario di quello che serve. */
+const ingredientiChContano = (r) =>
+  (r.ingredienti || []).filter(i => (i.per || 'tutti') !== 'ciprian');
+
+/**
+ * Come è andata la settimana rispetto alla griglia.
+ *
+ * ⚠️ La verdura si conta come PRESENZA, non come piatto: basta che ci sia
+ * fra gli ingredienti. Tutte le altre categorie si contano sul piatto, cioè
+ * su `categoria_principale`, e un pasto conta una volta sola.
+ */
+function verificaFrequenze(righe){
+  const conta = pastiConteggiabili(righe);
+  const per = new Map();
+  for (const r of conta){
+    const c = String(r.categoria_principale || '').toLowerCase().trim();
+    if (c) per.set(c, (per.get(c) || 0) + 1);
+  }
+  // la verdura: presenza, non portata
+  let conVerdura = 0;
+  for (const r of conta)
+    if (ingredientiChContano(r).some(i => categoriaProposta(String(i.nome || '')) === 'verdura'))
+      conVerdura++;
+  per.set('verdura', conVerdura);
+
+  const sotto = [], sopra = [];
+  for (const f of S.frequenze){
+    const n = per.get(f.categoria) || 0;
+    if (f.min_sett != null && n < f.min_sett)
+      sotto.push({ categoria:f.categoria, ha:n, serve:f.min_sett });
+    if (f.max_sett != null && n > f.max_sett)
+      sopra.push({ categoria:f.categoria, ha:n, tetto:f.max_sett });
+  }
+  // ⚠️ La priorità la decide l'utente, non l'ordine alfabetico: quando i
+  // pasti non bastano per tutti i minimi, si scoprono gli ULTIMI di questa
+  // fila. Dichiararli nell'ordine sbagliato farebbe sembrare grave la cosa
+  // che lei ha messo per ultima.
+  const PRIORITA = ['pesce', 'legumi', 'carne bianca', 'uova'];
+  const peso = (c) => { const i = PRIORITA.indexOf(c); return i < 0 ? 99 : i; };
+  sotto.sort((a,b) => peso(a.categoria) - peso(b.categoria));
+
+  return { conteggiabili:conta.length, per, sotto, sopra };
+}
+
+/** Il riquadro che lo dichiara. Non è un rimprovero: è un fatto. */
+function frequenzeHtml(righe){
+  if (!S.frequenze.length) return '';
+  const v = verificaFrequenze(righe);
+  if (!v.sotto.length && !v.sopra.length)
+    return `<div class="avviso info"><b>Le frequenze tornano.</b>
+      Questa settimana contavano ${v.conteggiabili} pasti.</div>`;
+
+  return `<div class="avviso ${v.sopra.length ? 'attenzione' : 'info'}">
+    <b>Questa settimana contavano ${v.conteggiabili} pasti.</b>
+    ${v.sotto.length ? `<ul class="avviso-lista">
+      ${v.sotto.map(x => `<li>${esc(x.categoria)}: ${x.ha} invece di ${x.serve}</li>`).join('')}
+    </ul>
+    <p class="hint" style="margin:6px 0 0">Con meno pasti conteggiabili non tutti i minimi
+      ci stanno. L'ordine con cui si coprono è pesce, legumi, carne bianca, uova: quello
+      che resta scoperto è dichiarato qui, non nascosto.</p>` : ''}
+    ${v.sopra.length ? `<ul class="avviso-lista">
+      ${v.sopra.map(x => `<li>${esc(x.categoria)}: ${x.ha}, il tetto è ${x.tetto}</li>`).join('')}
+    </ul>
+    <p class="hint" style="margin:6px 0 0">I massimi valgono sempre: con meno pasti sono
+      solo più facili da rispettare.</p>` : ''}
+  </div>`;
+}
+
+/* --- il pannello nel menu: si guarda e si corregge --- */
+function renderFrequenze(){
+  const box = $('#menuFrequenzeBox');
+  if (!S.frequenze.length){
+    box.innerHTML = `<div class="avviso info">La griglia non c'è ancora:
+      esegui <b>tabelle-frequenze-v8.sql</b>.</div>`;
+    return;
+  }
+  box.innerHTML = `<div class="panel">
+    <p class="hint" style="margin-top:0">Quante volte a settimana una categoria fa da
+      piatto. Vuoto vuol dire nessun vincolo. Si contano solo i pasti condivisi e i tuoi:
+      quelli di ${esc(nomeDiChi('ciprian'))} da solo, i liberi e quelli fuori non contano.</p>
+    ${S.frequenze.map(f => `<div class="freq-riga" data-cat="${esc(f.categoria)}">
+      <div class="item-name">${esc(f.categoria)}</div>
+      <label class="campo"><span class="campo-eti">min</span>
+        <input class="field mini" data-f-min type="number" min="0" max="21"
+               inputmode="numeric" placeholder="—" value="${f.min_sett ?? ''}"></label>
+      <label class="campo"><span class="campo-eti">max</span>
+        <input class="field mini" data-f-max type="number" min="0" max="21"
+               inputmode="numeric" placeholder="—" value="${f.max_sett ?? ''}"></label>
+      ${f.nota ? `<p class="hint" style="flex:1 0 100%;margin:2px 0 0">${esc(f.nota)}</p>` : ''}
+    </div>`).join('')}
+    <div class="form-row">
+      <button class="btn" id="freqSalva" style="flex:1">Salva le frequenze</button>
+    </div>
+  </div>`;
+}
+
+$('#menuFrequenze').onclick = () => {
+  const box = $('#menuFrequenzeBox');
+  if (!box.hidden){ box.hidden = true; return; }
+  renderFrequenze();
+  box.hidden = false;
+};
+
+$('#menuFrequenzeBox').addEventListener('click', async (ev) => {
+  if (!ev.target.closest('#freqSalva')) return;
+  const b = ev.target.closest('#freqSalva');
+  b.disabled = true;
+  try{
+    const nuovi = [...$('#menuFrequenzeBox').querySelectorAll('.freq-riga')].map(el => ({
+      categoria: el.dataset.cat,
+      min_sett: el.querySelector('[data-f-min]').value === ''
+        ? null : Number(el.querySelector('[data-f-min]').value),
+      max_sett: el.querySelector('[data-f-max]').value === ''
+        ? null : Number(el.querySelector('[data-f-max]').value),
+    }));
+    // ⚠️ Un minimo più alto del massimo non è un vincolo, è una cosa che
+    // non si può soddisfare: si dice subito invece di salvarla e lasciare
+    // che il generatore ci sbatta contro ogni volta.
+    const assurda = nuovi.find(x => x.min_sett != null && x.max_sett != null
+                                 && x.min_sett > x.max_sett);
+    if (assurda){
+      toast(`Su «${assurda.categoria}» il minimo è più alto del massimo.`);
+      b.disabled = false; return;
+    }
+    for (const n of nuovi){
+      const { error } = await sb.from('frequenze_categorie')
+        .update({ min_sett:n.min_sett, max_sett:n.max_sett }).eq('categoria', n.categoria);
+      if (error) throw error;
+      const f = S.frequenze.find(x => x.categoria === n.categoria);
+      if (f) Object.assign(f, n);
+    }
+    // Non si ridisegna il piano: la griglia si vede nel riepilogo di una
+    // generazione, e cambiarla adesso non cambia quello che è già scritto.
+    toast('Frequenze salvate. Valgono dalla prossima generazione.');
+    $('#menuFrequenzeBox').hidden = true;
+  }catch(e){ b.disabled = false; esitoErrore(e); }
+});
 
 /* ============================================================
    I SOSTITUTI DELLA STESSA CATEGORIA (v8, Blocco 2)

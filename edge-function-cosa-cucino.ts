@@ -219,6 +219,10 @@ type Contesto = {
   profili: Profilo[];
   voti: Array<{ recipe_id: string; profile_slug: string; pref: string }>;
   recenti: Array<{ day: string; piatto: string; proteina: string | null }>;
+  frequenze: Array<{
+    categoria: string; min_sett: number | null; max_sett: number | null;
+    rotazione_max: number | null; nota: string | null;
+  }>;
 };
 
 async function leggiContesto(): Promise<Contesto> {
@@ -251,7 +255,32 @@ async function leggiContesto(): Promise<Contesto> {
     );
   } catch { /* niente diario: pazienza */ }
 
-  return { inv, rec, setRows, profili, voti, recenti };
+  // La griglia delle frequenze. Se la tabella non c'è ancora si va avanti
+  // senza: il piano si genera come prima, solo senza quel vincolo.
+  let frequenze: Contesto['frequenze'] = [];
+  try { frequenze = await leggi('frequenze_categorie', '*'); } catch { /* v8 non installata */ }
+
+  return { inv, rec, setRows, profili, voti, recenti, frequenze };
+}
+
+/**
+ * La griglia raccontata al modello. ⚠️ Le categorie senza nessun numero
+ * NON si scrivono: una riga «frutta: nessun vincolo» occupa spazio nel
+ * prompt e non dice niente, e un elenco pieno di righe vuote fa passare
+ * per meno importanti quelle che contano.
+ */
+function descriviFrequenze(f: Contesto['frequenze']): string {
+  const righe = (f || [])
+    .filter((x) => x.min_sett != null || x.max_sett != null || x.rotazione_max != null)
+    .map((x) => {
+      const pezzi: string[] = [];
+      if (x.min_sett != null) pezzi.push(`almeno ${x.min_sett}`);
+      if (x.max_sett != null) pezzi.push(`al massimo ${x.max_sett}`);
+      if (x.rotazione_max != null)
+        pezzi.push(`lo stesso tipo al massimo ${x.rotazione_max} volte`);
+      return `- ${x.categoria}: ${pezzi.join(', ')} a settimana${x.nota ? ` — ${x.nota}` : ''}`;
+    });
+  return righe.length ? righe.join('\n') : '(nessuna frequenza impostata)';
 }
 
 /** La dispensa raccontata per categorie, come la vede il modello. */
@@ -679,6 +708,46 @@ Le scatolette e la roba secca possono aspettare la fine.
 ## 4 bis. I CONDIMENTI E I GRASSI DI COTTURA
 ${CONDIMENTI}
 
+## 4 ter. LE FREQUENZE DELLA SETTIMANA — la griglia della nutrizionista
+La griglia vera ti arriva più sotto, sotto "FREQUENZE DA RISPETTARE". Qui c'è COME si
+conta, che senza queste regole la griglia produce assurdità.
+
+⚠️ SI CONTANO SOLO I PASTI CONTEGGIABILI, e sono meno di quelli della settimana:
+1. **Solo i pasti condivisi e quelli di Lorena.** I pasti di SOLO CIPRIAN non contano
+   mai. E dentro un pasto condiviso, un ingrediente scritto con "per": "ciprian" — le
+   sue aggiunte proteiche a lato — NON conta: se lui mette 3 uova sode accanto a una
+   cena di gnocchi, le uova della griglia restano a zero. Altrimenti le sue proteine
+   bruciano i minimi e i massimi di lei, che è il contrario di quello che serve.
+2. **I pasti liberi e quelli fuori casa restano fuori dal conteggio.** La pizza non
+   consuma il massimo dei formaggi: sta fuori dalla griglia come sta fuori dal metodo.
+3. **Un avanzo conta come pasto suo.** Merluzzo a cena e il suo avanzo a pranzo il
+   giorno dopo fanno DUE pesci, se li mangia lei tutte e due le volte.
+4. **"categoria_principale" è il campo con cui si conta**, e va scritto su ogni pasto:
+   è la categoria di cui il pasto è fatto, quella del piatto — non un ingrediente di
+   contorno. Un pasto conta UNA VOLTA SOLA, per la sua categoria principale.
+   L'unica eccezione è la verdura, che si conta come PRESENZA: basta che ci sia fra gli
+   ingredienti, non deve essere il piatto.
+5. **SETTIMANE CORTE: non si forza e non si tace.** I minimi sommati chiedono più pasti
+   di quanti a volte ce ne siano (fra fuori, liberi e pasti di solo Ciprian i
+   conteggiabili possono essere 6 invece di 8). In quel caso NON stravolgere la
+   settimana per farceli stare: rispetta questa PRIORITÀ, in quest'ordine —
+   **pesce → legumi → carne bianca → uova** — e lascia scoperti gli ultimi.
+   ⚠️ E DILLO: nel campo "perche" del primo pasto del giorno in cui te ne accorgi
+   scrivi in una riga quali minimi non si raggiungono. Un minimo mancato dichiarato è
+   un fatto; un minimo mancato in silenzio è un errore che scopre qualcun altro.
+   ⚠️ I MASSIMI invece valgono SEMPRE: con meno pasti sono solo più facili da
+   rispettare, non diventano elastici.
+
+## 4 quater. LA ROTAZIONE DEI FORMATI — non basta cambiare ingrediente
+Tre risotti in una settimana sono tre piatti diversi sulla carta e la stessa cena nel
+piatto. Oltre alla varietà delle proteine, che è la regola 6, vale la varietà della
+FORMA: risotto, zuppa, polpette, insalatona, pasta asciutta, al forno, in padella,
+panino, torta salata, spiedini.
+- Lo stesso formato **al massimo 2 volte** nella settimana.
+- ⚠️ Una catena di avanzi conta come UNA scelta sola: la cena e il pranzo del giorno
+  dopo che se ne nutre sono lo stesso piatto, non due volte quel formato.
+- Vale anche qui il conteggio della regola 4 ter: si guardano i pasti conteggiabili.
+
 ## 5. LA CATENA DELLE DOPPIE PORZIONI — si guarda avanti e indietro
 Dove ha senso, cucina doppio e manda l'avanzo al pasto dopo: scrivilo in "avanzo_per"
 sul pasto che cucina ("→ pranzo di mercoledì") e ripeti il piatto nel pasto che lo
@@ -768,6 +837,17 @@ Non inventare mai un ingrediente che non c'è.
 - "tempo": minuti veri di preparazione.
 - "proteina_principale": una parola minuscola e generica (pollo, tonno, uova, manzo,
   pesce, legumi, formaggio, maiale). Serve alla regola della varietà.
+- "categoria_principale": la CATEGORIA di cui il pasto è fatto, presa ESATTAMENTE da
+  questo elenco e da nessun altro — pesce · carne bianca · carne rossa · salumi · uova ·
+  latticini · legumi · cereali e carboidrati · verdura · frutta · frutta secca e semi ·
+  condimenti e grassi · dolci · altro.
+  ⚠️ Non è "proteina_principale" scritta diversa: quella dice l'alimento («pollo»),
+  questa dice la categoria («carne bianca»). È il campo con cui si contano le
+  frequenze, e una parola fuori elenco non viene contata da nessuna parte.
+  Se il pasto è fuori casa o libero, stringa vuota.
+- "formato": la FORMA del piatto in una o due parole minuscole — risotto, zuppa,
+  polpette, insalatona, pasta asciutta, al forno, in padella, panino, torta salata,
+  spiedini. Serve alla rotazione dei formati (regola 4 quater).
 - "procedimento": i passi per farlo, uno per riga, nell'ordine in cui si fanno.
   ⚠️ LA LUNGHEZZA LA DECIDE IL PIATTO, NON TU. Se è banale bastano DUE O TRE righe
   ("Scalda la piastra. Cuoci il petto 4 minuti per lato. Insalata a parte."): un
@@ -843,10 +923,16 @@ const SCHEMA_SETTIMANA = {
           procedimento:        { type: 'array', items: PASSO },
           sostituzioni:        { type: 'array', items: SOSTITUZIONE },
           proteina_principale: { type: 'string' },
+          // ⚠️ La CATEGORIA di cui il pasto è fatto, non l'alimento: è il
+          // campo con cui si contano le frequenze della settimana.
+          // "proteina_principale" dice «pollo», questo dice «carne bianca».
+          categoria_principale: { type: 'string' },
+          // il formato del piatto, per la rotazione delle forme
+          formato:             { type: 'string' },
         },
         required: ['day','pasto','piatto','perche','ingredienti','dolce','tempo','prot','kcal',
                    'scongelamento','scongelare_il','avanzo_per','manca','procedimento',
-                   'sostituzioni','proteina_principale'],
+                   'sostituzioni','proteina_principale','categoria_principale','formato'],
         additionalProperties: false,
       },
     },
@@ -1297,6 +1383,12 @@ ${descriviVoti(c)}
 ## MANGIATO NEGLI ULTIMI GIORNI (per la regola della varietà)
 ${descriviRecenti(c)}
 
+## FREQUENZE DA RISPETTARE — la griglia della nutrizionista
+Come si contano sta nella regola 4 ter, e senza quelle regole questa griglia produce
+assurdità: si contano solo i pasti condivisi e quelli di Lorena, mai quelli di solo
+Ciprian né le sue aggiunte a lato, e restano fuori i liberi e i pasti fuori casa.
+${descriviFrequenze(c.frequenze)}
+
 ## OBIETTIVI DI RIFERIMENTO
 ${impostazioni.kcal_target ?? 2200} kcal · ${impostazioni.protein_target ?? 170} g di proteine al giorno, per chi ce li ha.
 
@@ -1572,6 +1664,10 @@ function rigaDiPasto(g: GiornoPassata, quale: string, m: any, oggi: string) {
     // sempre romperebbe tutta la generazione, che funzionava già.
     ...(passiPuliti(m?.procedimento).length ? { procedimento: passiPuliti(m.procedimento) } : {}),
     ...(sostPulite(m?.sostituzioni).length ? { sostituzioni: sostPulite(m.sostituzioni) } : {}),
+    // ⚠️ Stessa prudenza: si manda solo se c'è, perché su un database senza
+    // tabelle-frequenze-v8.sql quella colonna non esiste.
+    ...(String(m?.categoria_principale ?? '').trim()
+      ? { categoria_principale: String(m.categoria_principale).trim().toLowerCase() } : {}),
   };
 }
 
