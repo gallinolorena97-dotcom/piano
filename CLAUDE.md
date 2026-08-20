@@ -26,6 +26,32 @@ tabella. Nel dubbio, chiedi invece di dedurre.
 contiene il profilo di **Ciprian**, e lo slug `x` quello di **Lorena**. La persona è
 sempre e solo quella scritta nella colonna `nome`.
 
+## ⛔ TRE LIVELLI DI VERIFICA, E NON SI CONFONDONO (20/08/2026)
+
+Dire «collaudato» senza dire **come** è la cosa che ha fatto perdere più tempo in questo
+progetto. Ci sono tre livelli, e solo l'ultimo è un collaudo vero:
+
+| | che cosa dimostra | chi può farlo |
+|---|---|---|
+| **letto** | quello che il codice o il database dicono | Claude |
+| **misurato** | che la logica gira e che il disegno viene come previsto — DOM, geometria, valori | Claude |
+| **provato col tocco** | che un dito, su quel telefono, arriva a quel bersaglio | **solo l'utente** |
+
+⚠️ **`elemento.click()` da JavaScript NON è un tocco.** Fa partire il gestore e prova che
+la logica funziona, ma **salta completamente la parte in cui il browser decide chi hai
+colpito** — ed è esattamente lì che sono nati gli ultimi tre bersagli morti. Un bottone
+può rispondere benissimo a `click()` ed essere irraggiungibile con un dito, perché ci sta
+sopra qualcos'altro, perché sborda dalla sua riga, o perché è largo tre millimetri.
+
+⚠️ **E i clic dello strumento `computer` di claude-in-chrome, in questo ambiente, NON
+ARRIVANO ALLA PAGINA.** Provato il 20/08/2026 su un bersaglio impossibile da sbagliare (la
+tab «Dispensa»): **zero eventi registrati**. Quindi nemmeno quello è un tocco, e una prova
+costruita su quei clic **non vale niente** — è già successo di annunciarne una.
+
+⚠️ **Come si scrive, quindi**: «verificato per lettura», «verificato per misura», oppure
+«da provare col tocco». Mai «collaudato» da solo. E quello che tocca all'utente si dichiara
+come tale invece di lasciarlo credere fatto.
+
 ## ⛔ COLLAUDARE COL BROWSER SUI DATI VERI (regola dell'utente, 20/08/2026)
 
 Con `claude-in-chrome` si può aprire l'app vera e premerne i bottoni: è il modo più
@@ -589,6 +615,42 @@ pannello in fondo. Sembrava che il pulsante non funzionasse.
 - Le operazioni accessorie non devono far fallire quelle principali: in
   `confermaCucinato`, se la dispensa è aggiornata e fallisce il salvataggio della
   ricetta, si tiene il lavoro fatto e si dice cosa non è riuscito.
+
+### ⚠️ DA PROVARE COL TOCCO — nessuno l'ha ancora fatto (20/08/2026)
+
+Rilettura onesta di tutto quello che è stato dichiarato «collaudato» negli ultimi giri,
+diviso per **come** è stato verificato. ⚠️ **Nessuna riga di questa tabella è stata provata
+con un dito**: i clic dello strumento non arrivano alla pagina (vedi i tre livelli in cima
+al file), e `elemento.click()` da JavaScript salta proprio la parte che qui conta.
+
+**Logica verificata (per misura), bersaglio MAI provato** — la logica gira, ma che il dito
+ci arrivi non lo sa nessuno:
+
+- i sostituti nell'avviso: candidati, ordine, «ne mancano X» — i pannelli si aprono e i
+  numeri sono giusti, provato facendo partire il gestore da JavaScript;
+- «è una cosa che ho: te la indico io», con l'elenco della dispensa e la ricerca;
+- il salto alla riga dell'ingrediente (`portaAllIngrediente`): la riga giusta si illumina;
+- il pannello del pasto: numeri che si dichiarano vecchi, ricalcolo con la differenza;
+- la domanda sull'unità nel modulo della dispensa (lì non c'erano clic, solo scrittura nei
+  campi: la logica è certa e resta solo il bersaglio).
+
+**MAI ESERCITATO, in nessun modo** — scritto, mai fatto girare nemmeno da JavaScript:
+
+- ⚠️ **il toast**: si chiude con un tocco, non si muove con la tastiera, due righe, quattro
+  secondi. **Niente di questo è stato provato.**
+- ⚠️ **la correzione del pannello dei sostituti** (`previousElementSibling` al posto di
+  `closest('.mano-riga')`): è quella del secondo bersaglio morto, scritta leggendo il
+  codice. **Toccare un'alternativa lì non l'ha ancora fatto nessuno.**
+- ⚠️ **«mettilo in lista spesa»** e **«non seguire più questo ingrediente»** sull'avviso.
+- ⚠️ **il salvataggio** di qualunque cosa passi da questi pannelli: per rispetto della
+  regola sui dati veri non è mai stato premuto un tasto che scrive.
+
+**Verificato per misura e basta** (nessun tocco possibile): la riga dell'avviso che si
+spezza in una azione per riga — dimostrata dalla geometria (tre bottoni con la stessa `y`
+prima, 40 px di distanza dopo) e da una schermata.
+
+**Verificato per lettura** (e questo regge): lo split dei latticini sul database, le colonne
+SQL esistenti, `stessoNome()` che appaia «Fesa di tacchino» e «Fesa tacchino».
 
 ### 🔖 DOVE SIAMO — leggere per prima cosa in una sessione nuova
 
