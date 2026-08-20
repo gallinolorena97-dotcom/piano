@@ -939,6 +939,16 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 .num-vecchi{margin-top:12px;font-size:13.5px;line-height:1.4}
 
 .mano-riga{display:flex;gap:7px;align-items:center;margin-top:6px}
+/* La riga a cui ti ho portato, arrivando da un mancante dell'avviso.
+   ⚠️ Un alone attorno e non un fondo colorato: il fondo si confonderebbe
+   con gli stati che l'app usa per dire altro (menta = buona notizia, pesca
+   = tocca a te), e qui non si sta dicendo niente sul contenuto — si sta
+   solo indicando dove guardare. Si spegne da sé dopo un paio di secondi. */
+.mano-riga.evidenzia{
+  border-radius:var(--r-m);
+  box-shadow:0 0 0 3px var(--lavanda);
+  transition:box-shadow 400ms ease;
+}
 .mano-riga .field{flex:1;min-width:0;margin-top:0}
 .mano-riga .field[data-ing-qta]{flex:0 0 92px}
 /* «Crea la ricetta» dentro il pannello a mano. Sta subito sotto il nome
@@ -4597,7 +4607,8 @@ function avvisoScorteHtml(){
         const scegli = g.tipo !== 'poco';
         return `<li>${g.primo
           ? `<button class="btn-testo" data-vai-mancante="${esc(g.primo.day)}"
-                data-vai-pasto="${esc(g.primo.pasto)}">${testo}</button>`
+                data-vai-pasto="${esc(g.primo.pasto)}"
+                data-vai-ing="${esc(g.nome)}">${testo}</button>`
           : testo}${(g.simili || []).map(v => `
           <button class="btn-testo sost" data-alias="${esc(g.nome)}"
                   data-alias-voce="${esc(v.name)}">in dispensa c’è «${esc(v.name)}»: è la stessa cosa?</button>`).join('')}${alt.length ? `
@@ -4800,6 +4811,31 @@ $('#planBody').addEventListener('input', (ev) => {
   apriScelta(box.dataset.sceltaPer, dentro, c.value);
 });
 
+/**
+ * Porta l'occhio sulla riga di quell'ingrediente, dentro il pannello appena
+ * aperto: la mette al centro e la illumina per un paio di secondi.
+ *
+ * ⚠️ NON mette il fuoco nel campo, ed è la stessa scelta già fatta per
+ * «Mettilo in dispensa»: su iPhone il fuoco apre la tastiera, che si mangia
+ * mezzo schermo e sposta proprio la riga che ti stavo mostrando. La mano
+ * serve per correggere, non per arrivare.
+ *
+ * Torna false se quella riga non c'è: chi chiama deve poterlo dire.
+ */
+function portaAllIngrediente(pasto, nome){
+  if (!pasto || !nome) return false;
+  const riga = [...pasto.querySelectorAll('.mano-riga')].find(r =>
+    stessoNome(r.querySelector('[data-ing-nome]')?.value || '', nome));
+  if (!riga) return false;
+
+  riga.scrollIntoView({ behavior:'smooth', block:'center' });
+  riga.classList.add('evidenzia');
+  // ⚠️ Si spegne da sola: un'evidenziazione che resta smette di indicare
+  // qualcosa e diventa un colore di sfondo come un altro.
+  setTimeout(() => riga.classList.remove('evidenzia'), 2200);
+  return true;
+}
+
 /* ---------- i tocchi del Blocco 4 ---------- */
 $('#planBody').addEventListener('click', async (ev) => {
   const card = ev.target.closest('.day');
@@ -4992,7 +5028,13 @@ $('#planBody').addEventListener('click', async (ev) => {
     const b = $(`#pnCard [data-modifica="${quale}"]`);
     if (!b){ toast('Quel pasto non è più nel piano.'); return; }
     b.click();
-    b.closest('.pasto')?.scrollIntoView({ behavior:'smooth', block:'center' });
+    /* ⚠️ Non basta aprire il pasto: bisogna portarti SULLA RIGA. Aprire la
+       ricetta e lasciarti a cercare l'ingrediente in mezzo agli altri è
+       metà del lavoro — e su un pasto con otto ingredienti quella metà è
+       proprio quella che costa. Se non si trova la riga si dice, invece di
+       lasciare il pannello aperto su niente e sembrare rotto. */
+    if (!portaAllIngrediente(b.closest('.pasto'), vai.dataset.vaiIng))
+      b.closest('.pasto')?.scrollIntoView({ behavior:'smooth', block:'center' });
     return;
   }
 
