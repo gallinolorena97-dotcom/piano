@@ -1001,6 +1001,34 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 .avviso-lista li{margin-bottom:9px}
 
 /* ------------------------------------------------------------
+   L'AVVISO RAGGRUPPATO PER TIPO DI PROBLEMA (20/08/2026)
+   Una riga di sintesi, tre gruppi, e su ogni voce la conseguenza.
+   ⚠️ La frase la dice il TITOLO del gruppo: sulle righe non si ripete,
+   ed è tutta la differenza fra un avviso e una tabella di database.
+   ------------------------------------------------------------ */
+.avviso-sintesi{
+  margin:6px 0 0;font-size:13.5px;font-weight:700;color:var(--pesca-ink);
+}
+.avviso-scorte .gr{margin-top:14px}
+.avviso-scorte .gr-tit{
+  font-size:11.5px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;
+  color:var(--ink);
+}
+/* quanti sono, senza doverli contare a occhio */
+.avviso-scorte .gr-tit span{
+  margin-left:6px;background:var(--pesca-soft);color:var(--pesca-ink);
+  border-radius:999px;padding:1px 8px;letter-spacing:0;
+}
+.avviso-scorte .gr-sotto{margin:3px 0 0;font-size:12.5px;color:var(--muted);line-height:1.4}
+.avviso-scorte .gr-altre{font-size:12.5px;color:var(--muted);list-style:none;margin-left:-4px}
+/* Il nome in evidenza, e sotto la conseguenza: si legge il nome, e se
+   serve si scende di una riga per sapere che cosa si ferma. */
+.avviso-lista .btn-testo{flex-wrap:wrap;gap:0 8px;padding-top:3px;padding-bottom:3px}
+.avviso-lista .btn-testo b{font-weight:700}
+.avviso-lista .quando{flex:1 0 100%;font-weight:500;color:var(--muted);font-size:12.5px}
+.avviso-lista .quanti{font-weight:500;color:var(--pesca-ink);font-size:12.5px}
+
+/* ------------------------------------------------------------
    8-quinquies · V5 · LA VERIFICA DEL GIORNO (Blocco 3)
    Sta in cima alla tab Piano, sopra la striscia. Il fondo è menta
    perche' e' una domanda cordiale, non un avviso: l'ambra e il
@@ -4717,85 +4745,119 @@ function pesoRigenerazione(dal, quanti){
   return pezzi.join(' · ');
 }
 
+/**
+ * L'avviso delle scorte, raggruppato per TIPO DI PROBLEMA.
+ *
+ * ⚠️ Prima era un elenco piatto di quattordici righe tutte uguali, ognuna
+ * con la sua frase ripetuta: si leggeva come una tabella di database. Il
+ * problema non era la quantità di informazione, era che non aveva forma —
+ * per capire di che natura fossero quei quattordici guai bisognava leggerli
+ * tutti, uno per uno.
+ *
+ * ⚠️ È TUTTO TESTO CALCOLATO: nessuna chiamata al modello, zero tacche.
+ * Un riassunto scritto dal generatore costerebbe una generazione ogni volta
+ * che l'avviso si ridisegna — cioè a ogni tocco — e direbbe cose che l'app
+ * sa già contare da sé.
+ */
 function avvisoScorteHtml(){
   if (S.avvisoVia) return '';
   const guai = scorteMancanti();
   if (!guai.length) return '';
 
+  /* Il calcolo si fa UNA volta per guaio: `sostitutiPer()` gira su tutta la
+     dispensa, e serve sia a decidere il gruppo sia a disegnare il bottone. */
+  for (const g of guai) g.alt = g.tipo === 'nome' ? [] : sostitutiPer(g.nome, g.serve);
+
+  /* I tre gruppi. ⚠️ La frase la dice il TITOLO, non ogni riga: ripetere
+     «non ce l'hai in dispensa» quattordici volte è il motivo per cui
+     l'elenco sembrava una tabella. */
+  const dove = (g) => (g.tipo === 'poco') ? 'poche'
+    : ((g.simili || []).length || g.alt.length) ? 'nome' : 'compra';
+
+  const gruppi = { compra:[], nome:[], poche:[] };
+  for (const g of guai) gruppi[dove(g)].push(g);
+
+  /* ⚠️ L'ordine è la DATA del pasto che si ferma per primo, non l'alfabeto:
+     quello che ti blocca lunedì viene prima di quello che ti blocca venerdì,
+     e l'alfabeto non dice niente su cosa fare stasera. */
+  const quando = (g) => (g.primo ? g.primo.day + (g.primo.pasto === 'pranzo' ? '0' : '1') : '9');
+  for (const k of Object.keys(gruppi)) gruppi[k].sort((a,b) => quando(a).localeCompare(quando(b)));
+
   const dal = guai[0].giorni[0];
   const ultimo = S.piano.map(r => r.day).sort().slice(-1)[0];
-  // ⚠️ Se sono tutti nomi da chiarire, «cose che non hai più» è falso: non
-  // manca niente, si chiamano solo in due modi. Il titolo lo deve dire.
-  const soloNomi = guai.every(g => g.tipo === 'nome');
+  const soloNomi = !gruppi.compra.length && !gruppi.poche.length;
+
+  /* La riga di sintesi: di che natura sono i guai, in un colpo d'occhio.
+     ⚠️ I gruppi vuoti non si nominano: «0 da comprare» è rumore. */
+  const sintesi = [
+    gruppi.compra.length ? `${gruppi.compra.length} da comprare` : '',
+    gruppi.nome.length   ? `${gruppi.nome.length} ${gruppi.nome.length === 1
+                              ? 'ce l’hai già' : 'ce le hai già'}` : '',
+    gruppi.poche.length  ? `${gruppi.poche.length} ne hai poche` : '',
+  ].filter(Boolean).join(' · ');
+
+  /* ⚠️ Quattro per gruppo e non sei in tutto: con un tetto unico un gruppo
+     lungo si mangiava gli altri, e sparivano proprio i tipi di problema che
+     la sintesi aveva appena annunciato. Quello che resta fuori si dichiara. */
+  const MAX = 4;
+
+  const riga = (g) => {
+    const r = g.primo && S.piano.find(x => x.day === g.primo.day && x.pasto === g.primo.pasto);
+    /* ⚠️ LA CONSEGUENZA, non solo il nome. «Provolone» non dice niente;
+       «lunedì 24 · Torta salata» dice che cosa si ferma, ed è l'unica cosa
+       per cui questo avviso si apre davvero. */
+    const ferma = g.primo
+      ? `<span class="quando">${esc(labelData(g.primo.day))} · ${esc(r?.piatto || g.primo.pasto)}</span>`
+      : '';
+    const numeri = g.tipo === 'poco'
+      ? `<span class="quanti">servono ${esc(g.serve)}, ne hai ${esc(g.hai)}</span>` : '';
+
+    return `<li>${g.primo
+      ? `<button class="btn-testo" data-vai-mancante="${esc(g.primo.day)}"
+            data-vai-pasto="${esc(g.primo.pasto)}"
+            data-vai-ing="${esc(g.nome)}"><b>${esc(g.nome)}</b>${numeri}${ferma}</button>`
+      : `<span><b>${esc(g.nome)}</b>${numeri}</span>`}
+      ${(g.simili || []).map(v => `
+        <button class="btn-testo sost" data-alias="${esc(g.nome)}"
+                data-alias-voce="${esc(v.name)}">è «${esc(v.name)}»?</button>`).join('')}
+      ${g.alt.length ? `
+        <button class="btn-testo sost" data-sost="${esc(g.nome)}"
+                data-sost-serve="${esc(g.serve || '')}">${g.alt.length === 1
+          ? `usa ${esc(g.alt[0].name)}` : `usa ${esc(g.alt[0].name)} o altro`}</button>` : ''}
+      ${dove(g) === 'nome' ? `
+        <button class="btn-testo sost" data-scegli="${esc(g.nome)}">te la indico io</button>` : ''}
+      ${inListaSpesa(g.nome) ? '' : `
+        <button class="btn-testo" data-in-spesa="${esc(g.nome)}"
+                data-in-spesa-gg="${esc(g.primo?.day || '')}"
+                data-in-spesa-qta="${esc(g.tipo === 'poco' ? (quantoManca(g.nome) || '') : (g.serve || ''))}"
+          >mettilo in lista spesa</button>`}
+      ${dove(g) === 'compra' ? `
+        <button class="btn-testo" data-contorno="${esc(g.nome)}">non seguirlo più</button>` : ''}</li>`;
+  };
+
+  const blocco = (titolo, sotto, lista) => !lista.length ? '' : `
+    <div class="gr">
+      <div class="gr-tit">${esc(titolo)} <span>${lista.length}</span></div>
+      <p class="gr-sotto">${esc(sotto)}</p>
+      <ul class="avviso-lista">
+        ${lista.slice(0, MAX).map(riga).join('')}
+        ${lista.length > MAX ? `<li class="gr-altre">e altre ${lista.length - MAX}</li>` : ''}
+      </ul>
+    </div>`;
 
   return `<div class="avviso attenzione avviso-scorte" data-dal="${esc(dal)}"
        data-quanti="${giorniFra(dal, ultimo) + 1}">
     <b>${soloNomi
       ? `Da ${esc(quandoRelativo(dal))} in poi il piano usa nomi che non ritrovo in dispensa.`
       : `Da ${esc(quandoRelativo(dal))} in poi il piano conta su cose che non hai più.`}</b>
-    <ul class="avviso-lista">
-      ${guai.slice(0, 6).map(g => {
-        const testo = `${esc(g.nome)} — ${esc(comeManca(g))}`;
-        // ⚠️ Toccabile: porta al primo pasto che lo richiede. Spesso il
-        // «mancante» non manca davvero, è solo scritto con un altro nome —
-        // e da lì lo si corregge invece di leggere un elenco e arrangiarsi.
-        // «Non hai il merluzzo» serve a poco se in freezer c'è il nasello:
-        // quando in dispensa c'è qualcosa della stessa categoria, si dice.
-        // ⚠️ Ma NON quando il guaio è il nome: lì la cosa ce l'hai già, e
-        // offrire un sostituto vorrebbe dire proporre di cambiare il piatto
-        // per un problema che si risolve rispondendo a una domanda.
-        const alt = g.tipo === 'nome' ? [] : sostitutiPer(g.nome, g.serve);
-        /* ⚠️ ULTIMA SPIAGGIA, e si offre solo quando non c'è altro da fare:
-           né un nome da appaiare né qualcosa da usare al suo posto. «Non
-           contarlo più» è una rinuncia, e va proposta per ultima — se c'è
-           una risposta vera, la rinuncia non deve nemmeno comparire. */
-        /* ⚠️ DUE USCITE DIVERSE, e non vanno confuse.
-           «Mettilo in lista spesa» non toglie niente: la riga cambia posto,
-           esce dall'avviso perché adesso è in Spesa, e la ritrovi lì con la
-           data del pasto che l'aspetta.
-           «Non seguire più» invece è una rinuncia definitiva su quel nome —
-           brodo, sale, lievito: cose che ci sono sempre e che non ha senso
-           controllare. Chiamarle con lo stesso tono le renderebbe
-           intercambiabili, e si finirebbe per smettere di seguire una cosa
-           che invece bastava comprare. */
-        const rinuncia = g.tipo === 'assente';
-        /* ⚠️ «È QUESTA COSA QUI»: la scelta a mano, sempre disponibile.
-           La proposta automatica è stretta apposta e su «Patatine fatte in
-           friggitrice ad aria» non può indovinare «Patate da friggere» —
-           giusto così, non deve. Ma allora la persona dev'essere in grado di
-           dirlo lei, e da qui: senza questo bottone l'unica uscita sarebbe
-           il «contorno libero», che è un'altra cosa — quello serve per le
-           preparazioni che davvero non hai, non per i nomi scritti
-           diversamente. Una rinuncia usata al posto di una correzione
-           insegna all'app una cosa falsa. */
-        const scegli = g.tipo !== 'poco';
-        return `<li>${g.primo
-          ? `<button class="btn-testo" data-vai-mancante="${esc(g.primo.day)}"
-                data-vai-pasto="${esc(g.primo.pasto)}"
-                data-vai-ing="${esc(g.nome)}">${testo}</button>`
-          : testo}${(g.simili || []).map(v => `
-          <button class="btn-testo sost" data-alias="${esc(g.nome)}"
-                  data-alias-voce="${esc(v.name)}">in dispensa c’è «${esc(v.name)}»: è la stessa cosa?</button>`).join('')}${alt.length ? `
-          <button class="btn-testo sost" data-sost="${esc(g.nome)}"
-                  data-sost-serve="${esc(g.serve || '')}">${alt.length === 1
-            ? `hai ${esc(alt[0].name)}: lo uso al suo posto?`
-            // ⚠️ Il numero non informava («hai 8 cose simili»): non dice se
-            // sono utili né quali sono. Il nome della più abbondante sì.
-            : `hai ${esc(alt[0].name)} e altro: ne uso uno?`}</button>` : ''}${scegli ? `
-          <button class="btn-testo sost" data-scegli="${esc(g.nome)}">è una cosa che ho: te la indico io</button>` : ''}${inListaSpesa(g.nome) ? '' : `
-          <button class="btn-testo" data-in-spesa="${esc(g.nome)}"
-                  data-in-spesa-gg="${esc(g.primo?.day || '')}"
-                  data-in-spesa-qta="${esc(g.tipo === 'poco' ? (quantoManca(g.nome) || '') : (g.serve || ''))}"
-            >mettilo in lista spesa${g.primo ? ` — serve ${esc(quandoRelativo(g.primo.day))}` : ''}</button>`}${rinuncia ? `
-          <button class="btn-testo" data-contorno="${esc(g.nome)}">non seguire più questo ingrediente</button>` : ''}</li>`;
-      }).join('')}
-      ${guai.length > 6 ? `<li>e altre ${guai.length - 6}</li>` : ''}
-    </ul>
-    <p class="hint" style="margin:6px 0 0">Tocca una riga per aprire il pasto che la usa
-      per primo: se è solo un nome scritto diverso, si corregge da lì.
-      ${guai.some(g => g.tipo === 'nome') ? `Rispondendo «è la stessa cosa» il piano resta
-      scritto come l’hai scritto tu: me lo ricordo io, e da lì in poi li tratto come una
-      cosa sola. Si disfa dal menu, «Quello che ho insegnato all’app».` : ''}</p>
+    <p class="avviso-sintesi">${esc(sintesi)}</p>
+
+    ${blocco('Da comprare', 'Non ce l’hai, e non hai niente di simile.', gruppi.compra)}
+    ${blocco('Ce l’hai, scritto diverso', 'C’è qualcosa che può essere questa cosa: dimmi quale.', gruppi.nome)}
+    ${blocco('Ne hai poche', 'C’è, ma non basta per quello che il piano chiede.', gruppi.poche)}
+
+    <p class="hint" style="margin:6px 0 0">Tocca una voce per aprire il pasto che si ferma,
+      con la riga dell’ingrediente già in evidenza.</p>
     <div class="form-row">
       <!-- ⚠️ Se il guaio è solo di nomi non si offre di rigenerare: non
            manca niente da rifare, e una settimana costa sette generazioni
