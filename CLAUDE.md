@@ -1380,9 +1380,32 @@ che è l'unico modo per scriverle.
 
 **La proposta automatica** (`categoriaProposta()`) guarda in quest'ordine: ⓵ una voce di
 dispensa con lo stesso nome (`stessoNome`) che ha già una categoria — **una scelta tua
-vince sempre sul dizionario**; ⓶ `DIZIONARIO_CATEGORIE`, ~180 nomi comuni; ⓷ niente, e il
-campo resta da scegliere. Si propone in tutti e tre i punti d'ingresso: modulo di
-aggiunta, editor della voce, e «Mettilo in dispensa» dalla spesa.
+vince sempre sul dizionario**; ⓶ `DIZIONARIO_CATEGORIE`, ~180 nomi comuni; ⓷ **dal
+20/08/2026**, un nome conosciuto che sta **dentro** questo (`nomeDentro()`), prima dalla
+dispensa e poi dal dizionario, e vince **il più specifico**, cioè quello di più parole;
+⓸ niente, e il campo resta da scegliere. Si propone in tutti e tre i punti d'ingresso:
+modulo di aggiunta, editor della voce, e «Mettilo in dispensa» dalla spesa.
+
+⚠️ **Il passo ⓷ non è un di più: senza, mezzo piano resta senza categoria.** Trovato su
+sabato 22: accanto a «Patatine fatte in friggitrice ad aria» **non compariva il tasto ↻**
+per scambiarla. La catena è tutta qui — nessuna voce e nessuna riga del dizionario si
+chiama così → nessuna categoria → `sostitutiPer()` non ha niente da confrontare → nessun
+sostituto e nessun tasto. **I nomi che il generatore scrive sono descrizioni**
+(«straccetti di tacchino al limone», «prosciutto cotto magro»), non etichette di scaffale:
+pretendere il nome esatto lasciava fuori proprio i pasti veri.
+
+⚠️ **Qui si può essere più larghi che in `stessoNome()`, e non è una contraddizione:**
+sbagliare qui propone un sostituto che si rifiuta con un tocco, sbagliare là **scala la
+dispensa sbagliata**. Prezzo dichiarato: un «latte di cocco» finirebbe fra i latticini.
+
+⚠️ **`patatine` è scritto a parte nel dizionario**: per l'app non è il plurale di `patate`
+ma un'altra parola (`formeParola()` non lo deduce, ed è giusto così). Senza quella riga il
+passo ⓷ non avrebbe niente da trovare dentro «Patatine fatte in friggitrice ad aria».
+
+⚠️ **Il tasto ↻ vive dentro il pannello del pasto**, non sulla scheda: si tocca il pasto
+(o la matita ✎) e compare sulla riga dell'ingrediente. Sulla scheda gli ingredienti sono
+in sola lettura, ed è voluto — un secondo posto da cui scambiare sarebbe un secondo posto
+da tenere allineato.
 
 ⚠️ **Scelte di merito già discusse e approvate**: le patate stanno in *cereali e
 carboidrati* (nel piatto sostituiscono pasta e riso, e un minimo di verdura non si
@@ -1810,6 +1833,122 @@ il vecchio «da qui in avanti qualcosa non torna più»: nomina i primi due, con
 giorno e pasto): l'avviso guarda tutti i giorni futuri, e rispondere del merluzzo di
 venerdì a chi ha appena salvato lunedì è come non rispondere.
 
+#### Rinominare una voce di dispensa (20/08/2026)
+
+Sotto la matita della Dispensa, insieme a quantità, categoria e valori per 100 g, c'è
+adesso anche il **nome**.
+
+⚠️ **Rinominando, il vecchio nome diventa un alias del nuovo DA SOLO e SENZA CHIEDERE.**
+Non è una comodità: il nome non è un'etichetta, è la **chiave** con cui la voce si incontra
+col piano, con la lista della spesa e con le ricette. Cambiandolo, tutti i pasti già
+scritti col nome di prima smetterebbero di combaciare **in silenzio**, e il giorno dopo
+l'avviso direbbe che manca una cosa che sta in frigo. Chiedere non avrebbe senso: non è una
+preferenza, è ciò che tiene in piedi quello che era già scritto. Resta togliibile dal menu
+come tutti gli altri.
+
+⚠️ **L'alias si scrive solo se serve**: da «uova» a «Uova», o da «Patate» a «patate»,
+`stessoNome()` li appaia già da sé (`daAppaiare` controlla proprio questo). Un appaiamento
+inutile sarebbe solo una riga in più da leggere nel menu.
+
+⚠️ **Nome vuoto: si rifiuta.** Una voce senza nome sparirebbe dalla lista e non
+combacerebbe più con niente.
+
+⚠️ **Se l'alias non riesce a salvarsi, il nome resta cambiato e lo si dice** — «non sono
+riuscito a collegare «X»: i pasti già scritti così potrebbero risultare mancanti». È
+l'unica volta in cui un'operazione accessoria che fallisce va gridata: qui il danno non è
+una comodità mancata, è il piano che si scolla dalla dispensa.
+
+#### Il punto di ripristino (20/08/2026)
+
+⚠️ **Nessun file SQL**: sta in `settings`, chiave **`piano_ripristino`**.
+
+«Rigenera da dopodomani» cancella e riscrive giorni già decisi, a volte scritti a mano uno
+per uno, e **prima di oggi quella cancellazione era definitiva**. Ora, appena prima di
+scrivere, `segnaRipristino()` fotografa i pasti che stanno per sparire; il menu ha
+**«Torna a com'era ›»**.
+
+⚠️ **La fotografia si fa PRIMA di scrivere e prima di TUTTI E DUE i modi** — la staffetta
+scrive dal server, il ripiego dal telefono, ma quello che cancellano è lo stesso. Il punto
+d'aggancio è uno solo, subito prima del bivio in `avviaGenerazione()`.
+
+⚠️ **Se la fotografia non riesce e c'era qualcosa da perdere, NON SI GENERA.** È l'unico
+posto dell'app in cui un'operazione accessoria che fallisce ferma quella principale: qui
+non è una comodità, è la rete sotto il trapezio. Riprovare costa un tocco, scrivere sopra
+senza rete costa la settimana.
+
+⚠️ **`ambito` è separato da `righe`, e non è un dettaglio.** Rimettendo a posto bisogna
+cancellare anche i pasti che PRIMA non c'erano — quelli che la generazione ha creato dal
+nulla. Se si cancellasse solo dove si riscrive, un pasto inventato sopravviverebbe al
+ripristino. I pasti su «Lascia» restano **fuori** dall'ambito: nessuno li tocca, e metterli
+dentro vorrebbe dire cancellarli al ripristino.
+
+⚠️ **È UNO SOLO**, e la generazione dopo lo sostituisce: una pila vorrebbe dire scegliere
+fra dieci date, cioè un lavoro nuovo per chi guarda. **Ma è reversibile**: `tornaComEra()`
+fotografa com'è *adesso* prima di rimettere, e la mette al posto del punto vecchio — così
+il tasto si può sempre disfare e nessuno resta bloccato dalla parte sbagliata.
+⚠️ `updated_at` non si rimette indietro: la riga è stata toccata adesso.
+
+**E il tasto dice quanto pesa premerlo** (`pesoRigenerazione()`): «riscrive 5 giorni
+(9 pasti) · 2 pasti scritti da te, che lascio stare», dentro il tasto e non accanto — la
+riga accanto la si legge dopo aver già premuto. ⚠️ I pasti a mano si contano **a parte**
+perché non vengono riscritti (partono su «Lascia»): dirlo insieme al resto è ciò che
+distingue un avvertimento da una promessa.
+
+`sovrascriviPasti(ambito, righe)` è ora il **posto unico** che cancella e riscrive:
+`scriviRighe()` (le generazioni) e `tornaComEra()` ci passano tutte e due.
+
+#### La proposta di sostituto era diventata rumore (20/08/2026)
+
+Dodici carboidrati per la polenta, otto verdure per l'insalata. Tre correzioni.
+
+**1 · Massimo tre, ordinati per quantità utile.** `sostitutiPer()` calcola quanto ogni voce
+**copre** di quello che serve (2 = ce n'è il doppio) e mette davanti le più abbondanti.
+⚠️ Le voci di cui non si può sapere la quantità restano in elenco — davanti al frigo si
+giudica meglio che con una regola — ma **dopo** quelle che si sanno bastare.
+
+**2 · Via il conteggio.** «Hai 8 cose simili» non dice se sono utili né quali sono: adesso
+la riga nomina la più abbondante, «hai Nasello e altro: ne uso uno?».
+
+**3 · L'interruttore «sostituibile» per categoria** (`CHIAVE_SOSTITUIBILI`, in `settings`;
+menu → «Quello che ho insegnato all'app»). ⚠️ **Non è una preferenza estetica**: dove
+l'ingrediente è la **fonte proteica** scambiarlo è ragionevole — merluzzo o nasello, la
+cena è quella; dove l'ingrediente **È il piatto** — cereali, verdura, frutta — scambiarlo
+non è una sostituzione, è un altro piatto, e quello si decide dalla matita.
+Accesi di partenza: pesce · carne bianca · carne rossa · salumi · uova · latticini ·
+legumi. ⚠️ I **salumi** stanno fra gli accesi (cotto e crudo si scambiano davvero), la
+**frutta secca** fra gli spenti (lì è una guarnizione, e cambiarla cambia il piatto).
+
+#### ⚠️ Il bug che teneva rotta la sostituzione da sempre (20/08/2026)
+
+`sostituisciIngrediente()` scriveva con `.eq('id', r.id)` — ma **`plan_meals` non ha una
+colonna `id`**: la chiave è `(day, pasto)`, ed è il motivo per cui si salva con
+`upsert(..., { onConflict:'day,pasto' })`. `r.id` era sempre `undefined`, quindi **il
+cambio falliva ogni singola volta**, dal giorno in cui è stato scritto (v8 Blocco 2). Lo
+stesso errore stava nell'annulla. Ora è `.eq('day', …).eq('pasto', …)` in tutti e due.
+⚠️ **Se serve indicare un pasto, si indica con giorno e pasto**: `chiavePasto(r)`.
+
+#### I contorni liberi (20/08/2026)
+
+⚠️ **Nessun file SQL**: `settings`, chiave **`contorni_liberi`**.
+
+Nel campo ingrediente ogni tanto finisce della prosa — «Patatine fatte in friggitrice ad
+aria» con quantità «a lato», «verdure di stagione». Non combacia con niente e resta
+mancante **per sempre**, e *un avviso che non si può mai spegnere smette di essere un
+avviso*. Dall'avviso si può rispondere **«è un contorno libero: non contarlo»**.
+
+⚠️ **Toglie solo dal controllo scorte**: l'ingrediente resta scritto nel pasto, si legge e
+si cucina. Si smette di CONTARLO, non di farlo.
+
+⚠️ **Si propone per ultima, e solo quando non c'è altro da fare**: né un nome da appaiare
+(`simili`) né qualcosa da usare al suo posto (`alt`). «Non contarlo più» è una rinuncia —
+se esiste una risposta vera, la rinuncia non deve nemmeno comparire.
+
+⚠️ Il controllo sta **in cima al ciclo** di `scorteMancanti()`, prima ancora della somma
+delle quantità: contare a metà sarebbe peggio che non contare.
+
+Si rimettono dal menu, e se ne possono aggiungere a mano — serve per i nomi che l'avviso
+non mostra mai (per esempio quelli che `forseInCasa()` zittisce già).
+
 #### ⚠️ Un totale metà completo e metà parziale è una bugia (20/08/2026)
 
 Trovato sui dati veri: lunedì 24 diceva **«TOT Ciprian 153 g proteine · 470 kcal»**. Le
@@ -1899,9 +2038,9 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `tabelle-spesa-blocco5.sql` | `shopping_list.serve_il`: la riga della spesa sa per quando serve. ✅ eseguito |
 | `tabelle-costi.sql` | `generator_usage.tok_in/tok_out` e `registra_token()`: la stima di spesa. **Da eseguire** |
 | `tabelle-nutrienti.sql` | `inventory_items.prot_100g/kcal_100g`, facoltativi. ✅ eseguito |
-| `tabelle-kcal-lorena.sql` | `plan_meals.kcal_lorena`: le calorie della porzione di Lorena. **Da eseguire** |
-| `tabelle-frequenze-v8.sql` | `frequenze_categorie` + `plan_meals.categoria_principale`: la griglia della nutrizionista. **Da eseguire** |
-| `tabelle-categorie-v8.sql` | `inventory_items.categoria`: che COSA è un alimento, più la migrazione delle 59 voci. **Da eseguire** |
+| `tabelle-kcal-lorena.sql` | `plan_meals.kcal_lorena`: le calorie della porzione di Lorena. ✅ eseguito (verificato il 20/08) |
+| `tabelle-frequenze-v8.sql` | `frequenze_categorie` + `plan_meals.categoria_principale`: la griglia della nutrizionista. ✅ eseguito (verificato il 20/08) |
+| `tabelle-categorie-v8.sql` | `inventory_items.categoria`: che COSA è un alimento, più la migrazione delle 59 voci. ✅ eseguito (verificato il 20/08) |
 | `tabelle-blocco6.sql` | procedimento e sostituzioni sui pasti, procedimento sulle ricette, `plan_jobs.svuota_frigo`. ✅ eseguito |
 | `import-settimana-22-28.sql` | i 14 pasti del 22-28 agosto, **prima versione (18/08)**. ✅ eseguito, poi superato |
 | `import-spesa-22-28.sql` | lo spesone di quella prima versione. ✅ eseguito, poi superato |

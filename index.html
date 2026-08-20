@@ -1189,6 +1189,14 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
   padding:9px 0;border-top:1px solid var(--linea);
 }
 .alias-riga .alias-nomi{flex:1;font-weight:600;font-size:14px;line-height:1.35}
+
+/* La seconda riga di un tasto: quanto pesa premerlo. Più piccola e più
+   leggera del nome del tasto, ma DENTRO il tasto — messa accanto, la si
+   legge dopo aver già premuto. */
+.btn .btn-sotto{
+  display:block;margin-top:2px;font-weight:500;font-size:11.5px;
+  line-height:1.25;opacity:.82;white-space:normal;
+}
 .sost-box{
   margin-top:9px;padding:10px 12px;border-radius:14px;
   background:var(--surface);border:1px solid var(--linea);
@@ -1603,9 +1611,16 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
        in tutta l'app e scala la dispensa, quindi disfarlo dev'essere facile
        almeno quanto è stato farlo. -->
   <div class="form-row">
-    <button class="btn ghost" id="menuAlias" style="flex:1">I nomi che ho appaiato ›</button>
+    <button class="btn ghost" id="menuAlias" style="flex:1">Quello che ho insegnato all'app ›</button>
   </div>
   <div id="menuAliasBox" hidden></div>
+  <!-- ⚠️ Sta nel menu perché ci si arriva da qualunque schermata, e quando
+       serve si ha fretta. Non è un'impostazione: è un'azione, e per questo
+       ha una voce sua invece di stare dentro quella qui sopra. -->
+  <div class="form-row">
+    <button class="btn ghost" id="menuRipristino" style="flex:1">Torna a com'era ›</button>
+  </div>
+  <div id="menuRipristinoBox" hidden></div>
   <div class="form-row">
     <button class="btn ghost" id="menuCosti" style="flex:1">Quanto sto spendendo ›</button>
   </div>
@@ -3405,7 +3420,17 @@ function apriSostitutiInRiga(riga, box){
   const nome = riga.querySelector('[data-ing-nome]').value.trim();
   const qta  = riga.querySelector('[data-ing-qta]').value.trim();
   const lista = sostitutiPer(nome, qta);
-  if (!lista.length){ toast(`Non ho niente della stessa categoria di «${nome}».`); return; }
+  if (!lista.length){
+    // ⚠️ Due silenzi diversi non si raccontano con la stessa frase: «non ho
+    // niente» manda a comprare, «qui non si sostituisce» manda a cambiare
+    // piatto. Dirli uguale farebbe cercare una cosa che c'è.
+    const cat = categoriaProposta(nome);
+    toast(cat && !sostituibile(cat)
+      ? `«${cat}» non la sostituisco: lì l'ingrediente è il piatto. Cambia il piatto, o `
+        + `accendi «${cat}» dal menu, «Quello che ho insegnato all'app».`
+      : `Non ho niente della stessa categoria di «${nome}».`);
+    return;
+  }
 
   riga.insertAdjacentHTML('afterend', `
     <div class="sost-mini">
@@ -3632,12 +3657,31 @@ function paroleNome(nome){
    ⚠️ Proprio perché vale ovunque, un appaiamento sbagliato SCALA la
    dispensa sbagliata. Per questo si conferma rispondendo a una domanda, mai
    da soli, e si toglie in un posto solo che è facile da trovare:
-   ☰ menu → «I nomi che ho appaiato».
+   ☰ menu → «Quello che ho insegnato all'app».
 
    ⚠️ Sta in `settings`, non in localStorage, per la stessa ragione dei
    valori per 100 g: i telefoni sono due, e una cosa imparata da uno la deve
    sapere anche l'altro. Nessun file SQL da eseguire.
    ============================================================ */
+/* ---------- le cose che l'app impara, tutte in `settings` ----------
+   Una tabella chiave→valore che c'è già: nessun file SQL da eseguire, e
+   quello che impara un telefono lo sa anche l'altro. ⚠️ Si legge e si
+   scrive da QUI e da nessun altro posto: un JSON rotto o una scrittura
+   dimenticata in un angolo sarebbero difficili da trovare. */
+function leggiJson(chiave, ripiego){
+  try{
+    const v = JSON.parse(S.settings?.[chiave] ?? '');
+    return v ?? ripiego;
+  }catch{ return ripiego; }   // valore illeggibile: si riparte dal ripiego, senza rumore
+}
+
+async function scriviJson(chiave, valore){
+  const value = JSON.stringify(valore);
+  const { error } = await sb.from('settings').upsert({ key:chiave, value });
+  if (error) throw error;
+  S.settings[chiave] = value;
+}
+
 const CHIAVE_ALIAS = 'alias_nomi';
 
 /* La forma con cui un nome si cerca fra gli appaiamenti: le sue parole che
@@ -3721,11 +3765,45 @@ async function scordaAlias(indice){
  * risposta che hai dato a una domanda. Se non si scrive, chi ha risposto
  * deve saperlo, altrimenti la stessa domanda tornerà domani.
  */
-async function salvaAlias(gruppi){
-  const value = JSON.stringify(gruppi);
-  const { error } = await sb.from('settings').upsert({ key:CHIAVE_ALIAS, value });
-  if (error) throw error;
-  S.settings[CHIAVE_ALIAS] = value;
+async function salvaAlias(gruppi){ await scriviJson(CHIAVE_ALIAS, gruppi); }
+
+/* ============================================================
+   I CONTORNI LIBERI — quello che il piano nomina e la dispensa no
+
+   Nel campo ingrediente ogni tanto finisce della prosa: «Patatine fatte in
+   friggitrice ad aria» con quantità «a lato», «verdure di stagione»,
+   «insalata mista». Non è un errore da correggere: è come si cucina. Ma per
+   l'app è un nome che non combacia con niente, e resta mancante per sempre
+   — un avviso che non si può mai spegnere smette di essere un avviso.
+
+   ⚠️ SI PROPONE SOLO QUANDO NON C'È ALTRO DA FARE: se quel nome somiglia a
+   una voce di dispensa, la risposta giusta è appaiarli, non smettere di
+   contarlo. Marcare come contorno libero vuol dire «di questo non parlarmi
+   più», ed è una rinuncia: si offre per ultima, mai per prima.
+
+   ⚠️ Toglie SOLO dal controllo scorte. L'ingrediente resta scritto nel
+   pasto, si vede, si legge, e chi cucina lo cucina.
+   ============================================================ */
+const CHIAVE_CONTORNI = 'contorni_liberi';
+
+const contorniLiberi = () => {
+  const v = leggiJson(CHIAVE_CONTORNI, []);
+  return Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()) : [];
+};
+
+/** ⚠️ Il confronto è `stessoNome()` come ogni confronto fra nomi di cibo:
+    se hai marcato «insalata», «Insalate» è la stessa cosa anche qui. */
+const contornoLibero = (nome) => contorniLiberi().some(n => stessoNome(n, nome));
+
+async function segnaContornoLibero(nome){
+  if (contornoLibero(nome)) return;
+  await scriviJson(CHIAVE_CONTORNI, [...contorniLiberi(), String(nome).trim()]);
+}
+
+async function scordaContornoLibero(i){
+  const lista = contorniLiberi();
+  if (i < 0 || i >= lista.length) return;
+  await scriviJson(CHIAVE_CONTORNI, lista.filter((_, k) => k !== i));
 }
 
 /**
@@ -3762,6 +3840,30 @@ function stessaParola(x, y){
 }
 
 /**
+ * Le parole che contano di `dentro` stanno TUTTE in `fuori`, che ne ha di
+ * più? Cioè: `fuori` è lo stesso nome con qualcosa in più attaccato.
+ *
+ *   «patatine» dentro «Patatine fatte in friggitrice ad aria»  ✓
+ *   «prosciutto cotto» dentro «Prosciutto cotto magro»         ✓
+ *   «pane» dentro «Panini burger»                              ✗ (parole diverse)
+ *
+ * ⚠️ Non è stessoNome() e non deve diventarlo: qui i due nomi NON sono la
+ * stessa cosa, uno è più preciso dell'altro. Serve a capire di che famiglia
+ * è un nome, non a scambiarne uno per l'altro.
+ */
+function nomeDentro(dentro, fuori){
+  const A = paroleNome(dentro), B = paroleNome(fuori);
+  if (!A.length || A.length >= B.length) return false;
+  const restano = [...B];
+  return A.every(x => {
+    const k = restano.findIndex(y => stessaParola(x, y));
+    if (k < 0) return false;
+    restano.splice(k, 1);          // ogni parola si spende una volta sola
+    return true;
+  });
+}
+
+/**
  * Le voci di dispensa che SOMIGLIANO a un nome, per poterti chiedere se
  * sono la stessa cosa. Non decide niente: prepara una domanda.
  *
@@ -3788,22 +3890,12 @@ function nomiSimili(nome){
   const A = paroleNome(nome);
   if (!A.length) return [];
 
-  const dentro = (piccole, grandi) => {
-    const restano = [...grandi];
-    return piccole.every(x => {
-      const k = restano.findIndex(y => stessaParola(x, y));
-      if (k < 0) return false;
-      restano.splice(k, 1);
-      return true;
-    });
-  };
-
   const visti = new Set([chiaveAlias(nome)]);
   return S.inv.filter(v => {
     const B = paroleNome(v.name);
-    if (!B.length || A.length === B.length) return false;   // stessa lunghezza: è stessoNome()
-    const dentroDavvero = A.length < B.length ? dentro(A, B) : dentro(B, A);
-    if (!dentroDavvero) return false;
+    if (!B.length) return false;
+    // in un verso o nell'altro: il nome più corto dentro quello più lungo
+    if (!nomeDentro(nome, v.name) && !nomeDentro(v.name, nome)) return false;
     // la parte in comune dev'essere una parola vera, non un «di» o un «2»:
     // «Cheddar» ⊂ «Cheddar 250)» sì, «250» ⊂ «250 g qualcosa» no
     const corte = (A.length < B.length ? A : B);
@@ -3914,6 +4006,10 @@ function scorteMancanti(){
     for (const i of (Array.isArray(r.ingredienti) ? r.ingredienti : [])){
       const nome = String(i.nome || '').trim();
       if (!nome) continue;
+      // ⚠️ I contorni liberi non si contano: gliel'hai detto tu. Il
+      // controllo sta QUI, prima di tutto, così quel nome non entra nemmeno
+      // nel conto delle quantità: un mezzo silenzio sarebbe peggio di niente.
+      if (contornoLibero(nome)) continue;
       const voce = cercaInDispensa(nome);
       // senza voce di dispensa, «uovo» e «uova» sono la stessa mancanza:
       // si cerca fra i buchi già segnati prima di aprirne un altro
@@ -4011,6 +4107,37 @@ function comeManca(g){
   return 'non ce l’hai in dispensa';
 }
 
+/**
+ * Che cosa si porta via una rigenerazione da un certo giorno in poi.
+ *
+ * ⚠️ Il tasto lo deve DIRE, non lasciarlo scoprire dopo: «Rigenera da
+ * dopodomani» non fa capire che sta per cancellare cinque giorni, due dei
+ * quali scritti a mano. Un tasto che non dichiara quello che distrugge
+ * chiede un consenso che nessuno ha dato davvero.
+ *
+ * ⚠️ I pasti scritti a mano si contano a parte perché **non** vengono
+ * riscritti: partono su «Lascia». Dirlo insieme al resto è ciò che
+ * distingue una promessa da un avvertimento.
+ */
+function contaSovrascrittura(dal, quanti){
+  const fino = addGiorni(dal, Math.max(1, quanti) - 1);
+  const dentro = S.piano.filter(r => r.day >= dal && r.day <= fino && r.day >= oggiISO());
+  const aMano  = dentro.filter(r => r.a_mano);
+  const altri  = dentro.filter(r => !r.a_mano);
+  return { giorni: new Set(altri.map(r => r.day)).size, pasti: altri.length, aMano: aMano.length };
+}
+
+/** La riga sotto il nome del tasto: quanto pesa premerlo. */
+function pesoRigenerazione(dal, quanti){
+  const c = contaSovrascrittura(dal, quanti);
+  if (!c.pasti && !c.aMano) return 'niente da riscrivere: quei giorni sono vuoti';
+  const pezzi = [];
+  if (c.pasti) pezzi.push(`riscrive ${c.giorni === 1 ? '1 giorno' : `${c.giorni} giorni`}`
+                        + ` (${c.pasti === 1 ? '1 pasto' : `${c.pasti} pasti`})`);
+  if (c.aMano) pezzi.push(`${c.aMano === 1 ? '1 pasto scritto' : `${c.aMano} pasti scritti`} da te, che lascio stare`);
+  return pezzi.join(' · ');
+}
+
 function avvisoScorteHtml(){
   if (S.avvisoVia) return '';
   const guai = scorteMancanti();
@@ -4039,6 +4166,11 @@ function avvisoScorteHtml(){
         // offrire un sostituto vorrebbe dire proporre di cambiare il piatto
         // per un problema che si risolve rispondendo a una domanda.
         const alt = g.tipo === 'nome' ? [] : sostitutiPer(g.nome, g.serve);
+        /* ⚠️ ULTIMA SPIAGGIA, e si offre solo quando non c'è altro da fare:
+           né un nome da appaiare né qualcosa da usare al suo posto. «Non
+           contarlo più» è una rinuncia, e va proposta per ultima — se c'è
+           una risposta vera, la rinuncia non deve nemmeno comparire. */
+        const rinuncia = g.tipo === 'assente' && !alt.length;
         return `<li>${g.primo
           ? `<button class="btn-testo" data-vai-mancante="${esc(g.primo.day)}"
                 data-vai-pasto="${esc(g.primo.pasto)}">${testo}</button>`
@@ -4048,7 +4180,10 @@ function avvisoScorteHtml(){
           <button class="btn-testo sost" data-sost="${esc(g.nome)}"
                   data-sost-serve="${esc(g.serve || '')}">${alt.length === 1
             ? `hai ${esc(alt[0].name)}: lo uso al suo posto?`
-            : `hai ${alt.length} cose simili: ne uso una?`}</button>` : ''}</li>`;
+            // ⚠️ Il numero non informava («hai 8 cose simili»): non dice se
+            // sono utili né quali sono. Il nome della più abbondante sì.
+            : `hai ${esc(alt[0].name)} e altro: ne uso uno?`}</button>` : ''}${rinuncia ? `
+          <button class="btn-testo" data-contorno="${esc(g.nome)}">è un contorno libero: non contarlo</button>` : ''}</li>`;
       }).join('')}
       ${guai.length > 6 ? `<li>e altre ${guai.length - 6}</li>` : ''}
     </ul>
@@ -4056,12 +4191,12 @@ function avvisoScorteHtml(){
       per primo: se è solo un nome scritto diverso, si corregge da lì.
       ${guai.some(g => g.tipo === 'nome') ? `Rispondendo «è la stessa cosa» il piano resta
       scritto come l’hai scritto tu: me lo ricordo io, e da lì in poi li tratto come una
-      cosa sola. Si disfa dal menu ☰, «I nomi che ho appaiato».` : ''}</p>
+      cosa sola. Si disfa dal menu, «Quello che ho insegnato all’app».` : ''}</p>
     <div class="form-row">
       <!-- ⚠️ Se il guaio è solo di nomi non si offre di rigenerare: non
            manca niente da rifare, e una settimana costa sette generazioni
            delle trenta del giorno. Un tasto che non serve, lì, costa soldi. -->
-      ${soloNomi ? '' : `<button class="btn small" data-rigenera-coda style="flex:1">Rigenera da ${esc(quandoRelativo(dal))}</button>`}
+      ${soloNomi ? '' : `<button class="btn small" data-rigenera-coda style="flex:1">Rigenera da ${esc(quandoRelativo(dal))}<span class="btn-sotto">${esc(pesoRigenerazione(dal, giorniFra(dal, ultimo) + 1))}</span></button>`}
       <button class="btn small ghost" data-avviso-via${soloNomi ? ' style="flex:1"' : ''}>Non ora</button>
     </div>
   </div>`;
@@ -4297,6 +4432,31 @@ $('#planBody').addEventListener('click', async (ev) => {
     return;
   }
 
+  /* «È un contorno libero»: da qui in poi quel nome non entra più nel
+     controllo scorte. ⚠️ Resta scritto nel pasto e chi cucina lo cucina:
+     si smette di CONTARLO, non di farlo. */
+  const contorno = ev.target.closest('[data-contorno]');
+  if (contorno){
+    const nome = contorno.dataset.contorno;
+    const prima = S.settings[CHIAVE_CONTORNI] || '';
+    contorno.disabled = true;
+    (async () => {
+      try{
+        await segnaContornoLibero(nome);
+        renderPlan();
+        toast(`«${nome}» non lo conto più fra le scorte. Resta scritto nel pasto. `
+            + `Si rimette dal menu, «Quello che ho insegnato all’app».`, async () => {
+          try{
+            await scriviJson(CHIAVE_CONTORNI, prima ? JSON.parse(prima) : []);
+            renderPlan();
+            toast('Torno a contarlo.');
+          }catch(e){ esitoErrore(e); }
+        });
+      }catch(e){ contorno.disabled = false; esitoErrore(e); }
+    })();
+    return;
+  }
+
   const sost = ev.target.closest('[data-sost]');
   if (sost){
     apriSostituti(sost.dataset.sost, sost.dataset.sostServe || '',
@@ -4322,8 +4482,10 @@ $('#planBody').addEventListener('click', async (ev) => {
           + (senzaNumeri ? ' I numeri di quei pasti sono da riscrivere.' : ''), async () => {
             try{
               for (const p of prima){
+                // ⚠️ (day, pasto), non `id`: vedi sostituisciIngrediente()
                 await sb.from('plan_meals')
-                  .update({ ingredienti:p.ingredienti, prot:p.prot, kcal:p.kcal }).eq('id', p.r.id);
+                  .update({ ingredienti:p.ingredienti, prot:p.prot, kcal:p.kcal })
+                  .eq('day', p.r.day).eq('pasto', p.r.pasto);
                 Object.assign(p.r, { ingredienti:p.ingredienti, prot:p.prot, kcal:p.kcal });
               }
               renderPlan(); toast('Rimesso com’era.');
@@ -4740,6 +4902,29 @@ async function avviaGenerazione(){
     return;
   }
 
+  /* ⚠️ LA FOTOGRAFIA PRIMA DI SCRIVERE, e prima di tutti e due i modi —
+     la staffetta scrive dal server, il ripiego dal telefono, ma quello che
+     cancellano è lo stesso. Da qui in poi dei giorni già decisi vengono
+     cancellati e riscritti, e senza questa riga non ci sarebbe più modo di
+     tornare indietro.
+
+     ⚠️ Se la fotografia non riesce E c'era qualcosa da perdere, NON SI
+     GENERA. È l'unico posto in cui un'operazione accessoria che fallisce
+     deve fermare quella principale: il punto di ripristino non è una
+     comodità, è la rete sotto il trapezio. Non riesce quasi mai, e riprovare
+     costa un tocco; scrivere sopra senza rete costa la settimana. */
+  const ambito = ambitoPassata();
+  const daPerdere = S.piano.filter(r => ambito.includes(chiavePasto(r))).length;
+  if (daPerdere){
+    try{
+      await segnaRipristino(ambito, PS.titolo || 'Rigenerazione del piano');
+    }catch(e){
+      toast('Non riesco a salvare il punto di ripristino, quindi non riscrivo niente: '
+          + 'quello che c’è nel calendario resta com’è. Riprova fra un momento.', null, 'errore');
+      return;
+    }
+  }
+
   PS.fase = 'generazione';
   PS.pasti = []; PS.resta = ''; PS.errore = null;
   PS.salvati = new Set(); PS.attesa = 0;
@@ -5104,17 +5289,30 @@ const mancantiTutti = () => mancantiDaPasti(PS.pasti);
    da nessuna parte. Per salvare anche quelli dovrebbe scrivere la Edge
    Function, e vorrebbe dire spostare là dentro tutto questo file. */
 
-/** Scrive nel calendario le righe date.
-    Cancella SOLO i pasti che sta per riscrivere, come il salvataggio
-    finale: i pasti su «Lascia» e quelli scritti a mano sopravvivono. */
-async function scriviRighe(righe){
-  if (!righe.length) return 0;
-  for (const q of PS_PASTI){
-    const gg = righe.filter(r => r.pasto === q).map(r => r.day);
-    if (!gg.length) continue;
-    const { error } = await sb.from('plan_meals').delete().eq('pasto', q).in('day', gg);
+/** Un pasto si indica con giorno e pasto: `plan_meals` non ha una colonna
+    `id`, la chiave è (day, pasto). */
+const chiavePasto = (r) => `${r.day}|${r.pasto}`;
+
+/**
+ * Cancella i pasti indicati e ci scrive sopra queste righe.
+ *
+ * ⚠️ L'AMBITO È SEPARATO DALLE RIGHE, e non è un dettaglio: rimettendo a
+ * posto un giorno bisogna cancellare anche i pasti che PRIMA non c'erano —
+ * quelli che la generazione ha creato dal nulla. Se si cancellasse soltanto
+ * dove si va a riscrivere, un pasto inventato sopravviverebbe al ripristino.
+ */
+async function sovrascriviPasti(ambito, righe){
+  const perPasto = new Map();
+  for (const k of ambito){
+    const [day, pasto] = String(k).split('|');
+    if (!perPasto.has(pasto)) perPasto.set(pasto, []);
+    perPasto.get(pasto).push(day);
+  }
+  for (const [pasto, gg] of perPasto){
+    const { error } = await sb.from('plan_meals').delete().eq('pasto', pasto).in('day', gg);
     if (error) throw error;
   }
+  if (!righe.length) return;
   let { error } = await sb.from('plan_meals').insert(righe);
   // ⚠️ IL DEPLOY E IL FILE SQL NON ARRIVANO MAI NELLO STESSO ISTANTE.
   // Fra quando la function viene reincollata e quando il file SQL viene
@@ -5128,8 +5326,92 @@ async function scriviRighe(righe){
       .insert(righe.map(({ procedimento, sostituzioni, ...resto }) => resto)));
   }
   if (error) throw error;
-  righe.forEach(r => PS.salvati.add(`${r.day}|${r.pasto}`));
+}
+
+/** Le righe di una generazione vanno nel calendario: cancella e riscrive
+    solo i pasti che sta scrivendo, e segna quello che è già al sicuro. */
+async function scriviRighe(righe){
+  if (!righe.length) return 0;
+  await sovrascriviPasti(righe.map(chiavePasto), righe);
+  righe.forEach(r => PS.salvati.add(chiavePasto(r)));
   return righe.length;
+}
+
+/* ============================================================
+   IL PUNTO DI RIPRISTINO (20/08/2026)
+
+   «Rigenera da dopodomani» cancella e riscrive dei giorni che erano già
+   decisi — a volte scritti a mano, uno per uno. Prima di oggi quella
+   cancellazione era definitiva: non c'era nessun modo di tornare indietro,
+   e l'unico avvertimento era il nome del tasto.
+
+   ⚠️ IL PUNTO SI SALVA PRIMA DI SCRIVERE, MAI DOPO. Dopo non c'è più
+   niente da fotografare.
+
+   ⚠️ È UNO SOLO, e la generazione successiva lo sostituisce. Tenerne una
+   pila vorrebbe dire scegliere fra dieci date in un elenco, cioè un lavoro
+   nuovo per chi guarda; uno solo risponde alla domanda vera, che è «ho
+   appena fatto un guaio, si torna indietro?».
+
+   ⚠️ «Torna a com'era» SI PUÒ DISFARE: prima di rimettere a posto fotografa
+   com'è adesso e la mette al posto del punto vecchio. Così il tasto è
+   sempre reversibile, e nessuno resta bloccato dalla parte sbagliata.
+
+   ⚠️ Vive in `settings` come tutto il resto: nessun file SQL da eseguire.
+   ============================================================ */
+const CHIAVE_RIPRISTINO = 'piano_ripristino';
+
+const ripristinoSalvato = () => {
+  const p = leggiJson(CHIAVE_RIPRISTINO, null);
+  return p && Array.isArray(p.righe) && Array.isArray(p.ambito) && p.ambito.length ? p : null;
+};
+
+/** I pasti che questa passata sta per riscrivere. Quelli su «Lascia» no:
+    non li tocca nessuno, e metterli nell'ambito vorrebbe dire cancellarli
+    al ripristino. */
+function ambitoPassata(){
+  const dentro = [];
+  for (const g of PS.giorni)
+    for (const q of PS_PASTI)
+      if (g[q].modo !== 'lascia') dentro.push(`${g.day}|${q}`);
+  return dentro;
+}
+
+/**
+ * Fotografa quello che sta per essere sovrascritto.
+ *
+ * Torna quante righe ha salvato: zero vuol dire che non c'era niente da
+ * perdere, e in quel caso il punto vecchio si lascia dov'è — è ancora
+ * l'ultima volta in cui qualcosa è stato davvero cancellato.
+ */
+async function segnaRipristino(ambito, cosa){
+  const righe = S.piano.filter(r => ambito.includes(chiavePasto(r)));
+  if (!righe.length) return 0;
+  await scriviJson(CHIAVE_RIPRISTINO, {
+    quando: new Date().toISOString(), cosa, ambito, righe,
+  });
+  return righe.length;
+}
+
+/**
+ * Rimette il piano com'era.
+ *
+ * ⚠️ `updated_at` non si rimette indietro: la riga è stata toccata adesso, e
+ * scrivere una data vecchia sarebbe raccontare che non è successo niente.
+ */
+async function tornaComEra(){
+  const p = ripristinoSalvato();
+  if (!p) throw new Error('Non ho nessun punto di ripristino.');
+
+  const adesso = {
+    quando: new Date().toISOString(),
+    cosa: 'prima di rimettere com’era',
+    ambito: p.ambito,
+    righe: S.piano.filter(r => p.ambito.includes(chiavePasto(r))),
+  };
+  await sovrascriviPasti(p.ambito, p.righe.map(({ updated_at, ...resto }) => resto));
+  await scriviJson(CHIAVE_RIPRISTINO, adesso);
+  return p;
 }
 
 /** Un blocco appena finito va nel calendario, senza aspettare la fine.
@@ -5565,7 +5847,21 @@ function apriEditorQty(cell, item){
 
   riga.insertAdjacentHTML('afterend', `
     <div class="inv-edit" data-per="${esc(item.id)}">
+      <!-- ⚠️ Il nome si può cambiare, ma è la CHIAVE con cui questa voce si
+           incontra col piano, con la spesa e con le ricette. Per questo
+           cambiandolo il vecchio nome resta collegato al nuovo (alias_nomi),
+           da solo e senza chiedere: i pasti già scritti col vecchio nome
+           devono continuare a combaciare. Si toglie dal menu, come gli altri. -->
       <div class="form-row" style="margin-top:0">
+        <label class="campo">
+          <span class="campo-eti">Nome</span>
+          <input class="field" data-e-nome value="${esc(item.name)}" autocomplete="off">
+        </label>
+      </div>
+      <p class="hint" style="margin:4px 0 0">Se lo cambi, il vecchio nome resta collegato
+        a questo: quello che è già scritto nel piano e nella spesa continua a combaciare.</p>
+
+      <div class="form-row" style="margin-top:8px">
         <label class="campo">
           <span class="campo-eti">Quantità</span>
           <input class="field" data-e-qta value="${esc(item.qty)}" autocomplete="off">
@@ -5714,6 +6010,35 @@ const CATEGORIE_CIBO = [
   'frutta secca e semi', 'condimenti e grassi', 'dolci', 'altro',
 ];
 
+/* ============================================================
+   QUALI CATEGORIE SI POSSONO SOSTITUIRE (20/08/2026)
+
+   ⚠️ NON TUTTE LE CATEGORIE SI COMPORTANO ALLO STESSO MODO, e trattarle
+   uguale faceva rumore: per la polenta l'app proponeva dodici carboidrati,
+   per l'insalata otto verdure. Dove l'ingrediente è la FONTE PROTEICA
+   scambiarlo è una scelta ragionevole — merluzzo o nasello, la cena è
+   quella. Dove l'ingrediente È IL PIATTO — i cereali, la verdura, la
+   frutta — scambiarlo non è una sostituzione: è un altro piatto, e quello
+   si decide dalla matita, non da un elenco di dodici bottoni.
+
+   ⚠️ I salumi stanno fra gli accesi (sono una fonte proteica: cotto e crudo
+   si scambiano davvero); la frutta secca fra gli spenti, perché lì di
+   solito è una guarnizione e cambiarla cambia il piatto.
+
+   ⚠️ È un DEFAULT, non una legge: l'interruttore sta nel menu, e quello che
+   scegli tu vince. Per questo la lista vive in `settings` e non nel codice.
+   ============================================================ */
+const CHIAVE_SOSTITUIBILI = 'categorie_sostituibili';
+const SOSTITUIBILI_DI_PARTENZA =
+  ['pesce', 'carne bianca', 'carne rossa', 'salumi', 'uova', 'latticini', 'legumi'];
+
+function categorieSostituibili(){
+  const v = leggiJson(CHIAVE_SOSTITUIBILI, null);
+  return Array.isArray(v) ? v : SOSTITUIBILI_DI_PARTENZA;
+}
+
+const sostituibile = (cat) => !!cat && categorieSostituibili().includes(cat);
+
 /* I nomi comuni, per proporre la categoria da soli quando si scrive una
    voce nuova. ⚠️ È un aiuto, non una verità: si può sempre correggere, e
    quello che NON è qui dentro lascia il campo da scegliere invece di
@@ -5744,6 +6069,13 @@ const DIZIONARIO_CATEGORIE = {
   'cereali e carboidrati': ['pasta', 'pastina', 'riso', 'riso roma', 'riso carnaroli',
     'noodles', 'spaghetti di riso', 'gnocchi', 'piadine', 'panini burger', 'pane',
     'pancarre', 'pasta sfoglia', 'tortillas', 'patate', 'patate crude',
+    // ⚠️ «patatine» va scritto a parte: per l'app non è il plurale di
+    // «patate» ma un'altra parola, e senza questa riga «Patatine fatte in
+    // friggitrice ad aria» resta senza categoria. Stanno nei carboidrati
+    // come le patate, per la ragione già decisa: nel piatto prendono il
+    // posto di pasta e riso, e un minimo di verdura non si fa con le
+    // patatine.
+    'patatine', 'patatine fritte',
     'patate da friggere', 'patate per friggitrice ad aria', 'polenta',
     'polenta istantanea', 'farro', 'farro perlato', 'orzo', 'cous cous', 'quinoa',
     'farina', 'farina di avena', 'avena', 'crackers', 'fette biscottate', 'grissini',
@@ -5780,7 +6112,37 @@ function categoriaProposta(nome){
   if (gia) return gia.categoria;
   for (const [cat, nomi] of Object.entries(DIZIONARIO_CATEGORIE))
     if (nomi.some(n => stessoNome(n, nome))) return cat;
-  return '';
+
+  /* ⚠️ Niente di esatto: si guarda se un nome conosciuto sta DENTRO questo.
+     È il caso trovato il 20/08/2026 su «Patatine fatte in friggitrice ad
+     aria»: nessuna voce e nessuna riga del dizionario si chiama così, il
+     nome restava senza categoria, e senza categoria non c'è nessun
+     sostituto da proporre — il tasto ↻ non compariva nemmeno. I nomi che il
+     generatore scrive sono descrizioni («straccetti di tacchino al limone»,
+     «prosciutto cotto magro»), non etichette di scaffale.
+
+     ⚠️ Vince il più specifico, cioè quello fatto di più parole: se in un
+     nome ci stanno dentro sia «patate» sia «patate da friggere», è il
+     secondo a dire di che cosa si tratta.
+
+     ⚠️ Qui si può essere più larghi che in stessoNome(), e non è una
+     contraddizione: sbagliare qui propone un sostituto che si può rifiutare,
+     sbagliare là SCALA la dispensa sbagliata. Il prezzo dichiarato è che un
+     «latte di cocco» finirebbe fra i latticini — una proposta da cambiare a
+     mano, non un danno. */
+  const piuSpecifico = (lista) => lista.reduce((meglio, x) =>
+    !meglio || paroleNome(x.nome).length > paroleNome(meglio.nome).length ? x : meglio, null);
+
+  // ⚠️ Prima la dispensa e poi il dizionario, come nei due passi esatti qui
+  // sopra: una scelta tua vince sempre su quello che l'app crede di sapere.
+  const daCasa = piuSpecifico(S.inv
+    .filter(v => v.categoria && nomeDentro(v.name, nome))
+    .map(v => ({ nome:v.name, cat:v.categoria })));
+  if (daCasa) return daCasa.cat;
+
+  const daDizionario = piuSpecifico(Object.entries(DIZIONARIO_CATEGORIE)
+    .flatMap(([cat, nomi]) => nomi.filter(n => nomeDentro(n, nome)).map(n => ({ nome:n, cat }))));
+  return daDizionario ? daDizionario.cat : '';
 }
 
 /** Le voci del menu a tendina. La prima è vuota apposta: «da scegliere» è
@@ -6007,8 +6369,10 @@ $('#menuFrequenzeBox').addEventListener('click', async (ev) => {
 function renderAlias(){
   const box = $('#menuAliasBox');
   const { gruppi } = aliasIndice();
+  const liberi = contorniLiberi();
 
   box.innerHTML = `<div class="panel">
+    <div class="q-label" style="margin-top:0">I nomi che ho appaiato</div>
     <p class="hint" style="margin-top:0">I nomi che mi hai detto di trattare come una cosa
       sola. Valgono ovunque: avviso delle scorte, scalo della dispensa, lista della spesa,
       sostituti. Il piano resta sempre scritto con le parole che hai usato tu.</p>
@@ -6034,6 +6398,40 @@ function renderAlias(){
     <div class="form-row">
       <button class="btn" id="aliasAggiungi" style="flex:1">Sono la stessa cosa</button>
     </div>
+  </div>
+
+  <div class="panel">
+    <div class="q-label" style="margin-top:0">I contorni che non conto</div>
+    <p class="hint" style="margin-top:0">Nomi che nel piano sono una descrizione e non una
+      voce di dispensa — «patatine fatte in friggitrice ad aria», «verdure di stagione».
+      Restano scritti nei pasti e si cucinano: semplicemente non li conto fra le scorte,
+      così l'avviso non li segnala per sempre.</p>
+    ${liberi.length ? liberi.map((n, i) => `<div class="alias-riga">
+      <div class="alias-nomi">${esc(n)}</div>
+      <button class="btn small ghost" data-scorda-contorno="${i}">Torna a contarlo</button>
+    </div>`).join('') : `<p class="hint" style="margin:0">Nessuno. Si marcano dall'avviso in
+      cima al Piano, quando un nome non si riconosce e non somiglia a niente.</p>`}
+    <div class="form-row">
+      <input class="field" id="contornoNuovo" placeholder="un nome da non contare" style="flex:1">
+      <button class="btn ghost" id="contornoAggiungi">Non contarlo</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="q-label" style="margin-top:0">Cosa si può sostituire</div>
+    <!-- ⚠️ Non è una preferenza estetica: dove l'ingrediente è il piatto
+         (cereali, verdura, frutta) un elenco di alternative non aiuta, fa
+         rumore. Dove è la fonte proteica, scambiarlo è la cosa giusta. -->
+    <p class="hint" style="margin-top:0">Quando manca qualcosa, ti propongo un'alternativa
+      solo per queste categorie. Sulle altre l'ingrediente <i>è</i> il piatto: cambiarlo
+      vuol dire cambiare piatto, e quello si fa dalla matita.</p>
+    ${CATEGORIE_CIBO.map(c => `<div class="alias-riga">
+      <div class="alias-nomi" style="text-transform:capitalize">${esc(c)}</div>
+      <div class="chips mini" data-sostituibile="${esc(c)}" style="flex:0 0 108px">
+        <button data-v="1"${sostituibile(c) ? ' aria-pressed="true"' : ''}>Sì</button>
+        <button data-v="0"${sostituibile(c) ? '' : ' aria-pressed="true"'}>No</button>
+      </div>
+    </div>`).join('')}
   </div>`;
 }
 
@@ -6043,6 +6441,69 @@ $('#menuAlias').onclick = () => {
   renderAlias();
   box.hidden = false;
 };
+
+/* --- «Torna a com'era»: la rete sotto il trapezio --- */
+function renderRipristino(){
+  const box = $('#menuRipristinoBox');
+  const p = ripristinoSalvato();
+
+  if (!p){
+    box.innerHTML = `<div class="avviso info">Non c'è niente da rimettere a posto:
+      nessuna rigenerazione ha ancora cancellato qualcosa. Il punto si salva da solo,
+      appena prima di riscrivere dei giorni che erano già decisi.</div>`;
+    return;
+  }
+
+  const giorni = [...new Set(p.ambito.map(k => String(k).split('|')[0]))].sort();
+  const aMano  = p.righe.filter(r => r.a_mano).length;
+  const quando = new Date(p.quando);
+
+  box.innerHTML = `<div class="panel">
+    <p class="hint" style="margin-top:0">Ho fotografato il calendario il
+      ${esc(quando.toLocaleDateString('it-IT'))} alle
+      ${esc(quando.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' }))},
+      appena prima di: <b>${esc(p.cosa || 'una rigenerazione')}</b>.</p>
+    <div class="alias-riga">
+      <div class="alias-nomi">${esc(elencaGiorni(giorni))}</div>
+    </div>
+    <p class="hint" style="margin:6px 0 0">Rimetto ${p.righe.length === 1
+      ? '1 pasto' : `${p.righe.length} pasti`}${aMano ? ` (${aMano === 1
+      ? '1 scritto' : `${aMano} scritti`} da te)`: ''}, e cancello quello che c'è adesso
+      su quei giorni. Ce n'è <b>uno solo</b>: la prossima rigenerazione prende questo
+      posto. Ma questo tasto si può disfare — premendolo salvo com'è adesso.</p>
+    <div class="form-row">
+      <button class="btn" id="ripristinaOra" style="flex:1">Rimetti com'era</button>
+    </div>
+  </div>`;
+}
+
+$('#menuRipristino').onclick = () => {
+  const box = $('#menuRipristinoBox');
+  if (!box.hidden){ box.hidden = true; return; }
+  renderRipristino();
+  box.hidden = false;
+};
+
+$('#menuRipristinoBox').addEventListener('click', async (ev) => {
+  const b = ev.target.closest('#ripristinaOra');
+  if (!b) return;
+  b.disabled = true;
+  b.textContent = 'Rimetto…';
+  try{
+    const p = await tornaComEra();
+    // ⚠️ Si rilegge dal database, non si ricostruisce a memoria: il
+    // calendario è la verità e il telefono è una finestra.
+    await loadAll();
+    renderAll();
+    renderRipristino();
+    toast(`Rimesso com'era: ${p.righe.length === 1 ? '1 pasto' : `${p.righe.length} pasti`}. `
+        + `Se era un errore, «Torna a com'era» adesso rifà il contrario.`);
+  }catch(e){
+    b.disabled = false;
+    b.textContent = 'Rimetti com’era';
+    esitoErrore(e);
+  }
+});
 
 $('#menuAliasBox').addEventListener('click', async (ev) => {
   const piu = ev.target.closest('#aliasAggiungi');
@@ -6067,6 +6528,66 @@ $('#menuAliasBox').addEventListener('click', async (ev) => {
         }catch(e){ esitoErrore(e); }
       });
     }catch(e){ piu.disabled = false; esitoErrore(e); }
+    return;
+  }
+
+  // l'interruttore «sostituibile» di una categoria
+  const chip = ev.target.closest('[data-sostituibile] button');
+  if (chip){
+    const cat = chip.closest('[data-sostituibile]').dataset.sostituibile;
+    const acceso = chip.dataset.v === '1';
+    const prima = S.settings[CHIAVE_SOSTITUIBILI] || '';
+    try{
+      const lista = categorieSostituibili().filter(c => c !== cat);
+      await scriviJson(CHIAVE_SOSTITUIBILI, acceso ? [...lista, cat] : lista);
+      renderAlias();
+      rifaiDoveContanoINomi();
+      toast(acceso ? `Ti proporrò alternative per «${cat}».`
+                   : `Niente più alternative per «${cat}».`, async () => {
+        try{
+          await scriviJson(CHIAVE_SOSTITUIBILI, prima ? JSON.parse(prima) : SOSTITUIBILI_DI_PARTENZA);
+          renderAlias(); rifaiDoveContanoINomi();
+          toast('Rimesso com’era.');
+        }catch(e){ esitoErrore(e); }
+      });
+    }catch(e){ esitoErrore(e); }
+    return;
+  }
+
+  // un contorno libero scritto a mano
+  const piuC = ev.target.closest('#contornoAggiungi');
+  if (piuC){
+    const n = $('#contornoNuovo').value.trim();
+    if (!n){ toast('Scrivi il nome da non contare.'); return; }
+    if (contornoLibero(n)){ toast(`«${n}» non lo conto già.`); return; }
+    const prima = S.settings[CHIAVE_CONTORNI] || '';
+    piuC.disabled = true;
+    try{
+      await segnaContornoLibero(n);
+      renderAlias();
+      rifaiDoveContanoINomi();
+      toast(`«${n}» non lo conto più fra le scorte.`, async () => {
+        try{
+          await scriviJson(CHIAVE_CONTORNI, prima ? JSON.parse(prima) : []);
+          renderAlias(); rifaiDoveContanoINomi();
+          toast('Torno a contarlo.');
+        }catch(e){ esitoErrore(e); }
+      });
+    }catch(e){ piuC.disabled = false; esitoErrore(e); }
+    return;
+  }
+
+  const tornaC = ev.target.closest('[data-scorda-contorno]');
+  if (tornaC){
+    const i = Number(tornaC.dataset.scordaContorno);
+    const nome = contorniLiberi()[i];
+    tornaC.disabled = true;
+    try{
+      await scordaContornoLibero(i);
+      renderAlias();
+      rifaiDoveContanoINomi();
+      toast(`Torno a contare «${nome}» fra le scorte.`);
+    }catch(e){ tornaC.disabled = false; esitoErrore(e); }
     return;
   }
 
@@ -6115,14 +6636,36 @@ $('#menuAliasBox').addEventListener('click', async (ev) => {
  */
 function sostitutiPer(nome, serve){
   const cat = categoriaProposta(nome);
-  if (!cat) return [];
-  return S.inv.filter(v => {
-    if (v.categoria !== cat || stessoNome(v.name, nome)) return false;
-    if (String(v.qty).includes('?')) return true;
-    const hai = leggiQta(v.qty), q = serve ? leggiQta(serve) : null;
-    if (!hai || !q || hai.u !== q.u) return true;
-    return hai.n >= q.n;
-  });
+  // ⚠️ Dove l'ingrediente è il piatto non si sostituisce: si cambia piatto,
+  // e quello si fa dalla matita. Vedi CHIAVE_SOSTITUIBILI.
+  if (!cat || !sostituibile(cat)) return [];
+
+  const q = serve ? leggiQta(serve) : null;
+  /* Quanto quella voce COPRE di quello che serve: 2 se ce n'è il doppio,
+     0.5 se ce n'è metà. ⚠️ null quando non si può sapere — quantità non
+     numerica, un «?», unità diverse — e non è un errore: sono le voci che
+     restano in elenco perché davanti al frigo si giudica meglio che con una
+     regola. Vanno però DOPO quelle che si sanno bastare. */
+  const copre = (v) => {
+    if (String(v.qty).includes('?')) return null;
+    const hai = leggiQta(v.qty);
+    if (!hai || !q || hai.u !== q.u || !(q.n > 0)) return null;
+    return hai.n / q.n;
+  };
+
+  return S.inv
+    .filter(v => {
+      if (v.categoria !== cat || stessoNome(v.name, nome)) return false;
+      const c = copre(v);
+      return c === null || c >= 1;      // si scarta solo ciò che si SA non bastare
+    })
+    .map(v => ({ v, c: copre(v) }))
+    // ⚠️ MASSIMO TRE, ed è la parte importante quanto l'ordine: dodici
+    // bottoni non sono una proposta, sono un elenco da leggere. Prima quelle
+    // che bastano di sicuro, e fra quelle prima la più abbondante.
+    .sort((a, b) => (b.c ?? -1) - (a.c ?? -1))
+    .slice(0, 3)
+    .map(x => x.v);
 }
 
 /**
@@ -6171,7 +6714,13 @@ async function sostituisciIngrediente(vecchio, nuovo){
     const n = numeriDopoIlCambio(r, vecchio, nuovo, qta);
     if (!n.sicuro) senzaNumeri++;
     const campi = { ingredienti:ing, prot:n.prot, kcal:n.kcal };
-    const { error } = await sb.from('plan_meals').update(campi).eq('id', r.id);
+    // ⚠️ plan_meals NON HA una colonna `id`: la chiave è (day, pasto), ed è
+    // il motivo per cui si scrive con upsert onConflict:'day,pasto'. Qui
+    // c'era `.eq('id', r.id)` con r.id sempre undefined: la sostituzione
+    // falliva SEMPRE, dal giorno in cui è stata scritta. Trovato il
+    // 20/08/2026. Se serve indicare un pasto, si indica con day e pasto.
+    const { error } = await sb.from('plan_meals').update(campi)
+      .eq('day', r.day).eq('pasto', r.pasto);
     if (error) throw error;
     Object.assign(r, campi);
   }
@@ -6444,31 +6993,85 @@ async function aggiornaInDispensa(id, campi){
 }
 
 async function salvaVoceDispensa(box, item){
+  const vecchio = item.name;
+  const nome = box.querySelector('[data-e-nome]').value.trim();
+  // ⚠️ Un nome vuoto non è una voce: sparirebbe dalla lista e non
+  // combacerebbe più con niente. Si dice e non si salva.
+  if (!nome){
+    toast('Il nome non può restare vuoto.');
+    box.querySelector('[data-e-nome]').focus();
+    return;
+  }
+
   const campi = {
+    name: nome,
     qty: box.querySelector('[data-e-qta]').value.trim() || '—',
     prot_100g: nutriente(box.querySelector('[data-e-prot]').value),
     kcal_100g: nutriente(box.querySelector('[data-e-kcal]').value),
     categoria: box.querySelector('[data-e-categoria]').value || null,
   };
 
+  /* ⚠️ RINOMINARE È UN'OPERAZIONE PERICOLOSA, ed è per questo che l'alias
+     si scrive DA SOLO e senza chiedere. Il nome non è un'etichetta: è la
+     CHIAVE con cui questa voce si incontra col piano, con la lista della
+     spesa e con le ricette (`stessoNome()`). Cambiandolo, tutti i pasti già
+     scritti col nome di prima smetterebbero di combaciare in silenzio — il
+     giorno dopo l'avviso direbbe che manca una cosa che sta in frigo.
+     Chiedere non avrebbe senso: non è una preferenza, è ciò che tiene in
+     piedi quello che era già scritto. Resta togliibile dal menu come gli
+     altri appaiamenti.
+
+     ⚠️ Solo se i due nomi non combaciavano GIÀ: da «uova» a «Uova», o da
+     «Patate» a «patate», `stessoNome()` li appaia da sé e un appaiamento in
+     più sarebbe solo una riga da leggere nel menu senza che serva a niente. */
+  const daAppaiare = nome !== vecchio && !stessoNome(vecchio, nome);
+
   box.querySelectorAll('button, select, input').forEach(x => x.disabled = true);
   try{
     const mancanti = await aggiornaInDispensa(item.id, campi);
     mancanti.forEach(c => delete campi[c]);
     Object.assign(item, campi);
-    renderInv();
+    S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));   // il nome nuovo cambia il posto in lista
+
+    // ⚠️ L'alias prima di ridisegnare e prima del ricordo dei valori: da qui
+    // in poi vecchio e nuovo sono la stessa cosa, e tutto quello che viene
+    // dopo (l'avviso delle scorte, chiaveRicordo) lo deve già sapere.
+    let aliasKo = false;
+    if (daAppaiare){
+      try { await imparaAlias(vecchio, nome); }
+      catch { aliasKo = true; }   // il nome è salvato lo stesso: si dice, non si nasconde
+    }
+    // il nome nuovo tocca anche piano e spesa, non solo questa lista
+    if (daAppaiare) rifaiDoveContanoINomi(); else renderInv();
+
     if (mancanti.length){
       // Non si tace su un pezzo non salvato: si dice cosa manca e quale
       // file eseguire, che è l'unica cosa che si può fare davvero.
-      toast(`Salvato, ma non ${mancanti.includes('categoria') ? 'la categoria' : 'i valori per 100 g'}: `
+      // ⚠️ E se nel frattempo hai rinominato, lo si dice lo stesso: quella
+      // è la cosa più grossa successa, non deve sparire dietro un avviso
+      // tecnico su un file SQL.
+      toast(`${daAppaiare ? `Adesso si chiama «${nome}». ` : ''}Salvato, `
+        + `ma non ${mancanti.includes('categoria') ? 'la categoria' : 'i valori per 100 g'}: `
         + `esegui ${mancanti.includes('categoria') ? 'tabelle-categorie-v8.sql' : 'tabelle-nutrienti.sql'}.`);
       return;
     }
     // Quello che hai scritto qui torna da solo la prossima volta che
     // ricompri questa cosa: vedi la memoria dei valori per 100 g.
-    await ricordaNutrienti(item.name, campi.prot_100g, campi.kcal_100g);
+    await ricordaNutrienti(nome, campi.prot_100g, campi.kcal_100g);
+
+    // ⚠️ La rinomina ha la precedenza su tutto nel messaggio: è la cosa più
+    // grossa che sia appena successa, e va detto che il vecchio nome non è
+    // stato buttato via.
+    if (daAppaiare){
+      toast(aliasKo
+        ? `Adesso si chiama «${nome}», ma non sono riuscito a collegare «${vecchio}»: `
+          + `i pasti già scritti così potrebbero risultare mancanti.`
+        : `Adesso si chiama «${nome}». «${vecchio}» resta collegato, così quello che era `
+          + `già scritto continua a combaciare. Si toglie dal menu, «Quello che ho insegnato all’app».`);
+      return;
+    }
     const scritti = campi.prot_100g != null || campi.kcal_100g != null;
-    if (!scritti || !segnalaRicette(item.name, 'Voce aggiornata. ')) toast('Voce aggiornata.');
+    if (!scritti || !segnalaRicette(nome, 'Voce aggiornata. ')) toast('Voce aggiornata.');
   }catch(e){
     box.querySelectorAll('button, select, input').forEach(x => x.disabled = false);
     esitoErrore(e);
