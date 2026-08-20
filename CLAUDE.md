@@ -1985,6 +1985,82 @@ latticini freschi · legumi. ⚠️ I **salumi** stanno fra gli accesi (cotto e 
 scambiano davvero), la **frutta secca** fra gli spenti (lì è una guarnizione, e cambiarla
 cambia il piatto).
 
+#### ⚠️ La proposta funzionava SOLO dove l'app non sapeva contare (20/08/2026)
+
+Segnalato come «regressione dello split»: Provolone e merluzzo non proponevano niente,
+«Pulled chicken» sì. **Non era lo split, e non era il flag `sostituibile`** — verificato
+aprendo l'app online e premendo i bottoni: rispondevano tutti e tre. Era la **quantità
+scritta sull'ingrediente**:
+
+| ingrediente | chiede | in dispensa | esito |
+|---|---|---|---|
+| Pulled chicken | `2 confezioni` | tutto in grammi | unità incomparabili → **non scarta nessuno** |
+| Filetti di merluzzo | `450 g` | 300 + 100 + 50 g | li **scarta tutti e tre** |
+| Provolone | `150 g` | Scamorza `250` senza unità | illeggibile → a pari merito → **tagliata dal tetto di 3** |
+
+⚠️ **La conclusione è più scomoda del bug**: «Pulled chicken» funzionava **per caso**.
+Dove l'app sapeva fare il conto, buttava via la risposta. Quattro correzioni:
+
+1. **Non si scarta più quello che non basta**: resta in elenco **dicendo quanto ne manca**.
+   Tre pesci in freezer non sono «niente».
+2. **E se lo scegli lo stesso, la differenza va in LISTA SPESA** con la data del primo
+   pasto che lo aspetta. Era il buco vero: lasciar scegliere un candidato insufficiente
+   senza dire altro fa **nascere il pasto zoppo in silenzio**, e te ne accorgi ai fornelli.
+   ⚠️ Il conto lo fa `quantoManca()`, lo stesso della spesa ovunque, e **tace quando non è
+   sicuro** invece di inventare. ⚠️ L'annulla toglie anche quella riga di spesa — ma
+   **solo se l'abbiamo messa noi**: una riga che c'era già non si tocca.
+3. **Il tetto di 3 vale nell'avviso, non nel pannello** (`sostitutiPer(nome, serve, tutti)`):
+   il muro da togliere era la riga dell'avviso, il pannello è dove stai **scegliendo**.
+4. **A pari merito niente alfabeto**, che faceva sembrare la Mozzarella più adatta della
+   Scamorza. Quattro gradini: basta di sicuro · non basta e si sa di quanto · quantità
+   illeggibile · niente.
+
+⚠️ **Un solo modo di dire «non basta»**: `ammanco(serve, voce)`. Lo usano l'ordine, la riga
+del pannello e la lista della spesa. Tre conti separati si scollerebbero, e il pannello
+finirebbe a scrivere «basta» su una cosa messa in fondo perché non bastava.
+
+⚠️ **`serve` si porta dietro anche sui mancanti ASSENTI.** Veniva attaccato solo ai guai di
+tipo «poco»; il fabbisogno però era già calcolato (`s.n`, `s.u`). Senza portarlo avanti il
+pannello restava muto **proprio su merluzzo e provolone**, cioè i due casi per cui tutto
+questo era nato. Trovato collaudando dal vivo, non leggendo il codice.
+
+⚠️ **Doppioni FRA i candidati** (`chiaveAlias` in `sostitutiPer`): «Fesa di tacchino» e
+«Fesa tacchino» sono due righe di dispensa ma una cosa sola, e sprecavano un posto dei tre.
+Il controllo c'era già in `nomiSimili()` e mancava qui. ⚠️ **`stessoNome()` invece non
+sbaglia**: `di` è una parola di servizio e viene scartata prima di contare, quindi per il
+confronto quei due nomi sono identici. La fusione delle due righe resta lavoro del Giro 2,
+ma è pulizia di dati, non una regola rotta.
+
+#### Un numero da solo: si chiede una volta (20/08/2026)
+
+⚠️ **Nessun file SQL**: `settings`, chiave **`unita_note`**.
+
+«Scamorza affumicata · 250» e «Ricottina · 2» sono 250 grammi e 2 pezzi. L'app le trattava
+tutte e due come **conteggi** — non grammi e non illeggibili, ma «250 di unità vuota», che
+si confronta solo con un'altra unità vuota.
+
+⚠️ **È il caso peggiore, perché è giusto e sbagliato insieme senza che nessuno se ne
+accorga**: fa funzionare «Uova: servono 5, ne hai 3» e allo stesso tempo impedisce di
+sapere se 250 di scamorza bastano per 150 g di provolone. E siccome per spostare proteine e
+calorie servono grammi veri (`grammiDi()` accetta solo `g` e `kg`), il ricalcolo non parte e
+i numeri del pasto si svuotano.
+
+Indovinare è vietato — *250 forme di scamorza?* — quindi si chiede.
+
+⚠️ **La domanda compare SOLO su un numero nudo** (`numeroNudo()`) e sparisce appena smette
+di esserlo: mostrarla sempre sarebbe chiederlo a chi ha già risposto scrivendo «250 g».
+
+⚠️ **«Sono pezzi» NON riscrive niente** (`conUnita()`): il numero nudo è già la forma giusta
+per i pezzi. È ciò che permette alla domanda di **solo aggiungere** informazione, senza mai
+rompere i confronti che oggi funzionano — le uova continuano a combaciare.
+
+⚠️ **Si può cambiare idea, ed è il punto**: la scelta si vede e si corregge **dalla matita
+in dispensa**, accanto ai valori per 100 g. Una risposta sbagliata data una volta non deve
+ripetersi in silenzio per sempre.
+
+⚠️ **Se l'app completa il numero lo DICE**, in tutti e due i moduli: quello che si salva
+dev'essere quello che si è scritto, o si deve poter vedere che non lo è.
+
 #### «latticini» si è spaccato in due (20/08/2026) — ⚠️ RICHIEDE IL DEPLOY
 
 Con una categoria sola l'app proponeva **lo yogurt greco al posto del provolone**. Un
