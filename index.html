@@ -3726,14 +3726,27 @@ function aggiornaNumeriPannello(box){
     /* ⚠️ Le proteine sono di Ciprian e restano sue; le calorie si spostano
        per tutti e due, perché gli ingredienti del pannello sono già scritti
        per persona (una porzione sola) — è la convenzione dell'app. */
-    if (cp?.value) cp.value = Math.max(0, Math.round(Number(cp.value) + d.prot));
-    if (ck?.value) ck.value = Math.max(0, Math.round(Number(ck.value) + d.kcal));
-    if (cl?.value) cl.value = Math.max(0, Math.round(Number(cl.value) + d.kcal));
+    /* ⚠️ Si tocca SOLO un campo che ha già un numero: un campo vuoto vuol
+       dire «non lo so», e riempirlo con una differenza sarebbe inventare un
+       totale partendo da zero — esattamente quello che questa funzione non
+       fa. ⚠️ E si annuncia SOLO quello che è cambiato davvero: dire «-297
+       kcal» mentre le calorie restano vuote è la stessa bugia di un numero
+       che si presenta più completo di quello che è. */
+    const fatti = [];
+    const segna = (campo, delta, unita) => {
+      if (!campo?.value || !delta) return;
+      campo.value = Math.max(0, Math.round(Number(campo.value) + delta));
+      fatti.push(`${delta >= 0 ? '+' : ''}${delta} ${unita}`);
+    };
+    segna(cp, d.prot, 'g proteine');
+    segna(ck, d.kcal, 'kcal');
+    segna(cl, d.kcal, `kcal per ${nomeDiChi('lorena')}`);
+
     box.dataset.ingFoto = JSON.stringify(ora);
+    if (!fatti.length){ segno.hidden = true; return; }   // non c'era niente da aggiornare
     segno.hidden = false;
     segno.className = 'avviso info num-vecchi';
-    segno.textContent = `Numeri aggiornati con la differenza: ${d.prot >= 0 ? '+' : ''}${d.prot} g `
-                      + `proteine, ${d.kcal >= 0 ? '+' : ''}${d.kcal} kcal.`;
+    segno.textContent = `Aggiornati con la differenza: ${fatti.join(', ')}.`;
     return;
   }
 
