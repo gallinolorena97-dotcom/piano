@@ -616,6 +616,105 @@ pannello in fondo. Sembrava che il pulsante non funzionasse.
   `confermaCucinato`, se la dispensa è aggiornata e fallisce il salvataggio della
   ricetta, si tiene il lavoro fatto e si dice cosa non è riuscito.
 
+### L'avviso delle scorte, riscritto per TIPO DI PROBLEMA (20/08/2026)
+
+Era un elenco piatto di quattordici righe uguali, ognuna con la sua frase ripetuta: si
+leggeva come una tabella di database. ⚠️ **Il problema non era la quantità di
+informazione, era che non aveva forma** — per capire di che natura fossero quei guai
+bisognava leggerli tutti.
+
+⚠️ **È TUTTO TESTO CALCOLATO: zero generazioni.** Un riassunto scritto dal modello
+costerebbe una tacca ogni volta che l'avviso si ridisegna — cioè a ogni tocco — e direbbe
+cose che l'app sa già contare da sé.
+
+- **una riga di sintesi**: «3 da comprare · 5 ce le hai già · 2 ne hai poche». I gruppi
+  vuoti non si nominano: «0 da comprare» è rumore;
+- **tre gruppi**: *Da comprare* (non ce l'hai e non hai niente di simile) · *Ce l'hai,
+  scritto diverso* (c'è un candidato o una voce simile) · *Ne hai poche* (c'è ma non
+  basta). ⚠️ **La frase la dice il TITOLO del gruppo, non ogni riga**: è tutta la
+  differenza fra un avviso e una tabella;
+- **la conseguenza su ogni voce**: non «Provolone» ma «Provolone — lunedì 24/08 · Torta
+  salata». È l'informazione per cui questo avviso si apre davvero;
+- **ordine per data** del pasto che si ferma per primo: quello che ti blocca lunedì viene
+  prima di quello che ti blocca venerdì, e l'alfabeto non dice niente su cosa fare stasera.
+
+⚠️ **Quattro per gruppo e non sei in tutto**: con un tetto unico un gruppo lungo si mangia
+gli altri, e spariscono proprio i tipi di problema che la sintesi ha appena annunciato.
+
+⚠️ **«Te la indico io» sta su TUTTI i mancanti, anche in «Da comprare»** — corretto subito
+dopo il raggruppamento. Quel gruppo contiene proprio i casi che l'app non sa riconoscere
+(«Patatine fatte in friggitrice ad aria» ci finisce perché NON vede la somiglianza con
+«Patate da friggere»): toglierlo di lì vorrebbe dire nasconderlo dove serve di più, e
+lasciare come unica uscita la rinuncia.
+
+### ⚠️ «Non seguire più» è SEMPRE stato per il nome, mai per il pasto (20/08/2026)
+
+Domanda dell'utente, verificata leggendo il codice: `contorni_liberi` è **una chiave sola**
+e `contornoLibero(nome)` è interrogata in tre punti — il controllo scorte, la lista della
+spesa, i mancanti di «Crea la ricetta» — e **in nessuno c'è traccia del pasto**.
+
+⚠️ **Non è che due cose si siano fuse: una delle due non è mai esistita.** Il difetto era
+il NOME: «contorno libero» prometteva uno scopo (*questo piatto*) che il codice non ha mai
+avuto, e chi leggeva lo capiva così — giustamente. Rinominarlo «non seguire più questo
+ingrediente» è ciò che ha fatto combaciare le parole col comportamento.
+⚠️ **Regola che ne esce**: quando un'etichetta descrive uno scopo, quello scopo dev'essere
+vero nel codice. Un nome che promette più di quello che fa è un bug che non dà errori.
+
+Una esclusione **per singolo pasto** resterebbe da costruire ex novo (vivrebbe su
+`plan_meals`, non in `settings`): non è stata fatta, e non va data per esistente.
+
+### La guardia prima di una rinuncia (20/08/2026)
+
+Cinque «non seguo più» di fila in un colpo, e fra quelli **polenta, farro e lenticchie**:
+cibo vero, non sale e brodo. Quella porta era più comoda della correzione.
+
+Ora, se la categoria dell'ingrediente ha un **minimo settimanale** nella griglia,
+`guardiaContorno()` si mette in mezzo: *«Lenticchie è legumi, e la griglia ne chiede almeno
+2 a settimana. Da qui in poi non ti dirò più quando manca, nemmeno per arrivare a quel
+minimo.»* E rimanda a «te la indico io», che per polenta e farro era la risposta giusta.
+
+⚠️ **Solo i minimi, non i massimi**: rinunciare all'avviso su una cosa di cui bisogna
+mangiare *almeno* tot fa saltare un obiettivo; su un massimo, al più non si dice che ce n'è
+troppa — guaio più piccolo e di segno opposto.
+⚠️ **«Lascia stare» è il bottone PIENO**: il primo tocco che capita dev'essere quello che
+non rompe niente.
+⚠️ **Il silenzio di un avviso che non arriva più è la cosa più difficile da vedere che
+esista**: per questo si dice prima, non si scopre dopo.
+
+### Giro 3 — gli attriti d'uso (20/08/2026)
+
+⚠️ **Nessun file SQL, nessun deploy**: tutto frontend.
+
+**1 · Il contenuto dietro la striscia dei giorni.** La causa non era la posizione: la
+striscia è una **pillola con i margini**, e il contenuto le passava dietro **riapparendo
+negli spazi ai lati** — da cui «Pasta sfoglia» mozzato. Ora c'è una fascia opaca larga
+quanto lo schermo (`.settimana::before`), e tutto ciò a cui si salta ha
+**`scroll-margin-top`**: il browser si ferma più in basso da solo, ovunque, senza conti da
+rifare in dieci punti del JavaScript.
+⚠️ `misuraTestata()` misura anche la striscia (`--striscia-alt`) **ma quel valore non entra
+in nessuna posizione appiccicosa**: Dispensa e Piano restano dove sono sempre stati.
+
+**2 · Il campo del nome che tagliava.** Era un `input` stretto: «Patatine fatte in
+friggitrice o…», cioè modificavi una cosa che non riuscivi a leggere. Ora è un `textarea`
+di una riga che **va a capo e cresce** (`aggiustaAltezza()`), con una **×** dentro che
+compare solo quando c'è testo. Invio non va a capo: un nome su due righe non combacerebbe
+con niente.
+⚠️ **Il cursore non si forza a fine parola**, ed è la scelta che il brief lasciava aperta:
+forzarlo romperebbe proprio il caso da salvare — toccare in mezzo per correggere una
+lettera. La × copre il bisogno vero.
+
+**3 · La dispensa da 66 voci.** Filtri per categoria col conteggio, e ricerca che usa
+`stessoNome()` — «uova» trova «Uovo» — **più** il vecchio «contiene», perché scrivendo
+«moz» si vuole arrivare a Mozzarella e `stessoNome()` non risponde a un pezzo di parola.
+⚠️ Compaiono **solo le categorie che hanno qualcosa dentro**: un filtro che dà zero
+risultati è un modo di perdere tempo. ⚠️ Il filtro **non sta in localStorage**: è una cosa
+che si fa adesso per trovare una voce, non un'impostazione — ritrovarla accesa domani
+vorrebbe dire aprire la dispensa mezza vuota senza capire perché.
+
+**4 · Tornare dove ero.** `restaDovEri()` attorno a ogni ridisegno che parte da un'azione.
+⚠️ Il ripristino va **dopo** il ridisegno: prima la pagina ha ancora l'altezza vecchia e il
+browser non lascerebbe scorrere fin lì.
+
 ### ⚠️ DA PROVARE COL TOCCO — nessuno l'ha ancora fatto (20/08/2026)
 
 Rilettura onesta di tutto quello che è stato dichiarato «collaudato» negli ultimi giri,
@@ -651,6 +750,20 @@ prima, 40 px di distanza dopo) e da una schermata.
 
 **Verificato per lettura** (e questo regge): lo split dei latticini sul database, le colonne
 SQL esistenti, `stessoNome()` che appaia «Fesa di tacchino» e «Fesa tacchino».
+
+#### ✅ La prima prova col tocco è arrivata dai dati (20/08/2026)
+
+Non da un collaudo: dalle **tracce dell'uso vero**. Dopo il giro dei bersagli morti, in
+`settings` sono comparsi `alias_nomi: [["Patatine","Patate da friggere"]]`,
+`unita_note: {"Scamorza affumicata":"g"}`, cinque nomi in `contorni_liberi`, e una riga
+«Fagiolini · 300 g · serve il 26/08» nella lista della spesa.
+
+⚠️ **Vuol dire che dall'iPhone funzionano davvero**: «te la indico io», la domanda
+sull'unità, «non seguire più» e «mettilo in lista spesa». È la prova che i miei collaudi
+non potevano dare — e vale più di tutti loro messi insieme.
+
+⚠️ **Resta da provare col tocco tutto il resto**, in particolare il toast, la correzione
+del pannello dei sostituti, le coppie insegnate e l'intero Giro 3.
 
 ### 🔖 DOVE SIAMO — leggere per prima cosa in una sessione nuova
 
@@ -1049,6 +1162,20 @@ resta a zero; il resto dell'app non se ne accorge.
 Tutti gli altri risultano eseguiti, verificati uno per uno interrogando il database
 (`tabelle-nutrienti` · `tabelle-blocco6` · `tabelle-kcal-lorena` · `tabelle-frequenze-v8` ·
 `tabelle-categorie-v8`), e lo split dei latticini è stato scritto direttamente dall'app.
+
+⚠️ **NIENTE SQL E NIENTE DEPLOY per tutto quello fatto dopo lo split**: alias dei nomi,
+contorni liberi, coppie di sostituti, punti di ripristino, unità dei numeri nudi e memoria
+dei valori per 100 g vivono **tutti in `settings`**, che è una tabella chiave→valore già
+esistente. È la ragione per cui quella tabella è diventata il posto dove l'app impara: non
+costa una migrazione a chi la usa.
+
+#### ⛔ La coda dei giri, che NON si esegue da soli
+
+L'utente tiene la sua strada in `PROMPT-GIRO*.md` e la dà un giro alla volta. Fatti:
+**Giro 1** (protezione e rumore) · **Giro 2** (rinomina di una voce con alias automatico,
+fatta in anticipo) · **Giro 3** (gli attriti d'uso). Restano suoi, e **non vanno anticipati**:
+riallineamento periodico della dispensa · lista della spesa per reparto · memoria fra le
+settimane · le scadenze in un campo loro.
 
 ⚠️ **Quello che manca è il COLLAUDO**, ed è l'unica cosa che l'utente può fare e
 nessun altro. Due parti.

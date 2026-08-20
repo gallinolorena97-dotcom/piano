@@ -5013,6 +5013,14 @@ function avvisoScorteHtml(){
   const dove = (g) => (g.tipo === 'poco') ? 'poche'
     : ((g.simili || []).length || g.alt.length) ? 'nome' : 'compra';
 
+  /* ⚠️ «Te la indico io» resta su TUTTI i mancanti, anche in «Da comprare».
+     Raggruppando avevo finito per darlo al solo gruppo dei nomi, e quello è
+     esattamente il caso che il gruppo non sa riconoscere: «Patatine fatte in
+     friggitrice ad aria» finisce fra le cose da comprare proprio perché
+     l'app NON vede la somiglianza con «Patate da friggere». Toglierlo di lì
+     vorrebbe dire nasconderlo dove serve di più, e lasciare come unica
+     uscita la rinuncia. */
+
   const gruppi = { compra:[], nome:[], poche:[] };
   for (const g of guai) gruppi[dove(g)].push(g);
 
@@ -5063,7 +5071,7 @@ function avvisoScorteHtml(){
         <button class="btn-testo sost" data-sost="${esc(g.nome)}"
                 data-sost-serve="${esc(g.serve || '')}">${g.alt.length === 1
           ? `usa ${esc(g.alt[0].name)}` : `usa ${esc(g.alt[0].name)} o altro`}</button>` : ''}
-      ${dove(g) === 'nome' ? `
+      ${dove(g) !== 'poche' ? `
         <button class="btn-testo sost" data-scegli="${esc(g.nome)}">te la indico io</button>` : ''}
       ${inListaSpesa(g.nome) ? '' : `
         <button class="btn-testo" data-in-spesa="${esc(g.nome)}"
