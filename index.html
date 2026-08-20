@@ -145,6 +145,16 @@
    ============================================================ */
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
+
+/* ⚠️ `hidden` DEVE VINCERE SEMPRE, e questa riga vale più di quanto sembri.
+   L'attributo `hidden` nasconde mettendo display:none, ma è una regola
+   debolissima: qualunque nostro `display:flex` la batte. È già successo
+   quattro volte in questo file (menuVelo, menuPanel, banner, toast, ognuno
+   con la sua toppa), e il 20/08/2026 è successo di nuovo — la domanda
+   sull'unità stava dentro una `.form-row`, quindi restava visibile con le
+   virgolette vuote, «» di che cosa?, anche a campo vuoto.
+   Una regola sola, qui, invece di una toppa per ogni caso nuovo. */
+[hidden]{display:none !important}
 body{
   background:var(--bg);
   color:var(--ink);
@@ -313,12 +323,11 @@ body.nav-via nav.tabs{transform:translateY(100%)}
    toccare — quello che c'è sotto la tastiera non è un bersaglio. */
 body.tastiera nav.tabs{transform:translateY(100%);pointer-events:none}
 
-/* ⚠️ IL TOAST NON SPARISCE, SI SPOSTA. È lì che vive «Annulla»: farlo
-   sparire mentre la tastiera è aperta vorrebbe dire togliere il modo di
-   tornare indietro proprio a chi ha appena salvato qualcosa.
-   Sale di tutta l'altezza della tastiera (--tastiera, misurata a runtime)
-   e si appoggia sopra i tasti. */
-body.tastiera #toast{bottom:calc(var(--tastiera) + 12px)}
+/* ⚠️ Il toast NON ha una regola qui, e non è una dimenticanza: la sua
+   altezza la congela il JS all'apertura (vedi toast()), perché una volta
+   comparso non deve muoversi mentre lo leggi. Una regola CSS che lo
+   spostasse al cambio di tastiera rimetterebbe esattamente il movimento
+   che abbiamo tolto. */
 nav.tabs button{
   flex:1;min-height:52px;padding:6px 2px;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
@@ -351,7 +360,6 @@ section[hidden]{display:none}
      farebbero sparire la navigazione senza motivo. */
   body.nav-via nav.tabs,
   body.tastiera nav.tabs{transform:none;pointer-events:auto}
-  body.tastiera #toast{bottom:calc(88px + var(--safe-b))}
 }
 
 /* ============================================================
@@ -1331,7 +1339,16 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 }
 @keyframes sali{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 #toast[hidden]{display:none}
-#toast span{flex:1}
+/* ⚠️ DUE RIGHE, non di più: quattro coprivano mezza schermata proprio
+   mentre stavi guardando quello che avevi appena fatto. Il taglio qui è una
+   rete di sicurezza — la cura vera è scrivere messaggi corti: la versione
+   breve sta nel toast, il resto nell'avviso in cima al Piano, dov'è già. */
+#toast span{
+  flex:1;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+  overflow:hidden;line-height:1.35;
+}
+#toast{cursor:pointer}
 #toast button{color:var(--lavanda);font-weight:700;font-size:14.5px;padding:6px;min-height:40px}
 /* un errore si vede che è un errore, senza urlare */
 #toast.errore{background:var(--corallo-ink)}
@@ -1979,6 +1996,14 @@ let toastTimer = null, undoFn = null;
 /* ⚠️ Il quarto parametro è l'ETICHETTA del bottone, e torna sempre ad
    «Annulla» se non la si passa: un toast che si tenesse addosso la scritta
    del toast precedente prometterebbe la cosa sbagliata. */
+function chiudiToast(){
+  clearTimeout(toastTimer);
+  const t = $('#toast');
+  t.hidden = true;
+  t.style.bottom = '';      // la posizione si ricongela alla prossima apertura
+  undoFn = null;
+}
+
 function toast(text, onUndo, tipo, etichetta){
   clearTimeout(toastTimer);
   $('#toastText').textContent = text;
@@ -1987,10 +2012,26 @@ function toast(text, onUndo, tipo, etichetta){
   $('#toastAction').hidden = !onUndo;
   const t = $('#toast');
   t.className = tipo === 'errore' ? 'errore' : '';
+
+  /* ⚠️ LA POSIZIONE SI CONGELA QUI E NON SI MUOVE PIÙ.
+     Il toast è fisso, e con la tastiera aperta va tenuto sopra i tasti per
+     non finirci sotto — ma spostarlo MENTRE lo stai leggendo è peggio del
+     male: il testo scappa da sotto gli occhi. Quindi l'altezza si calcola
+     una volta sola, all'apertura, e si scrive nello stile della riga, che
+     vince su qualunque regola del foglio. Se la tastiera si apre o si
+     chiude dopo, il toast resta dov'è e sparisce fra pochi secondi.
+     ⚠️ Per questo NON esiste più una regola `body.tastiera #toast`: due
+     posti che decidono la stessa altezza si scollerebbero, e uno dei due
+     rimetterebbe il movimento che abbiamo appena tolto. */
+  const gap = document.body.classList.contains('tastiera')
+    ? parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tastiera')) || 0
+    : 0;
+  t.style.bottom = gap ? `${Math.round(gap) + 12}px` : 'calc(88px + var(--safe-b))';
+
   t.hidden = false;
-  // un errore resta più a lungo: va letto, non intravisto
-  toastTimer = setTimeout(() => { t.hidden = true; undoFn = null; },
-    tipo === 'errore' ? 14000 : 8000);
+  // ⚠️ Pochi secondi. Un errore resta il doppio: va letto, non intravisto —
+  // ma nemmeno un errore deve stare lì mentre provi a fare altro.
+  toastTimer = setTimeout(chiudiToast, tipo === 'errore' ? 8000 : 4000);
 }
 
 /**
@@ -1999,9 +2040,18 @@ function toast(text, onUndo, tipo, etichetta){
  */
 function esitoErrore(e){ toast(spiegaErrore(e), null, 'errore'); }
 $('#toastAction').onclick = async () => {
-  const f = undoFn; undoFn = null; $('#toast').hidden = true;
+  const f = undoFn;
+  chiudiToast();
   if (f) await f();
 };
+
+/* Un tocco lo manda via, senza aspettare i secondi.
+   ⚠️ Il bottone dell'annulla ha il suo gestore e non deve passare di qui:
+   toccarlo per annullare finirebbe per chiudere e basta. */
+$('#toast').addEventListener('click', ev => {
+  if (ev.target.closest('#toastAction')) return;
+  chiudiToast();
+});
 
 /* Traduce gli errori tecnici in italiano comprensibile. */
 /** Il filo si è rotto: NON è un errore dell'app né del database.
@@ -4173,9 +4223,11 @@ function cosaNonTorna(iso, quale){
   const primi = (miei.length ? miei : guai).slice(0, 2);
   const resto = guai.length - primi.length;
 
+  // ⚠️ Corto: due nomi e basta. Il resto sta nell'avviso in cima al Piano,
+  // che è anche il posto dove si può fare qualcosa — un toast di quattro
+  // righe copre mezza schermata proprio mentre guardi quello che hai salvato.
   const elenco = primi.map(g => `${g.nome} (${comeManca(g)})`).join(' e ');
-  return ` Attenzione: ${elenco}${resto ? `, e altre ${resto} cose` : ''}`
-       + ` — l’avviso in cima al Piano le ha tutte.`;
+  return ` Attenzione: ${elenco}${resto ? ` e altre ${resto}` : ''}. Vedi l’avviso in cima.`;
 }
 
 /**
@@ -4497,8 +4549,7 @@ $('#planBody').addEventListener('click', async (ev) => {
       try{
         await imparaAlias(scritto, voce);
         rifaiDoveContanoINomi();
-        toast(`Me lo ricordo: «${scritto}» e «${voce}» sono la stessa cosa. `
-            + `Il piano resta scritto com’era.`, async () => {
+        toast(`«${scritto}» e «${voce}»: la stessa cosa. Il piano non cambia.`, async () => {
           // ⚠️ Si rimette esattamente il testo di prima, non si toglie il
           // gruppo: se la risposta ne aveva uniti due, toglierlo lascerebbe
           // separato anche quello che era già appaiato da prima.
@@ -4528,8 +4579,7 @@ $('#planBody').addEventListener('click', async (ev) => {
       try{
         await segnaContornoLibero(nome);
         renderPlan();
-        toast(`«${nome}» non lo conto più fra le scorte. Resta scritto nel pasto. `
-            + `Si rimette dal menu, «Quello che ho insegnato all’app».`, async () => {
+        toast(`«${nome}»: non lo conto più. Resta scritto nel pasto.`, async () => {
           try{
             await scriviJson(CHIAVE_CONTORNI, prima ? JSON.parse(prima) : []);
             renderPlan();
@@ -5077,8 +5127,8 @@ async function avviaGenerazione(){
     try{
       await segnaRipristino(ambito, PS.titolo || 'Rigenerazione del piano');
     }catch(e){
-      toast('Non riesco a salvare il punto di ripristino, quindi non riscrivo niente: '
-          + 'quello che c’è nel calendario resta com’è. Riprova fra un momento.', null, 'errore');
+      toast('Non riesco a salvare il punto di ripristino: non riscrivo niente. Riprova.',
+            null, 'errore');
       return;
     }
   }
@@ -6030,8 +6080,7 @@ $('#invAdd').onclick = async () => {
     // ⚠️ Se l'app ha completato il numero lo dice: quello che si salva deve
     // essere quello che si è scritto, o si deve poter vedere che non lo è.
     if (qty !== qtaScritta){
-      toast(`Aggiunto: ${name} · ${qty}. Il numero l'ho completato io: `
-          + `«${qtaScritta}» da solo non diceva l'unità.`);
+      toast(`Aggiunto: ${name} · ${qty}. Il numero l'ho completato io.`);
       return;
     }
     // Un salvataggio che non si vede sembra non essere avvenuto: la riga di
@@ -7526,15 +7575,13 @@ async function salvaVoceDispensa(box, item){
       toast(aliasKo
         ? `Adesso si chiama «${nome}», ma non sono riuscito a collegare «${vecchio}»: `
           + `i pasti già scritti così potrebbero risultare mancanti.`
-        : `Adesso si chiama «${nome}». «${vecchio}» resta collegato, così quello che era `
-          + `già scritto continua a combaciare. Si toglie dal menu, «Quello che ho insegnato all’app».`);
+        : `Adesso si chiama «${nome}». «${vecchio}» resta collegato: il piano combacia.`);
       return;
     }
     // ⚠️ Se l'app ha completato il numero lo DICE: quello che si salva deve
     // essere quello che si è scritto, e se non lo è si deve poter vedere.
     if (qtaFinale !== qtaScritta){
-      toast(`Voce aggiornata. «${qtaScritta}» l'ho scritto «${qtaFinale}», `
-          + `come mi hai detto per questo nome.`);
+      toast(`Voce aggiornata: «${qtaScritta}» l'ho scritto «${qtaFinale}».`);
       return;
     }
     const scritti = campi.prot_100g != null || campi.kcal_100g != null;
