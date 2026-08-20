@@ -1071,6 +1071,18 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 }
 .avviso-scorte .gr-sotto{margin:3px 0 0;font-size:12.5px;color:var(--muted);line-height:1.4}
 .avviso-scorte .gr-altre{font-size:12.5px;color:var(--muted);list-style:none;margin-left:-4px}
+/* La guardia prima di una rinuncia che ha una conseguenza.
+   ⚠️ Fondo pieno e non un'altra riga di testo: qui si sta chiedendo di
+   fermarsi, e una riga in più fra tante si legge come tutte le altre.
+   ⚠️ «Lascia stare» è il bottone PIENO e «non seguirlo lo stesso» è quello
+   scarico: il primo tocco che capita dev'essere quello che non rompe niente. */
+.guardia{
+  margin:8px 0 8px 14px;padding:11px 13px;border-radius:var(--r-m);
+  background:var(--pesca-soft);border:1.5px solid var(--pesca);
+  font-size:13px;line-height:1.45;color:var(--pesca-ink);
+}
+.guardia p{margin:5px 0 0}
+.guardia .form-row{margin-top:9px}
 /* Il nome in evidenza, e sotto la conseguenza: si legge il nome, e se
    serve si scende di una riga per sapere che cosa si ferma. */
 .avviso-lista .btn-testo{flex-wrap:wrap;gap:0 8px;padding-top:3px;padding-bottom:3px}
@@ -4564,6 +4576,61 @@ const contorniLiberi = () => {
     se hai marcato «insalata», «Insalate» è la stessa cosa anche qui. */
 const contornoLibero = (nome) => contorniLiberi().some(n => stessoNome(n, nome));
 
+/**
+ * Quella cosa appartiene a una categoria che la griglia vuole un tot di
+ * volte a settimana? Se sì, smettere di seguirla ha una conseguenza che va
+ * detta prima, non scoperta dopo.
+ *
+ * ⚠️ Solo i MINIMI, non i massimi: rinunciare a essere avvisati su una cosa
+ * di cui bisogna mangiare almeno tot fa saltare un obiettivo. Su un massimo
+ * no — al più non ti dico che ne hai troppa, che è un guaio più piccolo e
+ * di segno opposto.
+ */
+function minimoDellaCategoria(nome){
+  const cat = categoriaProposta(nome);
+  if (!cat) return null;
+  const f = S.frequenze.find(x => x.categoria === cat);
+  return (f && f.min_sett != null) ? { categoria:cat, min:f.min_sett } : null;
+}
+
+/** L'avviso che si mette fra il tocco e la rinuncia. */
+function guardiaContorno(bottone, nome, rischio){
+  bottone.closest('.avviso-scorte')?.querySelectorAll('.guardia').forEach(x => x.remove());
+  bottone.insertAdjacentHTML('afterend', `
+    <div class="guardia">
+      <b>«${esc(nome)}» è ${esc(rischio.categoria)}, e la griglia ne chiede almeno
+      ${rischio.min} a settimana.</b>
+      <p>Da qui in poi non ti dirò più quando manca, <b>nemmeno per arrivare a quel
+        minimo</b>. Se il nome è solo scritto diverso, la risposta giusta è «te la indico
+        io» qui sopra.</p>
+      <div class="form-row">
+        <button class="btn small ghost" data-contorno-ok="${esc(nome)}"
+          style="flex:1">Non seguirlo più lo stesso</button>
+        <button class="btn small" data-contorno-no>Lascia stare</button>
+      </div>
+    </div>`);
+  bottone.nextElementSibling.scrollIntoView({ behavior:'smooth', block:'nearest' });
+}
+
+/** La rinuncia vera, una volta decisa. */
+function nonSeguirePiu(nome, bottone){
+  const prima = S.settings[CHIAVE_CONTORNI] || '';
+  if (bottone) bottone.disabled = true;
+  (async () => {
+    try{
+      await segnaContornoLibero(nome);
+      restaDovEri(renderPlan);
+      toast(`«${nome}»: non lo seguo più. Resta scritto nel pasto.`, async () => {
+        try{
+          await scriviJson(CHIAVE_CONTORNI, prima ? JSON.parse(prima) : []);
+          renderPlan();
+          toast('Torno a seguirlo.');
+        }catch(e){ esitoErrore(e); }
+      });
+    }catch(e){ if (bottone) bottone.disabled = false; esitoErrore(e); }
+  })();
+}
+
 async function segnaContornoLibero(nome){
   if (contornoLibero(nome)) return;
   await scriviJson(CHIAVE_CONTORNI, [...contorniLiberi(), String(nome).trim()]);
@@ -5347,21 +5414,22 @@ $('#planBody').addEventListener('click', async (ev) => {
   const contorno = ev.target.closest('[data-contorno]');
   if (contorno){
     const nome = contorno.dataset.contorno;
-    const prima = S.settings[CHIAVE_CONTORNI] || '';
-    contorno.disabled = true;
-    (async () => {
-      try{
-        await segnaContornoLibero(nome);
-        restaDovEri(renderPlan);
-        toast(`«${nome}»: non lo seguo più. Resta scritto nel pasto.`, async () => {
-          try{
-            await scriviJson(CHIAVE_CONTORNI, prima ? JSON.parse(prima) : []);
-            renderPlan();
-            toast('Torno a seguirlo.');
-          }catch(e){ esitoErrore(e); }
-        });
-      }catch(e){ contorno.disabled = false; esitoErrore(e); }
-    })();
+    /* ⚠️ LA GUARDIA. Questa porta è comoda — troppo: cinque rinunce di fila
+       in un colpo, e fra quelle polenta, farro e lenticchie, cioè cibo vero
+       e non sale e brodo. Smettere di seguire un legume vuol dire che
+       l'app non dirà più che manca **nemmeno per arrivare al minimo
+       settimanale**, e quel silenzio non si nota: si nota l'assenza di un
+       avviso, che è la cosa più difficile da vedere che esista. */
+    const rischio = minimoDellaCategoria(nome);
+    if (rischio){ guardiaContorno(contorno, nome, rischio); return; }
+    nonSeguirePiu(nome, contorno);
+    return;
+  }
+
+  const conferma = ev.target.closest('[data-contorno-ok]');
+  if (conferma){ nonSeguirePiu(conferma.dataset.contornoOk, conferma); return; }
+  if (ev.target.closest('[data-contorno-no]')){
+    ev.target.closest('.guardia')?.remove();
     return;
   }
 
@@ -7879,6 +7947,16 @@ $('#menuAliasBox').addEventListener('click', async (ev) => {
     const n = $('#contornoNuovo').value.trim();
     if (!n){ toast('Scrivi il nome da non contare.'); return; }
     if (contornoLibero(n)){ toast(`«${n}» non lo seguo già.`); return; }
+    /* ⚠️ La stessa guardia dell'avviso, perché la conseguenza è la stessa.
+       Qui però il nome l'hai scritto a mano, quindi basta dirlo una volta:
+       un secondo tocco sullo stesso bottone conferma. */
+    const rischio = minimoDellaCategoria(n);
+    if (rischio && piuC.dataset.avvisato !== n){
+      piuC.dataset.avvisato = n;
+      toast(`«${n}» è ${rischio.categoria}, e ne servono almeno ${rischio.min} a settimana: `
+          + `non ti dirò più quando manca. Tocca di nuovo per confermare.`);
+      return;
+    }
     const prima = S.settings[CHIAVE_CONTORNI] || '';
     piuC.disabled = true;
     try{
