@@ -1234,6 +1234,19 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 /* ⚠️ Pesca e non menta: «non basta» è l'unica cosa in questo pannello che
    chiede qualcosa a te. Il resto sono buone notizie e restano attenuate. */
 .ric-num.manca{color:var(--pesca-ink);font-weight:600;line-height:1.35}
+
+/* L'elenco della dispensa quando dici tu che cos'è una cosa.
+   ⚠️ Scorre invece di allungarsi: sessanta voci spingerebbero fuori
+   schermo l'avviso da cui sei partita, e il campo di ricerca con lui. */
+.scelta-lista{
+  display:flex;flex-direction:column;gap:6px;margin-top:9px;
+  max-height:250px;overflow-y:auto;
+}
+.scelta-lista .btn{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  text-align:left;min-height:44px;
+}
+.scelta-lista .btn span{color:var(--muted);font-weight:500;font-size:13px;flex:0 0 auto}
 .ric-riga .btn.small{margin-top:5px}
 
 /* I sostituti. ⚠️ Menta e non pesca: una sostituzione è il contrario di un
@@ -4094,6 +4107,71 @@ async function scordaAlias(indice){
 async function salvaAlias(gruppi){ await scriviJson(CHIAVE_ALIAS, gruppi); }
 
 /* ============================================================
+   «È QUESTA COSA QUI» — l'appaiamento scelto a mano (20/08/2026)
+
+   `nomiSimili()` è stretta apposta e tace su tutto quello che non è lo
+   stesso nome con qualcosa attaccato. Su «Patatine fatte in friggitrice ad
+   aria» non può arrivare a «Patate da friggere» — e non deve provarci:
+   indovinare lì vorrebbe dire scalare la dispensa sbagliata.
+
+   ⚠️ Ma allora la persona deve poterlo dire lei, e dal punto in cui il
+   problema si vede. Senza questa scelta l'unica uscita dall'avviso sarebbe
+   il «contorno libero», che è un'altra cosa: quello serve per le
+   preparazioni che davvero non hai. **Una rinuncia usata al posto di una
+   correzione insegna all'app una cosa falsa** — che quell'ingrediente non
+   si conta — e da lì in poi non lo segnala più nemmeno quando manca sul
+   serio.
+
+   Da qui in poi è un appaiamento come gli altri: vale ovunque, si vede e si
+   toglie dal menu.
+   ============================================================ */
+
+/** La dispensa messa in fila per questa scelta: prima quello che ha la
+    stessa categoria, poi il resto in ordine di nome. ⚠️ Non è una
+    classifica di merito — è solo il modo di far trovare prima la cosa
+    giusta: per «Patatine fatte in friggitrice ad aria» i carboidrati stanno
+    in cima, e «Patate da friggere» è lì. */
+function dispensaPerScelta(nome, filtro){
+  const cat = categoriaProposta(nome);
+  const f = senzaAccenti(filtro || '');
+  return S.inv
+    .filter(v => !stessoNome(v.name, nome))
+    .filter(v => !f || senzaAccenti(v.name).includes(f))
+    .map(v => ({ v, vicino: cat && v.categoria === cat ? 0 : 1 }))
+    .sort((a, b) => a.vicino - b.vicino || a.v.name.localeCompare(b.v.name, 'it'))
+    .map(x => x.v);
+}
+
+function apriScelta(nome, dentro, filtro){
+  dentro.querySelector('.sost-box')?.remove();
+  const lista = dispensaPerScelta(nome, filtro);
+  const cat = categoriaProposta(nome);
+
+  dentro.insertAdjacentHTML('beforeend', `
+    <div class="sost-box" data-scelta-per="${esc(nome)}">
+      <div class="q-label" style="margin-top:0">«${esc(nome)}» è…</div>
+      <p class="hint" style="margin-top:0">Scegli la voce di dispensa che è la stessa cosa.
+        Il piano resta scritto com'è: mi ricordo io che i due nomi vanno insieme, e da lì
+        in poi combaciano dappertutto.</p>
+      <input class="field" data-scelta-filtro placeholder="cerca in dispensa"
+             autocomplete="off" value="${esc(filtro || '')}">
+      <div class="scelta-lista">
+        ${lista.length ? lista.map(v => `<button class="btn small ghost" data-scelto="${esc(v.name)}"
+          >${esc(v.name)}<span>${esc(mostraQta(v.qty))}</span></button>`).join('')
+          : `<p class="hint" style="margin:0">Niente che si chiami così.</p>`}
+      </div>
+      ${cat ? `<p class="hint" style="margin:8px 0 0">In cima ci sono le voci di
+        «${esc(cat)}», che è la categoria che ho dedotto da questo nome.</p>` : ''}
+      <button class="btn-testo" data-scelta-no>lascia stare</button>
+    </div>`);
+  if (filtro !== undefined){
+    const c = dentro.querySelector('[data-scelta-filtro]');
+    c.focus();
+    c.setSelectionRange(c.value.length, c.value.length);
+  }
+}
+
+/* ============================================================
    I CONTORNI LIBERI — quello che il piano nomina e la dispensa no
 
    Nel campo ingrediente ogni tanto finisce della prosa: «Patatine fatte in
@@ -4507,6 +4585,16 @@ function avvisoScorteHtml(){
            contarlo più» è una rinuncia, e va proposta per ultima — se c'è
            una risposta vera, la rinuncia non deve nemmeno comparire. */
         const rinuncia = g.tipo === 'assente' && !alt.length;
+        /* ⚠️ «È QUESTA COSA QUI»: la scelta a mano, sempre disponibile.
+           La proposta automatica è stretta apposta e su «Patatine fatte in
+           friggitrice ad aria» non può indovinare «Patate da friggere» —
+           giusto così, non deve. Ma allora la persona dev'essere in grado di
+           dirlo lei, e da qui: senza questo bottone l'unica uscita sarebbe
+           il «contorno libero», che è un'altra cosa — quello serve per le
+           preparazioni che davvero non hai, non per i nomi scritti
+           diversamente. Una rinuncia usata al posto di una correzione
+           insegna all'app una cosa falsa. */
+        const scegli = g.tipo !== 'poco';
         return `<li>${g.primo
           ? `<button class="btn-testo" data-vai-mancante="${esc(g.primo.day)}"
                 data-vai-pasto="${esc(g.primo.pasto)}">${testo}</button>`
@@ -4518,7 +4606,8 @@ function avvisoScorteHtml(){
             ? `hai ${esc(alt[0].name)}: lo uso al suo posto?`
             // ⚠️ Il numero non informava («hai 8 cose simili»): non dice se
             // sono utili né quali sono. Il nome della più abbondante sì.
-            : `hai ${esc(alt[0].name)} e altro: ne uso uno?`}</button>` : ''}${rinuncia ? `
+            : `hai ${esc(alt[0].name)} e altro: ne uso uno?`}</button>` : ''}${scegli ? `
+          <button class="btn-testo sost" data-scegli="${esc(g.nome)}">è una cosa che ho: te la indico io</button>` : ''}${rinuncia ? `
           <button class="btn-testo" data-contorno="${esc(g.nome)}">è un contorno libero: non contarlo</button>` : ''}</li>`;
       }).join('')}
       ${guai.length > 6 ? `<li>e altre ${guai.length - 6}</li>` : ''}
@@ -4699,6 +4788,18 @@ function pianoCortoHtml(){
   </div>`;
 }
 
+/* Il filtro dell'elenco «è questa cosa qui»: si ridisegna a ogni lettera.
+   ⚠️ Ridisegnare il pannello riscrive anche il campo, quindi apriScelta()
+   rimette il fuoco e il cursore in fondo — senza, dopo la prima lettera la
+   tastiera si chiuderebbe e la seconda non si potrebbe scrivere. */
+$('#planBody').addEventListener('input', (ev) => {
+  const c = ev.target.closest('[data-scelta-filtro]');
+  if (!c) return;
+  const box = c.closest('[data-scelta-per]');
+  const dentro = box.parentElement;
+  apriScelta(box.dataset.sceltaPer, dentro, c.value);
+});
+
 /* ---------- i tocchi del Blocco 4 ---------- */
 $('#planBody').addEventListener('click', async (ev) => {
   const card = ev.target.closest('.day');
@@ -4787,6 +4888,42 @@ $('#planBody').addEventListener('click', async (ev) => {
           }catch(e){ esitoErrore(e); }
         });
       }catch(e){ contorno.disabled = false; esitoErrore(e); }
+    })();
+    return;
+  }
+
+  /* «È una cosa che ho: te la indico io» — l'elenco della dispensa.
+     ⚠️ Il filtro si ascolta a parte, più sotto: qui siamo nei tocchi. */
+  const scegli = ev.target.closest('[data-scegli]');
+  if (scegli){
+    apriScelta(scegli.dataset.scegli, scegli.closest('.avviso-scorte'));
+    return;
+  }
+  if (ev.target.closest('[data-scelta-no]')){
+    ev.target.closest('.sost-box')?.remove();
+    return;
+  }
+  const scelto = ev.target.closest('[data-scelto]');
+  if (scelto){
+    const box = scelto.closest('[data-scelta-per]');
+    const scritto = box.dataset.sceltaPer, voce = scelto.dataset.scelto;
+    const prima = S.settings[CHIAVE_ALIAS] || '';
+    box.querySelectorAll('button').forEach(b => b.disabled = true);
+    (async () => {
+      try{
+        await imparaAlias(scritto, voce);
+        rifaiDoveContanoINomi();
+        toast(`«${scritto}» e «${voce}»: la stessa cosa. Il piano non cambia.`, async () => {
+          try{
+            await salvaAlias(prima ? JSON.parse(prima) : []);
+            rifaiDoveContanoINomi();
+            toast('Appaiamento tolto.');
+          }catch(e){ esitoErrore(e); }
+        });
+      }catch(e){
+        box.querySelectorAll('button').forEach(b => b.disabled = false);
+        esitoErrore(e);
+      }
     })();
     return;
   }

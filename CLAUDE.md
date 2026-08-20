@@ -26,6 +26,32 @@ tabella. Nel dubbio, chiedi invece di dedurre.
 contiene il profilo di **Ciprian**, e lo slug `x` quello di **Lorena**. La persona è
 sempre e solo quella scritta nella colonna `nome`.
 
+## ⛔ COLLAUDARE COL BROWSER SUI DATI VERI (regola dell'utente, 20/08/2026)
+
+Con `claude-in-chrome` si può aprire l'app vera e premerne i bottoni: è il modo più
+onesto di verificare una correzione, e va usato. Ma **il database dietro quell'app è
+quello vero e non esiste una copia di prova**: la dispensa, il piano e la spesa sono le
+cose di casa, e sono in uso mentre lavori — l'utente sta spesso guardando l'app dal
+telefono nello stesso momento.
+
+Quindi, per ogni collaudo col browser:
+
+1. **O non si salva.** Aprire pannelli, leggere il DOM, scrivere nei campi e chiudere con
+   «Annulla» non tocca niente: è il modo normale di provare. ⚠️ Non premere mai i bottoni
+   che scrivono — «Salva questo pasto», «+ Aggiungi», «Usa questo», «Conferma», i tasti
+   che appaiano nomi o marcano contorni liberi — a meno che il collaudo sia esattamente
+   quello e non ci sia altro modo.
+2. **Oppure si ripristina subito e SI DICE COSA È STATO TOCCATO**, voce per voce e con i
+   valori di prima. Non «ho fatto qualche prova»: il nome della riga, il campo, il valore
+   vecchio e quello nuovo.
+3. **Le scritture volute** (una migrazione, un import) restano un'altra cosa: si chiedono
+   prima, si eseguono e si riportano — ma non si mescolano mai a un collaudo.
+
+⚠️ **E si verifica leggendo, non ricordando**: dire «non ho salvato niente» perché ci si
+ricorda di aver premuto Annulla non basta. Si rilegge la riga dal database e si confronta
+col valore di prima. Un `updated_at` recente non è una prova di colpa (l'utente sta usando
+l'app), ma va guardato e spiegato invece che ignorato.
+
 L'utente **non è programmatrice**. Spiega ogni passaggio in italiano semplice, senza gergo.
 Prima di ogni azione con effetti (push su GitHub, scritture sul database, cancellazioni):
 **riassumi cosa stai per fare e chiedi conferma esplicita**. Se qualcosa fallisce, dai la
