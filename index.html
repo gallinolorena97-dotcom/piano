@@ -3239,7 +3239,18 @@ function apriModificaPasto(iso, quale, dentro){
     }
     const scelto = ev.target.closest('[data-sost-riga]');
     if (scelto){
-      const riga = scelto.closest('.mano-riga');
+      /* ⚠️ IL BUG CHE TENEVA MUTO QUESTO TASTO. apriSostitutiInRiga() mette
+         il riquadro delle alternative con insertAdjacentHTML('afterend'),
+         cioè come FRATELLO della riga dell'ingrediente, non dentro. Qui
+         c'era `scelto.closest('.mano-riga')`, che cerca verso l'ALTO fra i
+         genitori: non trovava niente, tornava null, e applicaSostituto­InRiga
+         andava a vuoto in silenzio — toccavi un'alternativa e non succedeva
+         niente. La riga giusta è quella che sta appena sopra il riquadro. */
+      const riga = scelto.closest('.sost-mini')?.previousElementSibling;
+      if (!riga?.classList.contains('mano-riga')){
+        toast('Non ritrovo la riga di quell’ingrediente: chiudi e riapri il pasto.');
+        return;
+      }
       applicaSostitutoInRiga(riga, box, scelto.dataset.sostRiga);
       return;
     }
@@ -3399,7 +3410,11 @@ async function creaLaRicetta(box, iso, quale){
 
   zona.innerHTML = zonaRicettaHtml({ ricetta_id: idRicetta });
 
-  const manca = Array.isArray(dati.manca) ? dati.manca.filter(Boolean) : [];
+  // ⚠️ Anche qui i contorni liberi restano fuori dalla spesa: la lista arriva
+  // dal modello, che non ne sa niente. Quello che scrivi TU a mano nella
+  // spesa non viene filtrato — lì la richiesta è tua e comanda.
+  const manca = (Array.isArray(dati.manca) ? dati.manca.filter(Boolean) : [])
+    .filter(n => !contornoLibero(String(n?.nome ?? n ?? '')));
   // il giorno c'è: la lista della spesa può dire per quando serve
   if (manca.length) await aggiungiAllaSpesa(manca.map(n => ({ nome:n, giorno:iso })), true);
   toast(eraPiena
@@ -5328,11 +5343,17 @@ const sostPulite = (v) => (Array.isArray(v) ? v : [])
    anche QUANTO ne serve — e per quello questa funzione accetta già sia un
    nome scritto («Olio») sia un oggetto ({nome, qta}), così quel giorno non
    ci sarà da tornare qui. */
+/* ⚠️ I contorni liberi non finiscono nemmeno nella lista della spesa, ed è
+   la seconda metà della stessa promessa: se hai detto che di quella cosa non
+   vuoi più sentir parlare, ricomparire al supermercato sarebbe rimangiarsela
+   da un'altra porta. Il generatore continua a metterla fra i "manca" — lui
+   non sa niente dei contorni liberi — quindi il filtro va qui, dove la sua
+   lista diventa la tua. */
 const mancantiDaPasti = (pasti) => pasti.flatMap(m =>
   (m.manca || []).map(x => {
     const nome = String(x?.nome ?? x ?? '').trim();
     return { nome, giorno:m.day, qta: x?.qta || quantoManca(nome, pasti) };
-  }).filter(x => x.nome));
+  }).filter(x => x.nome && !contornoLibero(x.nome)));
 
 const mancantiTutti = () => mancantiDaPasti(PS.pasti);
 
@@ -6128,8 +6149,14 @@ async function ricordaNutrienti(nome, prot, kcal){
    ⚠️ Resta VUOTA finché qualcuno non sceglie. Un «altro» messo d'ufficio
    sarebbe una risposta inventata, e le frequenze ci conterebbero sopra.
    ============================================================ */
+/* ⚠️ «latticini» si è spaccato in DUE il 20/08/2026, e non è una finezza:
+   con una categoria sola l'app proponeva lo yogurt greco al posto del
+   provolone. Un formaggio è un piatto e la nutrizionista ne conta al
+   massimo uno a settimana; uno yogurt è una colazione e non conta niente.
+   Erano due cose diverse tenute insieme da un nome. */
 const CATEGORIE_CIBO = [
-  'pesce', 'carne bianca', 'carne rossa', 'salumi', 'uova', 'latticini',
+  'pesce', 'carne bianca', 'carne rossa', 'salumi', 'uova',
+  'formaggi', 'latticini freschi',
   'legumi', 'cereali e carboidrati', 'verdura', 'frutta',
   'frutta secca e semi', 'condimenti e grassi', 'dolci', 'altro',
 ];
@@ -6153,12 +6180,16 @@ const CATEGORIE_CIBO = [
    scegli tu vince. Per questo la lista vive in `settings` e non nel codice.
    ============================================================ */
 const CHIAVE_SOSTITUIBILI = 'categorie_sostituibili';
-const SOSTITUIBILI_DI_PARTENZA =
-  ['pesce', 'carne bianca', 'carne rossa', 'salumi', 'uova', 'latticini', 'legumi'];
+const SOSTITUIBILI_DI_PARTENZA = ['pesce', 'carne bianca', 'carne rossa', 'salumi',
+  'uova', 'formaggi', 'latticini freschi', 'legumi'];
 
 function categorieSostituibili(){
   const v = leggiJson(CHIAVE_SOSTITUIBILI, null);
-  return Array.isArray(v) ? v : SOSTITUIBILI_DI_PARTENZA;
+  if (!Array.isArray(v)) return SOSTITUIBILI_DI_PARTENZA;
+  // ⚠️ Chi aveva già salvato una scelta prima dello split ha dentro la parola
+  // «latticini», che adesso non è più il nome di niente: si legge come le due
+  // categorie che ne sono nate, invece di perdere la scelta in silenzio.
+  return v.includes('latticini') ? [...v, 'formaggi', 'latticini freschi'] : v;
 }
 
 const sostituibile = (cat) => !!cat && categorieSostituibili().includes(cat);
@@ -6183,11 +6214,13 @@ const DIZIONARIO_CATEGORIE = {
     'prosciutto cotto magro', 'bresaola', 'speck', 'mortadella', 'salame',
     'pancetta', 'guanciale', 'wurstel'],
   'uova': ['uova', 'albumi'],
-  'latticini': ['mozzarella', 'mozzarelle', 'scamorza', 'cheddar', 'provolone',
-    'stracchino', 'ricotta', 'ricottina', 'parmigiano', 'parmigiano grattugiato',
-    'grana', 'pecorino', 'philadelphia', 'formaggio spalmabile', 'yogurt greco',
-    'yogurt bianco', 'yogurt', 'kefir', 'skyr', 'latte', 'panna', 'burro',
-    'mascarpone', 'feta', 'gorgonzola', 'brie', 'fontina', 'emmental'],
+  'formaggi': ['mozzarella', 'mozzarelle', 'scamorza', 'scamorza affumicata',
+    'cheddar', 'provolone', 'stracchino', 'ricotta', 'ricottina', 'parmigiano',
+    'parmigiano grattugiato', 'grana', 'pecorino', 'philadelphia',
+    'formaggio spalmabile', 'mascarpone', 'feta', 'gorgonzola', 'brie',
+    'fontina', 'emmental'],
+  'latticini freschi': ['yogurt greco', 'yogurt bianco', 'yogurt', 'kefir',
+    'skyr', 'latte'],
   'legumi': ['ceci', 'ceci cotti', 'fagioli', 'fagioli neri', 'lenticchie',
     'piselli', 'fave', 'soia', 'edamame', 'hummus'],
   'cereali e carboidrati': ['pasta', 'pastina', 'riso', 'riso roma', 'riso carnaroli',
@@ -6217,7 +6250,12 @@ const DIZIONARIO_CATEGORIE = {
   'frutta secca e semi': ['noci', 'mandorle', 'nocciole', 'anacardi', 'pistacchi',
     'arachidi', 'burro d’arachidi', "burro d'arachidi", 'semi di chia', 'semi di lino',
     'semi di zucca', 'semi di girasole', 'uvetta', 'datteri'],
-  'condimenti e grassi': ['olio', 'olio extravergine di oliva', 'aceto', 'maionese',
+  // ⚠️ Burro e panna stanno QUI e non fra i latticini freschi, ed è una
+  // scelta dell'utente del 20/08/2026: sono grasso di cottura. Con «latticini
+  // freschi» acceso fra i sostituibili, tenerli di là voleva dire proporre
+  // il kefir al posto del burro.
+  'condimenti e grassi': ['olio', 'olio extravergine di oliva', 'burro', 'panna',
+    'aceto', 'maionese',
     'ketchup', 'senape', 'salsa di soia', 'salsa tartara', 'pesto', 'pesto calabrese',
     'passata', 'passata di pomodoro', 'passata pomodori', 'polpa di pomodoro',
     'pelati', 'olive nere', 'olive', 'capperi', 'brodo granulare', 'dado',

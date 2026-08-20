@@ -1858,6 +1858,25 @@ riuscito a collegare «X»: i pasti già scritti così potrebbero risultare manc
 l'unica volta in cui un'operazione accessoria che fallisce va gridata: qui il danno non è
 una comodità mancata, è il piano che si scolla dalla dispensa.
 
+#### ⚠️ LE FREQUENZE NON SONO MAI STATE PROVATE (verificato il 20/08/2026)
+
+Il Blocco 3 della v8 è **scritto e online, ma non ha mai girato nemmeno una volta.**
+Verificato interrogando il database: `plan_meals.categoria_principale` è **vuoto su tutte
+le righe**, senza eccezioni. Quel campo lo scrive solo il generatore, quindi vuol dire che
+**dopo il deploy delle frequenze non è mai stata generata una settimana**: la settimana
+22-28 è entrata da un import SQL, che non passa dal modello.
+
+Di conseguenza **non è mai stato provato niente** di tutto questo:
+
+- che il modello scriva `categoria_principale` prendendola dall'elenco esatto;
+- che `verificaFrequenze()` conti giusto sulle righe vere;
+- i minimi, i massimi, la priorità pesce → legumi → carne bianca → uova;
+- la rotazione dei formati (§4 quater) e `rotazione_max` sui cereali;
+- il riquadro del riepilogo che dichiara i minimi scoperti.
+
+⚠️ **Non darlo per funzionante e non scriverlo come fatto.** La prima settimana generata
+davvero è anche il primo collaudo di tutto il blocco: conviene guardarla riga per riga.
+
 #### Il punto di ripristino (20/08/2026)
 
 ⚠️ **Nessun file SQL**: sta in `settings`, chiave **`piano_ripristino`**.
@@ -1882,11 +1901,58 @@ nulla. Se si cancellasse solo dove si riscrive, un pasto inventato sopravvivereb
 ripristino. I pasti su «Lascia» restano **fuori** dall'ambito: nessuno li tocca, e metterli
 dentro vorrebbe dire cancellarli al ripristino.
 
-⚠️ **È UNO SOLO**, e la generazione dopo lo sostituisce: una pila vorrebbe dire scegliere
-fra dieci date, cioè un lavoro nuovo per chi guarda. **Ma è reversibile**: `tornaComEra()`
-fotografa com'è *adesso* prima di rimettere, e la mette al posto del punto vecchio — così
-il tasto si può sempre disfare e nessuno resta bloccato dalla parte sbagliata.
-⚠️ `updated_at` non si rimette indietro: la riga è stata toccata adesso.
+⚠️ **SE NE TENGONO TRE** (`MAX_RIPRISTINI`), ed è una scelta motivata. Uno solo non basta:
+il guaio non si vede quasi mai subito — si rigenera giovedì, poi venerdì, e ci si accorge
+il sabato che è stato giovedì a mangiarsi la settimana scritta a mano; col punto singolo la
+seconda rigenerazione avrebbe già cancellato la fotografia che serviva. Dieci sarebbero
+peggio di tre: ogni punto è una copia intera dei pasti, e soprattutto **scegliere fra dieci
+date è un lavoro nuovo per chi guarda**, proprio nel momento in cui si ha fretta. Tre
+coprono le operazioni di una stessa sessione, che è quando gli errori si notano.
+⚠️ C'è anche un tetto di **peso** (`MAX_PESO_RIPRISTINI`): se la pila cresce troppo cadono
+i **più vecchi**, mai i più recenti. E `puntiRipristino()` accetta anche la forma vecchia a
+punto singolo, così chi l'aveva già salvata non la perde.
+
+⚠️ **È reversibile**: `tornaComEra(i)` fotografa com'è *adesso* prima di rimettere, e la
+mette **in cima** alla pila — così il tasto si può sempre disfare e nessuno resta bloccato
+dalla parte sbagliata. ⚠️ `updated_at` non si rimette indietro: la riga è stata toccata
+adesso.
+
+⚠️ **Vale anche per «Sostituisci e salva»** (`sostituisciIngrediente()`), che riscrive il
+piano quanto una rigenerazione. Lì però, se il punto non riesce a salvarsi, **il cambio si
+fa lo stesso**: l'annulla immediato del toast c'è comunque, e il danno possibile è un
+ingrediente in due o tre pasti, non la settimana intera. È la differenza fra le due, ed è
+voluta.
+
+#### La conferma che NOMINA i pasti scritti a mano (20/08/2026)
+
+Prima di aprire la passata, se in quei giorni c'è anche **un solo** pasto `a_mano`, si
+mette in mezzo una schermata (`PS.fase = 'conferma'`, `vistaConferma()`) che li elenca:
+giorno, pasto e **nome del piatto**.
+
+⚠️ **Non è un «sei sicura?»**: un avviso che chiede solo conferma si impara a scacciare.
+«3 pasti» non fa riconoscere la settimana costruita a mano, «sabato 22 · pranzo — Pane,
+prosciutto crudo e mozzarella» sì.
+
+⚠️ **E dice la verità intera, non un pericolo gonfiato**: quei pasti partono su «Lascia» e
+**non vengono riscritti**, a meno che non sia una persona a toccarli nella schermata dopo.
+Spaventare per una cosa che non succede è lo stesso difetto dell'ambra usata a sproposito.
+
+⚠️ Sta in `apriPassata()` e **non nei singoli tasti**: gli ingressi sono tre («Rigenera
+da…», ↻ sul giorno, «Allunga il piano») e una regola scritta tre volte si scolla al primo
+cambiamento.
+
+#### Il backup sa quanto è vecchio (20/08/2026)
+
+Sotto il tasto del backup, `avvisoBackup()` scrive: «l'ultimo backup è del 18/08, e da
+allora il piano è stato riscritto 2 volte: quel file non è più aggiornato». Il conto sono
+i punti di ripristino più recenti dell'ultimo scaricamento.
+
+⚠️ **Un backup è utile solo se si sa quanto è vecchio.** Un file scaricato prima di due
+rigenerazioni racconta un calendario che non esiste più, e chi lo tiene da parte crede di
+essere al sicuro: è la stessa bugia di un numero che sembra più completo di quello che è.
+
+⚠️ **Sta in `localStorage` e non in `settings`**: è un fatto di QUESTO telefono. Il file è
+nella cartella Download di chi l'ha scaricato, e l'altro telefono non ce l'ha.
 
 **E il tasto dice quanto pesa premerlo** (`pesoRigenerazione()`): «riscrive 5 giorni
 (9 pasti) · 2 pasti scritti da te, che lascio stare», dentro il tasto e non accanto — la
@@ -1914,9 +1980,56 @@ menu → «Quello che ho insegnato all'app»). ⚠️ **Non è una preferenza es
 l'ingrediente è la **fonte proteica** scambiarlo è ragionevole — merluzzo o nasello, la
 cena è quella; dove l'ingrediente **È il piatto** — cereali, verdura, frutta — scambiarlo
 non è una sostituzione, è un altro piatto, e quello si decide dalla matita.
-Accesi di partenza: pesce · carne bianca · carne rossa · salumi · uova · latticini ·
-legumi. ⚠️ I **salumi** stanno fra gli accesi (cotto e crudo si scambiano davvero), la
-**frutta secca** fra gli spenti (lì è una guarnizione, e cambiarla cambia il piatto).
+Accesi di partenza: pesce · carne bianca · carne rossa · salumi · uova · formaggi ·
+latticini freschi · legumi. ⚠️ I **salumi** stanno fra gli accesi (cotto e crudo si
+scambiano davvero), la **frutta secca** fra gli spenti (lì è una guarnizione, e cambiarla
+cambia il piatto).
+
+#### «latticini» si è spaccato in due (20/08/2026) — ⚠️ RICHIEDE IL DEPLOY
+
+Con una categoria sola l'app proponeva **lo yogurt greco al posto del provolone**. Un
+formaggio è un piatto e ne conta al massimo uno a settimana; uno yogurt è una colazione e
+non conta niente. Erano due cose diverse tenute insieme da un nome — e la vecchia riga
+delle frequenze lo diceva già **in una nota** («solo come PIATTO: yogurt, kefir e latte
+non contano»), cioè con le parole invece che con lo schema.
+
+- **formaggi** (il tetto di 1 a settimana resta qui): Mozzarella · Scamorza affumicata ·
+  Stracchino · Ricottina · Parmigiano grattugiato · Cheddar 250)
+- **latticini freschi** (nessun vincolo): Kefir · Yogurt greco
+
+⚠️ **Burro e panna non stanno in nessuna delle due: sono «condimenti e grassi».** Deciso
+dall'utente il 20/08/2026, e il motivo è preciso: sono grasso di cottura, e con «latticini
+freschi» acceso fra i sostituibili tenerli di là voleva dire **proporre il kefir al posto
+del burro**.
+
+⚠️ **La scrittura sul database è già stata fatta** il 20/08 dall'app (8 voci di dispensa,
+la riga delle frequenze rinominata e una nuova). `split-latticini.sql` la documenta ed è
+rieseguibile senza danni, ma **non serve eseguirlo**.
+
+⚠️ **Serve invece il deploy**: l'elenco delle categorie è scritto anche nel prompt della
+Edge Function (`categoria_principale`), e una parola fuori elenco non viene contata da
+nessuna parte.
+
+⚠️ `categorieSostituibili()` traduce una vecchia scelta salvata: se in `settings` c'è
+ancora la parola `latticini`, si legge come le due categorie che ne sono nate — perdere in
+silenzio una scelta già fatta sarebbe peggio che chiederla di nuovo.
+
+#### ⚠️ Il secondo bug della sostituzione: il pannello non rispondeva (20/08/2026)
+
+Nel pannello del pasto, toccare un'alternativa **non faceva niente**, e non era lo stesso
+bug del salvataggio corretto poche ore prima: sono due punti diversi della stessa funzione
+mai riuscita.
+
+`apriSostitutiInRiga()` inserisce il riquadro delle alternative con
+`insertAdjacentHTML('afterend')`, cioè come **fratello** della riga dell'ingrediente. Il
+gestore però faceva `scelto.closest('.mano-riga')`, e `closest()` guarda **verso l'alto**
+fra i genitori: non trovava niente, tornava `null`, e `applicaSostitutoInRiga()` andava a
+vuoto in silenzio. Ora si prende `previousElementSibling` del riquadro, e se per qualunque
+motivo non è la riga giusta **lo si dice** invece di non fare niente.
+
+⚠️ **La regola che ne esce**: `closest()` sale, non scende e non guarda di fianco. Ogni
+volta che un pannello viene inserito *accanto* a qualcosa, il legame fra i due va tenuto
+esplicito — e un gesto che non produce nulla non deve mai finire in silenzio.
 
 #### ⚠️ Il bug che teneva rotta la sostituzione da sempre (20/08/2026)
 
@@ -1945,6 +2058,13 @@ se esiste una risposta vera, la rinuncia non deve nemmeno comparire.
 
 ⚠️ Il controllo sta **in cima al ciclo** di `scorteMancanti()`, prima ancora della somma
 delle quantità: contare a metà sarebbe peggio che non contare.
+
+⚠️ **E spariscono anche dalla LISTA DELLA SPESA**, che è la seconda metà della stessa
+promessa: se hai detto che di quella cosa non vuoi più sentir parlare, ricomparire al
+supermercato sarebbe rimangiarsela da un'altra porta. Il filtro sta in `mancantiDaPasti()`
+e nei `manca` di «Crea la ricetta» — cioè **dove la lista del modello diventa la tua**.
+⚠️ Quello che scrivi **tu a mano** nella spesa non viene filtrato: lì la richiesta è tua e
+comanda. La regola è: si filtra l'automatico, mai un gesto esplicito.
 
 Si rimettono dal menu, e se ne possono aggiungere a mano — serve per i nomi che l'avviso
 non mostra mai (per esempio quelli che `forseInCasa()` zittisce già).
@@ -2042,6 +2162,7 @@ riepilogo → conferma → file SQL di `upsert` in `plan_meals`, una riga per pa
 | `tabelle-frequenze-v8.sql` | `frequenze_categorie` + `plan_meals.categoria_principale`: la griglia della nutrizionista. ✅ eseguito (verificato il 20/08) |
 | `tabelle-categorie-v8.sql` | `inventory_items.categoria`: che COSA è un alimento, più la migrazione delle 59 voci. ✅ eseguito (verificato il 20/08) |
 | `tabelle-blocco6.sql` | procedimento e sostituzioni sui pasti, procedimento sulle ricette, `plan_jobs.svuota_frigo`. ✅ eseguito |
+| `split-latticini.sql` | «latticini» → *formaggi* + *latticini freschi*: 8 voci di dispensa e la griglia. ✅ **già applicato dall'app il 20/08**, sta nel repo come storia — non rieseguirlo |
 | `import-settimana-22-28.sql` | i 14 pasti del 22-28 agosto, **prima versione (18/08)**. ✅ eseguito, poi superato |
 | `import-spesa-22-28.sql` | lo spesone di quella prima versione. ✅ eseguito, poi superato |
 | `import-settimana-22-28-v2.sql` | ⚠️ **la settimana che vale**, rifatta il 19/08. Sostituisce le 14 righe del 22-28 |

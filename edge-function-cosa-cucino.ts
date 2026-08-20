@@ -853,8 +853,11 @@ Non inventare mai un ingrediente che non c'è.
   pesce, legumi, formaggio, maiale). Serve alla regola della varietà.
 - "categoria_principale": la CATEGORIA di cui il pasto è fatto, presa ESATTAMENTE da
   questo elenco e da nessun altro — pesce · carne bianca · carne rossa · salumi · uova ·
-  latticini · legumi · cereali e carboidrati · verdura · frutta · frutta secca e semi ·
-  condimenti e grassi · dolci · altro.
+  formaggi · latticini freschi · legumi · cereali e carboidrati · verdura · frutta ·
+  frutta secca e semi · condimenti e grassi · dolci · altro.
+  ⚠️ "formaggi" e "latticini freschi" sono due categorie DIVERSE: i formaggi sono un
+  piatto e hanno un tetto settimanale, yogurt kefir e latte no. Burro e panna non
+  stanno né di qua né di là: sono "condimenti e grassi".
   ⚠️ Non è "proteina_principale" scritta diversa: quella dice l'alimento («pollo»),
   questa dice la categoria («carne bianca»). È il campo con cui si contano le
   frequenze, e una parola fuori elenco non viene contata da nessuna parte.
