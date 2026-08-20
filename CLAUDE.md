@@ -594,7 +594,7 @@ chiedere due volte la stessa cosa a chi ha già risposto.
 `prova-piano-v5.sql` resta nella cartella per eventuali collaudi futuri.
 
 ✅ **Il deploy della Edge Function è in pari**: `edge-function-cosa-cucino.ts` è stato
-reincollato su Supabase (Edge Functions → cosa-cucino → Deploy) **il 18/08/2026**, e la
+reincollato su Supabase (Edge Functions → cosa-cucino → Deploy) **il 20/08/2026**, e la
 versione online contiene tutto quello che segue. ⚠️ Vale però la regola: **ogni volta
 che si tocca il `.ts` serve un deploy a mano dell'utente**, quindi le modifiche alla
 function si raggruppano invece di spargerle.
@@ -602,7 +602,8 @@ La storia dei deploy, perché si capisca cosa c'è dentro — la seconda volta i
 per la correzione di `max_tokens`; **la terza il 16/08**, per il piatto unico nei pasti
 condivisi, per i nomi degli ingredienti copiati dalla dispensa e per il **battito** che
 tiene caldo il collegamento; **la quarta il 18/08**, per il terzo mestiere `modo:'ricetta'`
-che completa un piatto scritto a mano.
+che completa un piatto scritto a mano; **la quinta il 20/08**, per le due categorie nuove
+dello split (`formaggi` e `latticini freschi`) nell'elenco di `categoria_principale`.
 Collaudo del Blocco 2: `COLLAUDO-V5-BLOCCO2.md`.
 
 **Blocco 2 collaudato su giorni veri il 13/08** (settimana 16-22/08): la **coerenza di
@@ -941,27 +942,25 @@ col campo «che voglia hai?».
 - **Icona: la B, il barattolo.** Definitiva. È già nel repo, non va rigenerata.
 - **Stile: la passata ricca è approvata** nella versione attualmente online.
 
-#### ▶️ PROSSIMO PASSO — due passaggi su Supabase, poi collaudare
+#### ▶️ PROSSIMO PASSO
 
-**Aggiornato il 19/08/2026.**
+**Aggiornato il 20/08/2026.**
 
-⚠️ **PASSAGGI IN SOSPESO SU SUPABASE.** Verificati uno per uno interrogando il database
-il 19/08 (il trucco del `select=<colonna>&limit=0` spiegato più sopra):
-`tabelle-nutrienti.sql` e `tabelle-blocco6.sql` **risultano già eseguiti**.
+✅ **IL DEPLOY DELLA FUNCTION È IN PARI.** Fatto dall'utente il **20/08/2026**, subito dopo
+il push della barra in basso. Online c'è tutto quello arretrato dal 18/08 (menu, costi,
+valori per 100 g) **più** le due categorie nuove dello split, `formaggi` e
+`latticini freschi`, nell'elenco da cui il modello prende `categoria_principale`.
+⚠️ Vale sempre la regola: ogni volta che si tocca il `.ts` serve un deploy a mano
+dell'utente, quindi le modifiche alla function **si raggruppano** e si dichiarano.
 
-1. **Su Supabase → SQL Editor**, in quest'ordine:
-   `tabelle-costi.sql` · `spesa-22-28-v2.sql` · `import-settimana-22-28-v2.sql`.
-   Gli ultimi due sono la settimana 22-28 rifatta il 19/08 e vanno **al posto** dei due
-   file del 18/08, che erano già stati eseguiti.
-2. **Su Supabase → Edge Functions → cosa-cucino → Deploy**: reincollare
-   `edge-function-cosa-cucino.ts` (Verify JWT resta OFF). ⚠️ **Non serve per la
-   settimana 22-28**: quell'import non passa dalla function. Resta in sospeso dal push
-   del 18/08 (menu, costi e valori per 100 g).
+⚠️ **RESTA UN SOLO FILE SQL**: `tabelle-costi.sql`, e non è verificabile da qui —
+`generator_usage` non ha policy, quindi è invisibile alla chiave publishable e il trucco
+del `select=<colonna>&limit=0` non funziona. Finché non è eseguito «Quanto sto spendendo»
+resta a zero; il resto dell'app non se ne accorge.
 
-Finché non sono fatti l'app non si rompe — le colonne nuove si mandano solo quando
-hanno un valore, e dove serve la scrittura riprova senza — ma «Quanto sto spendendo»
-resta a zero, i valori per 100 g non si salvano, e procedimento, sostituzioni e
-svuota-frigo non compaiono.
+Tutti gli altri risultano eseguiti, verificati uno per uno interrogando il database
+(`tabelle-nutrienti` · `tabelle-blocco6` · `tabelle-kcal-lorena` · `tabelle-frequenze-v8` ·
+`tabelle-categorie-v8`), e lo split dei latticini è stato scritto direttamente dall'app.
 
 ⚠️ **Quello che manca è il COLLAUDO**, ed è l'unica cosa che l'utente può fare e
 nessun altro. Due parti.
@@ -2031,6 +2030,37 @@ sbaglia**: `di` è una parola di servizio e viene scartata prima di contare, qui
 confronto quei due nomi sono identici. La fusione delle due righe resta lavoro del Giro 2,
 ma è pulizia di dati, non una regola rotta.
 
+#### 📌 DUE RIGHE PER LA STESSA COSA: l'app ne legge UNA SOLA (trovato il 20/08/2026)
+
+Domanda dell'utente, verificata nel codice. In dispensa ci sono «Fesa di tacchino · 1 kg» e
+«Fesa tacchino · 100 g»: per `stessoNome()` sono **lo stesso nome**, ma restano **due
+righe**. E `cercaInDispensa()` fa `S.inv.find(...)`: **torna la prima e basta.**
+
+⚠️ **Non somma, e non lo dice.** Conseguenze, tutte reali:
+
+- **il controllo scorte sotto-conta**: se il piano chiede 450 g e le due righe fossero
+  «400 g» e «100 g», l'app leggerebbe solo 400 e direbbe *«servono 450, ne hai 400»* mentre
+  in frigo ce ne sono 500. ⚠️ Nel caso vero di oggi non dice nemmeno quello: la prima riga è
+  in `kg` e il fabbisogno in `g`, unità diverse, quindi la prudenza fa **tacere l'avviso** —
+  che è meno dannoso ma altrettanto cieco;
+- **lo scalo di «Ho cucinato questo» tocca una riga sola** (`righeDaProposta()` →
+  `cercaInDispensa()` → `calcolaRiga()`): scala il chilo e lascia i 100 g **fermi per
+  sempre**. Le due righe restano scollate, ed è la parola giusta;
+- **i valori per 100 g** (`ricordoDi()`) si leggono dalla prima riga, quindi scriverli
+  sull'altra non serve a niente;
+- ⚠️ e **quale sia «la prima» dipende dall'alfabeto**: `S.inv` è ordinato per nome, quindi
+  oggi vince «Fesa **di** tacchino» perché *d* viene prima di *t*. Rinominando una voce il
+  vincitore può cambiare **senza che niente lo segnali**. Una regola incidentale è peggio di
+  una regola sbagliata: quella almeno è prevedibile.
+
+⚠️ **Il rimedio NON è sommare dappertutto.** Per *leggere* («ne ho abbastanza?») sommare è
+giusto. Per *scalare* no: quale confezione apri non lo può sapere l'app, ed è esattamente il
+caso in cui la regola di casa dice di non indovinare — semmai si sceglie una riga e **si
+dichiara quale**, o si chiede.
+
+Da fare col **Giro 2**, insieme alla rinomina e alla fusione: lì la fusione delle due righe
+è la cura, questo è il motivo per cui serve.
+
 #### Un numero da solo: si chiede una volta (20/08/2026)
 
 ⚠️ **Nessun file SQL**: `settings`, chiave **`unita_note`**.
@@ -2061,7 +2091,7 @@ ripetersi in silenzio per sempre.
 ⚠️ **Se l'app completa il numero lo DICE**, in tutti e due i moduli: quello che si salva
 dev'essere quello che si è scritto, o si deve poter vedere che non lo è.
 
-#### «latticini» si è spaccato in due (20/08/2026) — ⚠️ RICHIEDE IL DEPLOY
+#### «latticini» si è spaccato in due (20/08/2026) — ✅ deploy fatto
 
 Con una categoria sola l'app proponeva **lo yogurt greco al posto del provolone**. Un
 formaggio è un piatto e ne conta al massimo uno a settimana; uno yogurt è una colazione e
@@ -2082,7 +2112,7 @@ del burro**.
 la riga delle frequenze rinominata e una nuova). `split-latticini.sql` la documenta ed è
 rieseguibile senza danni, ma **non serve eseguirlo**.
 
-⚠️ **Serve invece il deploy**: l'elenco delle categorie è scritto anche nel prompt della
+✅ **Il deploy è stato fatto il 20/08.** Serviva perché l’elenco delle categorie è scritto anche nel prompt della
 Edge Function (`categoria_principale`), e una parola fuori elenco non viene contata da
 nessuna parte.
 
