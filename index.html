@@ -1190,6 +1190,14 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 }
 .alias-riga .alias-nomi{flex:1;font-weight:600;font-size:14px;line-height:1.35}
 
+/* Un punto di ripristino: quando, prima di cosa, e che cosa rimette. Le tre
+   righe stanno una sotto l'altra perché si leggono in quest'ordine — la
+   data dice se è quello giusto, il resto conferma. */
+.rip-punto{padding:10px 0;border-top:1px solid var(--linea)}
+.rip-punto .rip-quando{font-weight:700;font-size:14px}
+.rip-punto .rip-cosa{font-size:13px;color:var(--muted);line-height:1.4}
+.rip-punto .btn{margin-top:8px}
+
 /* La seconda riga di un tasto: quanto pesa premerlo. Più piccola e più
    leggera del nome del tasto, ma DENTRO il tasto — messa accanto, la si
    legge dopo aver già premuto. */
@@ -1630,6 +1638,10 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
   </div>
   <p class="hint">Un file con dispensa, ricette, piano, diario e spesa.
     Da tenere da parte, non da incollare.</p>
+  <!-- ⚠️ Quanto è vecchio quel file: un backup scaricato prima di due
+       rigenerazioni racconta un calendario che non esiste più. Si riempie
+       da avvisoBackup(), che gira all'apertura del menu. -->
+  <p class="hint" id="backupNota"></p>
 </div>
 
 <div id="banner" hidden></div>
@@ -4554,8 +4566,9 @@ $('#planBody').addEventListener('click', async (ev) => {
    ============================================================ */
 const PS = {
   aperto:false,
-  fase:'passata',        // 'passata' · 'generazione' · 'riepilogo'
+  fase:'passata',        // 'conferma' · 'passata' · 'generazione' · 'riepilogo'
   dal:null,
+  aMano:[],              // i pasti scritti a mano che questa passata incontra
   quanti:7,              // quanti giorni copre questa passata
   daPiano:false,         // sto rigenerando qualcosa che esiste già
   titolo:null,           // che cosa c'è scritto in cima, se non la settimana
@@ -4663,10 +4676,34 @@ function apriPassata(opz = {}){
   PS.pasti = []; PS.resta = ''; PS.errore = null; PS.stato = '';
   PS.salvati = new Set(); PS.attesa = 0;
   PS.blocco = 0; PS.blocchiTot = 1;
+
+  /* ⚠️ SE IN MEZZO C'È ANCHE UN SOLO PASTO SCRITTO DA TE, PRIMA SI CHIEDE E
+     SI DICONO I NOMI. Il tasto dice «Rigenera da dopodomani»: chi lo tocca
+     non ha davanti agli occhi che dopodomani è il 22, cioè la settimana
+     costruita a mano pezzo per pezzo. Un numero — «3 pasti» — non basta a
+     farla riconoscere; il nome del piatto sì.
+     Sta in apriPassata() e non nei singoli tasti perché gli ingressi sono
+     tre («Rigenera da…», ↻ sul giorno, «Allunga il piano») e una regola
+     scritta tre volte si scolla al primo cambiamento. */
+  PS.aMano = pastiAManoNellaPassata();
+  PS.fase = PS.aMano.length ? 'conferma' : 'passata';
+
   $('#planBody').hidden = true;
   $('#pnWizard').hidden = false;
   renderWizard();
   window.scrollTo(0, 0);
+}
+
+/** I pasti scritti a mano che finiscono dentro questa passata, con nome e
+    giorno: servono a poterli NOMINARE, non solo a contarli. */
+function pastiAManoNellaPassata(){
+  const dentro = [];
+  for (const g of PS.giorni)
+    for (const q of PS_PASTI){
+      const r = pastiDi(g.day).find(x => x.pasto === q);
+      if (r?.a_mano) dentro.push(r);
+    }
+  return dentro;
 }
 
 function chiudiPassata(giaRiletto){
@@ -4687,9 +4724,46 @@ function chiudiPassata(giaRiletto){
 
 function renderWizard(){
   const box = $('#pnWizard');
+  if (PS.fase === 'conferma')    box.innerHTML = vistaConferma();
   if (PS.fase === 'passata')     box.innerHTML = vistaPassata();
   if (PS.fase === 'generazione') box.innerHTML = vistaGenerazione();
   if (PS.fase === 'riepilogo')   box.innerHTML = vistaRiepilogo();
+}
+
+/**
+ * La schermata che si mette fra il tasto e la rigenerazione, quando in
+ * mezzo ci sono pasti scritti a mano.
+ *
+ * ⚠️ NON È UN «SEI SICURA?». Un avviso che chiede solo conferma si impara a
+ * scacciare; questo mostra i NOMI dei piatti, che è l'unica cosa che fa
+ * riconoscere la settimana costruita a mano. E dice la verità intera: quei
+ * pasti partono su «Lascia» e non vengono riscritti, a meno che non sia tu
+ * a toccarli nella schermata dopo.
+ */
+function vistaConferma(){
+  const quanti = PS.aMano.length;
+  return `<div class="panel">
+    <div class="q-label" style="margin-top:0">${esc(PS.titolo || 'Rigenero il piano')}</div>
+    <div class="avviso attenzione" style="margin-top:10px">
+      <b>In questi giorni ci ${quanti === 1 ? 'è 1 pasto scritto' : `sono ${quanti} pasti scritti`}
+        da te.</b>
+      <ul class="avviso-lista">
+        ${PS.aMano.map(r => `<li>${esc(labelData(r.day))} · ${esc(r.pasto)} —
+          <b>${esc(r.piatto || '— senza nome —')}</b></li>`).join('')}
+      </ul>
+      <p class="hint" style="margin:6px 0 0">${quanti === 1 ? 'Parte' : 'Partono'} su
+        «Lascia»: non ${quanti === 1 ? 'lo tocco' : 'li tocco'}, e ${quanti === 1
+        ? 'resta' : 'restano'} ${quanti === 1 ? 'com\'è' : 'come sono'}. Nella schermata
+        dopo puoi cambiare idea toccando «A casa», e allora ${quanti === 1
+        ? 'viene rifatto' : 'vengono rifatti'} da capo.</p>
+    </div>
+    <p class="hint">Prima di scrivere qualunque cosa fotografo il calendario com'è adesso:
+      dal menu, «Torna a com'era», si rimette indietro.</p>
+    <div class="form-row">
+      <button class="btn" id="psConfermaVai" style="flex:1">Vado avanti</button>
+      <button class="btn ghost" id="psConfermaNo">Lascia stare</button>
+    </div>
+  </div>`;
 }
 
 /* ---------- 1 · LA PASSATA ---------- */
@@ -5361,10 +5435,37 @@ async function scriviRighe(righe){
    ============================================================ */
 const CHIAVE_RIPRISTINO = 'piano_ripristino';
 
-const ripristinoSalvato = () => {
-  const p = leggiJson(CHIAVE_RIPRISTINO, null);
-  return p && Array.isArray(p.righe) && Array.isArray(p.ambito) && p.ambito.length ? p : null;
-};
+/* ⚠️ QUANTI PUNTI SE NE TENGONO: TRE, e il numero è una scelta.
+   Uno solo non basta: il guaio non si vede quasi mai subito — si rigenera
+   giovedì, poi venerdì, e ci si accorge il sabato che è stato giovedì a
+   mangiarsi la settimana scritta a mano. Col punto singolo la seconda
+   rigenerazione avrebbe già cancellato la fotografia che serviva.
+   Dieci sarebbero peggio di tre: ogni punto è una copia intera dei pasti,
+   e soprattutto scegliere fra dieci date è un lavoro nuovo per chi guarda,
+   proprio nel momento in cui si ha fretta. Tre coprono le operazioni di una
+   stessa sessione, che è quando gli errori si notano. */
+const MAX_RIPRISTINI = 3;
+
+/** ⚠️ Un tetto di sicurezza sulla dimensione: `settings.value` è un testo, e
+    tre settimane di pasti col procedimento dentro possono farsi grosse. Se
+    si sfora, si buttano i punti più vecchi — mai i più recenti, che sono
+    quelli che servono. */
+const MAX_PESO_RIPRISTINI = 400000;
+
+function puntiRipristino(){
+  const v = leggiJson(CHIAVE_RIPRISTINO, null);
+  // ⚠️ Fino al 20/08/2026 qui c'era UN punto solo, come oggetto. Chi ha già
+  // quel valore salvato non deve perderlo: si accetta anche la forma vecchia.
+  const lista = Array.isArray(v) ? v : (v ? [v] : []);
+  return lista.filter(p => p && Array.isArray(p.righe) && Array.isArray(p.ambito) && p.ambito.length);
+}
+
+/** Mette un punto in cima e tiene solo i più recenti. */
+async function impilaRipristino(punto){
+  let lista = [punto, ...puntiRipristino()].slice(0, MAX_RIPRISTINI);
+  while (lista.length > 1 && JSON.stringify(lista).length > MAX_PESO_RIPRISTINI) lista.pop();
+  await scriviJson(CHIAVE_RIPRISTINO, lista);
+}
 
 /** I pasti che questa passata sta per riscrivere. Quelli su «Lascia» no:
     non li tocca nessuno, e metterli nell'ambito vorrebbe dire cancellarli
@@ -5387,22 +5488,22 @@ function ambitoPassata(){
 async function segnaRipristino(ambito, cosa){
   const righe = S.piano.filter(r => ambito.includes(chiavePasto(r)));
   if (!righe.length) return 0;
-  await scriviJson(CHIAVE_RIPRISTINO, {
-    quando: new Date().toISOString(), cosa, ambito, righe,
-  });
+  await impilaRipristino({ quando: new Date().toISOString(), cosa, ambito, righe });
   return righe.length;
 }
 
 /**
- * Rimette il piano com'era.
+ * Rimette il piano com'era, da uno dei punti salvati.
  *
  * ⚠️ `updated_at` non si rimette indietro: la riga è stata toccata adesso, e
  * scrivere una data vecchia sarebbe raccontare che non è successo niente.
  */
-async function tornaComEra(){
-  const p = ripristinoSalvato();
-  if (!p) throw new Error('Non ho nessun punto di ripristino.');
+async function tornaComEra(indice = 0){
+  const p = puntiRipristino()[indice];
+  if (!p) throw new Error('Non ho quel punto di ripristino.');
 
+  // ⚠️ Prima di rimettere si fotografa com'è ADESSO, e la fotografia va in
+  // cima alla pila: così anche «Torna a com'era» si può disfare.
   const adesso = {
     quando: new Date().toISOString(),
     cosa: 'prima di rimettere com’era',
@@ -5410,8 +5511,29 @@ async function tornaComEra(){
     righe: S.piano.filter(r => p.ambito.includes(chiavePasto(r))),
   };
   await sovrascriviPasti(p.ambito, p.righe.map(({ updated_at, ...resto }) => resto));
-  await scriviJson(CHIAVE_RIPRISTINO, adesso);
+  await impilaRipristino(adesso);
   return p;
+}
+
+/* ⚠️ Il backup scaricato è un file fermo nel tempo: se dopo averlo scaricato
+   il piano è stato riscritto, quel file non racconta più il calendario di
+   adesso. Sta in localStorage e non in `settings` perché è un fatto di QUESTO
+   telefono: il file è nella cartella Download di chi l'ha scaricato, e
+   l'altro telefono non ce l'ha. */
+const CHIAVE_BACKUP = 'piano-ultimo-backup';
+
+const ultimoBackup = () => {
+  try { return localStorage.getItem(CHIAVE_BACKUP) || ''; }
+  catch { return ''; }
+};
+
+/** Quante volte il piano è stato riscritto dopo l'ultimo backup scaricato. */
+function riscrittureDopoIlBackup(){
+  const b = ultimoBackup();
+  const punti = puntiRipristino();
+  if (!punti.length) return 0;
+  if (!b) return punti.length;      // nessun backup: tutto quello che c'è è «dopo»
+  return punti.filter(p => p.quando > b).length;
 }
 
 /** Un blocco appena finito va nel calendario, senza aspettare la fine.
@@ -5592,6 +5714,8 @@ function ricevuta(volute, attesi){
 $('#pnWizard').addEventListener('click', (ev) => {
   if (ev.target.closest('#psAnnulla')){ chiudiPassata(); return; }
   if (ev.target.closest('#psVai')){ avviaGenerazione(); return; }
+  if (ev.target.closest('#psConfermaVai')){ PS.fase = 'passata'; renderWizard(); window.scrollTo(0,0); return; }
+  if (ev.target.closest('#psConfermaNo')){ chiudiPassata(); return; }
   if (ev.target.closest('#psVaiRiepilogo')){ PS.errore = null; PS.fase = 'riepilogo'; renderWizard(); return; }
   if (ev.target.closest('#psRifai')){ PS.fase = 'passata'; renderWizard(); window.scrollTo(0,0); return; }
 
@@ -6445,35 +6569,35 @@ $('#menuAlias').onclick = () => {
 /* --- «Torna a com'era»: la rete sotto il trapezio --- */
 function renderRipristino(){
   const box = $('#menuRipristinoBox');
-  const p = ripristinoSalvato();
+  const punti = puntiRipristino();
 
-  if (!p){
+  if (!punti.length){
     box.innerHTML = `<div class="avviso info">Non c'è niente da rimettere a posto:
       nessuna rigenerazione ha ancora cancellato qualcosa. Il punto si salva da solo,
       appena prima di riscrivere dei giorni che erano già decisi.</div>`;
     return;
   }
 
-  const giorni = [...new Set(p.ambito.map(k => String(k).split('|')[0]))].sort();
-  const aMano  = p.righe.filter(r => r.a_mano).length;
-  const quando = new Date(p.quando);
-
   box.innerHTML = `<div class="panel">
-    <p class="hint" style="margin-top:0">Ho fotografato il calendario il
-      ${esc(quando.toLocaleDateString('it-IT'))} alle
-      ${esc(quando.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' }))},
-      appena prima di: <b>${esc(p.cosa || 'una rigenerazione')}</b>.</p>
-    <div class="alias-riga">
-      <div class="alias-nomi">${esc(elencaGiorni(giorni))}</div>
-    </div>
-    <p class="hint" style="margin:6px 0 0">Rimetto ${p.righe.length === 1
-      ? '1 pasto' : `${p.righe.length} pasti`}${aMano ? ` (${aMano === 1
-      ? '1 scritto' : `${aMano} scritti`} da te)`: ''}, e cancello quello che c'è adesso
-      su quei giorni. Ce n'è <b>uno solo</b>: la prossima rigenerazione prende questo
-      posto. Ma questo tasto si può disfare — premendolo salvo com'è adesso.</p>
-    <div class="form-row">
-      <button class="btn" id="ripristinaOra" style="flex:1">Rimetti com'era</button>
-    </div>
+    <p class="hint" style="margin-top:0">Ogni volta che qualcosa sta per riscrivere il
+      piano, fotografo prima com'era. Ne tengo ${MAX_RIPRISTINI}: il più recente in cima.
+      Anche questo tasto si può disfare — premendolo salvo com'è adesso.</p>
+    ${punti.map((p, i) => {
+      const giorni = [...new Set(p.ambito.map(k => String(k).split('|')[0]))].sort();
+      const aMano  = p.righe.filter(r => r.a_mano).length;
+      const q = new Date(p.quando);
+      return `<div class="rip-punto">
+        <div class="rip-quando">${esc(q.toLocaleDateString('it-IT'))} alle
+          ${esc(q.toLocaleTimeString('it-IT', { hour:'2-digit', minute:'2-digit' }))}</div>
+        <div class="rip-cosa">prima di: ${esc(p.cosa || 'una rigenerazione')}</div>
+        <div class="rip-cosa">${esc(elencaGiorni(giorni))} — ${p.righe.length === 1
+          ? '1 pasto' : `${p.righe.length} pasti`}${aMano ? `, di cui ${aMano === 1
+          ? '1 scritto' : `${aMano} scritti`} da te` : ''}</div>
+        <button class="btn small${i ? ' ghost' : ''}" data-ripristina="${i}">Rimetti com'era</button>
+      </div>`;
+    }).join('')}
+    <p class="hint" style="margin:6px 0 0">Rimettere a posto cancella quello che c'è
+      adesso su quei giorni.</p>
   </div>`;
 }
 
@@ -6485,12 +6609,13 @@ $('#menuRipristino').onclick = () => {
 };
 
 $('#menuRipristinoBox').addEventListener('click', async (ev) => {
-  const b = ev.target.closest('#ripristinaOra');
+  const b = ev.target.closest('[data-ripristina]');
   if (!b) return;
+  const quale = Number(b.dataset.ripristina);
   b.disabled = true;
   b.textContent = 'Rimetto…';
   try{
-    const p = await tornaComEra();
+    const p = await tornaComEra(quale);
     // ⚠️ Si rilegge dal database, non si ricostruisce a memoria: il
     // calendario è la verità e il telefono è una finestra.
     await loadAll();
@@ -6706,6 +6831,16 @@ async function sostituisciIngrediente(vecchio, nuovo){
   const prima = pasti.map(r => ({
     r, ingredienti:JSON.parse(JSON.stringify(r.ingredienti || [])), prot:r.prot, kcal:r.kcal,
   }));
+
+  /* ⚠️ Anche questo riscrive il piano, quindi anche questo lascia una rete.
+     L'annulla del toast dura otto secondi e vale solo finché non tocchi
+     altro; il punto di ripristino resta, e serve proprio a chi si accorge
+     dopo. Se non riesce a salvarsi, il cambio si fa lo stesso: qui — a
+     differenza di una rigenerazione — l'annulla immediato c'è comunque, e
+     il danno possibile è un ingrediente in due o tre pasti, non la
+     settimana intera. */
+  try { await segnaRipristino(pasti.map(chiavePasto), `Sostituzione di «${vecchio}»`); }
+  catch { console.warn('punto di ripristino non salvato per la sostituzione'); }
   let senzaNumeri = 0;
   for (const r of pasti){
     const ing = (r.ingredienti || []).map(i => ({ ...i }));
@@ -7967,6 +8102,7 @@ function renderMenu(){
   $('#menuProt').value = mio?.prot_target ?? '';
   $('#menuKcal').value = mio?.kcal_target ?? '';
   $('#menuProt').disabled = $('#menuKcal').disabled = !mio;
+  avvisoBackup();
 }
 
 $('#menuBtn').onclick    = apriMenu;
@@ -8750,9 +8886,45 @@ function scaricaBackup(){
   // il browser ha bisogno di un attimo per prendersi il file
   setTimeout(() => URL.revokeObjectURL(url), 4000);
 
+  // ⚠️ Si segna QUANDO, per poter dire un domani che il file in cartella è
+  // più vecchio dell'ultima volta che il piano è stato riscritto.
+  try { localStorage.setItem(CHIAVE_BACKUP, new Date().toISOString()); }
+  catch { /* modalità privata: pazienza, si perde solo l'avviso */ }
+  avvisoBackup();
+
   toast(mancanti.length
     ? `Backup scaricato, ma senza ${mancanti.join(' e ')}.`
     : 'Backup scaricato.');
+}
+
+/**
+ * La riga sotto il tasto del backup: il file che hai in cartella è ancora
+ * quello giusto?
+ *
+ * ⚠️ Un backup è utile solo se si sa quanto è vecchio. Un file scaricato
+ * prima di due rigenerazioni racconta un calendario che non esiste più, e
+ * chi lo tiene da parte crede di essere al sicuro: è la stessa bugia di un
+ * numero che sembra più completo di quello che è.
+ */
+function avvisoBackup(){
+  const el = $('#backupNota');
+  if (!el) return;
+  const b = ultimoBackup();
+  const dopo = riscrittureDopoIlBackup();
+
+  if (!b){
+    el.textContent = dopo
+      ? `Non hai mai scaricato un backup da questo telefono, e intanto il piano è stato riscritto ${dopo === 1 ? 'una volta' : dopo + ' volte'}.`
+      : 'Non hai mai scaricato un backup da questo telefono.';
+    el.className = dopo ? 'avviso attenzione' : 'hint';
+    return;
+  }
+
+  const q = new Date(b).toLocaleDateString('it-IT');
+  el.textContent = dopo
+    ? `L'ultimo backup è del ${q}, e da allora il piano è stato riscritto ${dopo === 1 ? 'una volta' : dopo + ' volte'}: quel file non è più aggiornato.`
+    : `L'ultimo backup è del ${q}, e da allora il piano non è stato riscritto.`;
+  el.className = dopo ? 'avviso attenzione' : 'hint';
 }
 
 /* ------------------------------------------------------------
