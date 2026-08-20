@@ -1389,6 +1389,31 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 }
 .alias-riga .alias-nomi{flex:1;font-weight:600;font-size:14px;line-height:1.35}
 
+/* I filtri per categoria della Dispensa. Scorrono di lato invece di
+   andare a capo: ⚠️ quattordici chip su tre righe spingerebbero la lista
+   sotto la piega, e la lista è la cosa che si è venuti a vedere. */
+.cat-filtri{
+  display:flex;gap:6px;overflow-x:auto;padding:10px 2px 2px;
+  scrollbar-width:none;-webkit-overflow-scrolling:touch;
+}
+.cat-filtri::-webkit-scrollbar{display:none}
+.cat-filtri:empty{display:none}
+.cat-chip{
+  flex:0 0 auto;min-height:38px;padding:6px 12px;
+  border:1.5px solid var(--linea-forte);border-radius:999px;background:var(--surface);
+  font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap;
+  text-transform:capitalize;transition:all var(--t);
+}
+.cat-chip span{opacity:.7;margin-left:3px}
+.cat-chip[aria-pressed="true"]{
+  background:var(--lavanda-soft);border-color:var(--viola);color:var(--viola-testo);
+}
+/* «togli il filtro» non è una categoria: si vede che è un'altra cosa */
+.cat-chip.via{
+  display:flex;align-items:center;gap:5px;text-transform:none;
+  border-style:dashed;color:var(--corallo-ink);border-color:var(--corallo-chiaro);
+}
+
 /* Un punto di ripristino: quando, prima di cosa, e che cosa rimette. Le tre
    righe stanno una sotto l'altra perché si leggono in quest'ordine — la
    data dice se è quello giusto, il resto conferma. */
@@ -1910,7 +1935,12 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
          valori per 100 g. Compare solo quando serve, e non aggiorna mai
          niente da sé: vedi apriRicalcolo(). -->
     <div id="invRicalcolo" hidden></div>
-    <input class="field" id="invSearch" placeholder="🔍 Cerca nell'inventario" autocomplete="off">
+    <input class="field" id="invSearch" placeholder="Cerca in dispensa" autocomplete="off">
+    <!-- ⚠️ I filtri per categoria si riempiono da renderFiltriCat(), che
+         conta le voci VERE: una categoria senza niente dentro non compare,
+         perché un filtro che dà zero risultati è solo un modo di perdere
+         tempo. Il conteggio tiene conto della ricerca in corso. -->
+    <div class="cat-filtri" id="invFiltri"></div>
     <div id="invBody"><div class="loading">Carico l'inventario…</div></div>
   </section>
 
@@ -2360,6 +2390,28 @@ function renderAll(){
  * ritrovarsi il Diario spostato.
  */
 function rifaiDoveContanoINomi(){ renderPlan(); renderInv(); renderSpesa(); }
+
+/**
+ * Fa una cosa che ridisegna mezza pagina, e ti rimette dove stavi.
+ *
+ * ⚠️ Ridisegnare vuol dire riscrivere il contenuto: la pagina cambia
+ * altezza e il punto in cui stavi guardando finisce altrove. Dopo
+ * un'azione presa in fondo a un avviso di quattordici righe, ritrovarsi in
+ * cima vuol dire dover ricominciare a cercare il punto in cui si era —
+ * ogni volta.
+ *
+ * ⚠️ Il ripristino va DOPO il ridisegno, non prima: prima la pagina ha
+ * ancora l'altezza vecchia, e il browser non lascerebbe scorrere fin lì.
+ */
+function restaDovEri(fn){
+  const y = window.scrollY || window.pageYOffset || 0;
+  fn();
+  requestAnimationFrame(() => window.scrollTo(0, y));
+}
+
+/** Porta in vista una cosa solo se serve, sotto la striscia dei giorni
+    (di quello si occupa `scroll-margin-top` nel CSS). */
+const portaInVista = (el) => el?.scrollIntoView({ behavior:'smooth', block:'nearest' });
 
 function renderTargets(){
   const mio = ioProfilo();
@@ -3569,7 +3621,14 @@ function apriModificaPasto(iso, quale, dentro){
       return;
     }
     if (ev.target.closest('[data-crea-ricetta]')){ creaLaRicetta(box, iso, quale); return; }
-    if (ev.target.closest('[data-annulla]')){ box.remove(); return; }
+    // ⚠️ Chiudendo si torna al pasto da cui si era partiti: il pannello era
+    // alto, e togliendolo la pagina si accorcia sotto le dita.
+    if (ev.target.closest('[data-annulla]')){
+      const pasto = box.closest('.pasto');
+      box.remove();
+      portaInVista(pasto);
+      return;
+    }
     if (ev.target.closest('[data-salva]')) salvaPastoAMano(iso, quale, box);
   });
 }
@@ -4062,6 +4121,10 @@ async function salvaPastoAMano(iso, quale, box){
     await loadAll();
     S.giornoSel = iso;
     renderPlan();
+    /* ⚠️ Torni al pasto che hai appena salvato, non in cima al Piano.
+       Chiudere un pannello lungo e ritrovarsi all'inizio della pagina
+       obbliga a riscorrere fino al giorno su cui si stava lavorando. */
+    portaInVista($(`#pnCard .pasto [data-modifica="${quale}"]`)?.closest('.pasto'));
 
     // Regola 2: quello che hai scritto può far saltare i conti dei giorni
     // dopo. Non si rigenera niente da soli: si avvisa e si propone — ma
@@ -5230,7 +5293,7 @@ $('#planBody').addEventListener('click', async (ev) => {
     (async () => {
       try{
         await imparaAlias(scritto, voce);
-        rifaiDoveContanoINomi();
+        restaDovEri(rifaiDoveContanoINomi);
         toast(`«${scritto}» e «${voce}»: la stessa cosa. Il piano non cambia.`, async () => {
           // ⚠️ Si rimette esattamente il testo di prima, non si toglie il
           // gruppo: se la risposta ne aveva uniti due, toglierlo lascerebbe
@@ -5263,7 +5326,7 @@ $('#planBody').addEventListener('click', async (ev) => {
       try{
         await aggiungiAllaSpesa([{ nome, giorno, qta }], true);
         const riga = S.spesa.find(v => stessoNome(v.name, nome));
-        renderPlan();
+        restaDovEri(renderPlan);
         toast(`«${nome}» in lista spesa${giorno ? `, per ${quandoRelativo(giorno)}` : ''}.`,
           riga ? async () => {
             try{
@@ -5289,7 +5352,7 @@ $('#planBody').addEventListener('click', async (ev) => {
     (async () => {
       try{
         await segnaContornoLibero(nome);
-        renderPlan();
+        restaDovEri(renderPlan);
         toast(`«${nome}»: non lo seguo più. Resta scritto nel pasto.`, async () => {
           try{
             await scriviJson(CHIAVE_CONTORNI, prima ? JSON.parse(prima) : []);
@@ -5335,7 +5398,7 @@ $('#planBody').addEventListener('click', async (ev) => {
     (async () => {
       try{
         if (coppia) await imparaCoppia(scritto, voce); else await imparaAlias(scritto, voce);
-        rifaiDoveContanoINomi();
+        restaDovEri(rifaiDoveContanoINomi);
         toast(coppia
           ? `Da adesso «${voce}» vale al posto di «${scritto}», e viceversa.`
           : `«${scritto}» e «${voce}»: la stessa cosa. Il piano non cambia.`, async () => {
@@ -6695,10 +6758,64 @@ $('#pnWizard').addEventListener('input', (ev) => {
 /* ============================================================
    TAB 2 — DISPENSA
    ============================================================ */
+/* ------------------------------------------------------------
+   TROVARE UNA COSA FRA SESSANTASEI (20/08/2026)
+
+   La dispensa era un elenco lungo diviso solo per POSIZIONE (frigo,
+   congelatore, dispensa): per trovare i formaggi bisognava scorrere tutto
+   e riconoscerli a occhio. Adesso ci sono i filtri per categoria, e la
+   ricerca usa lo stesso confronto del resto dell'app.
+
+   ⚠️ Il filtro vive in una variabile e NON in `localStorage`: è una cosa
+   che si fa adesso per trovare una voce, non un'impostazione. Ritrovarselo
+   acceso domani vorrebbe dire aprire la dispensa e vederla mezza vuota
+   senza capire perché.
+   ------------------------------------------------------------ */
+let filtroCat = '';
+
+/** Le voci che passano ricerca e filtro insieme. */
+function vociFiltrate(){
+  const q = $('#invSearch').value.trim();
+  /* ⚠️ La ricerca usa `stessoNome()` — il confronto unico dell'app — così
+     cercando «uova» si trova «uovo». Ma tiene ANCHE il vecchio «contiene»:
+     scrivendo «moz» si vuole arrivare a Mozzarella, e stessoNome() da solo
+     non risponde a un pezzo di parola. I due insieme coprono i due modi in
+     cui si cerca davvero: il nome intero e l'inizio di una parola. */
+  const perNome = (i) => !q
+    || senzaAccenti(i.name).includes(senzaAccenti(q))
+    || stessoNome(i.name, q);
+  return S.inv.filter(i => perNome(i) && (!filtroCat || i.categoria === filtroCat));
+}
+
+/** I chip delle categorie, col conteggio di quello che c'è davvero. */
+function renderFiltriCat(){
+  const box = $('#invFiltri');
+  if (!box) return;
+  const q = $('#invSearch').value.trim();
+  const perNome = (i) => !q
+    || senzaAccenti(i.name).includes(senzaAccenti(q))
+    || stessoNome(i.name, q);
+  const base = S.inv.filter(perNome);
+
+  const conta = new Map();
+  for (const i of base) if (i.categoria) conta.set(i.categoria, (conta.get(i.categoria) || 0) + 1);
+  const cats = CATEGORIE_CIBO.filter(c => conta.has(c));
+
+  // ⚠️ Se le categorie non sono mai state compilate non si mostra una fila
+  // di chip vuoti: si mostra niente, e la dispensa resta com'era.
+  if (!cats.length){ box.innerHTML = ''; return; }
+
+  box.innerHTML = `${filtroCat ? `<button class="cat-chip via" data-cat-filtro=""
+      >${ico("chiudi",14)} togli il filtro</button>` : ''}
+    ${cats.map(c => `<button class="cat-chip" data-cat-filtro="${esc(c)}"${
+      c === filtroCat ? ' aria-pressed="true"' : ''}>${esc(c)} <span>${conta.get(c)}</span></button>`).join('')}`;
+}
+
 function renderInv(){
   const box = $('#invBody');
   const q = $('#invSearch').value.trim().toLowerCase();
-  const items = q ? S.inv.filter(i => i.name.toLowerCase().includes(q)) : S.inv;
+  renderFiltriCat();
+  const items = vociFiltrate();
 
   if (!S.inv.length){
     box.innerHTML = `<div class="empty vuoto-ill" style="margin-top:12px">
@@ -6710,7 +6827,12 @@ function renderInv(){
     return;
   }
   if (!items.length){
-    box.innerHTML = `<div class="empty" style="margin-top:12px">Nessuna voce trovata per «${esc(q)}».</div>`;
+    // ⚠️ Si dice che cosa sta filtrando, e si offre di toglierlo: «nessuna
+    // voce trovata» senza dire perché fa credere che la dispensa sia vuota.
+    box.innerHTML = `<div class="empty" style="margin-top:12px">
+      Niente${q ? ` per «${esc(q)}»` : ''}${filtroCat ? ` fra «${esc(filtroCat)}»` : ''}.
+      ${filtroCat ? `<br><button class="btn-testo" data-cat-filtro="">togli il filtro</button>` : ''}
+    </div>`;
     return;
   }
 
@@ -6744,6 +6866,16 @@ function rigaInv(i){
 }
 
 $('#invSearch').addEventListener('input', renderInv);
+
+/* I chip del filtro. ⚠️ Toccando quello già acceso si spegne: è il gesto
+   che ci si aspetta, e risparmia di cercare il «togli il filtro». */
+$('#tab-dispensa').addEventListener('click', (ev) => {
+  const c = ev.target.closest('[data-cat-filtro]');
+  if (!c) return;
+  const v = c.dataset.catFiltro;
+  filtroCat = (v && v !== filtroCat) ? v : '';
+  renderInv();
+});
 
 /* Se i due campi li ho riempiti io col ricordo, posso anche svuotarli quando
    il nome cambia. Se invece li hai scritti tu, non li tocco più: quello che
@@ -8402,8 +8534,12 @@ async function salvaVoceDispensa(box, item){
       try { await imparaAlias(vecchio, nome); }
       catch { aliasKo = true; }   // il nome è salvato lo stesso: si dice, non si nasconde
     }
-    // il nome nuovo tocca anche piano e spesa, non solo questa lista
-    if (daAppaiare) rifaiDoveContanoINomi(); else renderInv();
+    /* ⚠️ Si resta sulla voce appena modificata, coi filtri accesi: la
+       ricerca e il filtro per categoria vivono fuori da renderInv(), quindi
+       sopravvivono al ridisegno — ma senza rimettere lo scorrimento ci si
+       ritroverebbe comunque in cima a una lista di sessantasei righe. */
+    restaDovEri(() => { if (daAppaiare) rifaiDoveContanoINomi(); else renderInv(); });
+    portaInVista($(`#invBody .item[data-id="${item.id}"]`));
 
     if (mancanti.length){
       // Non si tace su un pezzo non salvato: si dice cosa manca e quale
