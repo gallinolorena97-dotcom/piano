@@ -2111,6 +2111,67 @@ ogni voce con le registrazioni di diario che hanno lo **stesso `pasto`**. Due vo
 sostituite tutte e due dalle stesse righe, cioè **contate doppie**. Per questo shaker e
 frutta stanno insieme in una voce sola, e il nome lo dice.
 
+#### La barra in basso: la tastiera e il rullo (20/08/2026) — ⚠️ DA COLLAUDARE
+
+Due richieste, fatte insieme perché toccano lo stesso elemento.
+
+**1 · Il bug della tastiera.** Aprendo la tastiera nel pannello «scrivo io» la barra delle
+5 tab **saltava in mezzo allo schermo**. Su Safari iOS un elemento `position:fixed` si
+appoggia al *layout viewport*, che con la tastiera aperta **non si accorcia** — mentre
+quello che si vede sì: la barra resta ancorata a un fondo che ormai sta sotto i tasti.
+Ora `misuraTastiera()` se ne accorge e la barra sparisce mentre scrivi.
+
+⚠️ **IL TOAST ERA LO STESSO IDENTICO DIFETTO**, e sistemare solo la barra avrebbe spostato
+il bug invece di chiuderlo. Verificato che siano gli unici due: cercando `position:fixed`
+in tutto il file, gli altri (velo, pannello del menu, sfondo) sono ancorati **in alto** o a
+tutto lo schermo, e la tastiera non li tocca.
+
+⚠️ **Il toast però NON sparisce: si sposta.** È lì che vive «Annulla», e farlo sparire
+mentre la tastiera è aperta vorrebbe dire togliere il modo di tornare indietro proprio a
+chi ha appena salvato. Sale di `--tastiera`, l'altezza misurata a runtime, e si appoggia
+sopra i tasti.
+
+⚠️ **La misura si fa su `documentElement.clientHeight`, non su `window.innerHeight`**: il
+primo è il layout viewport e sta fermo, il secondo su iOS si muove anche quando la barra
+degli indirizzi si rimpicciolisce — e avremmo scambiato uno scorrimento per una tastiera.
+Si sottrae anche `visualViewport.offsetTop`, perché iOS mettendo a fuoco un campo sposta la
+finestra visibile. Soglia a **120 px**: sotto, non è una tastiera.
+
+**2 · Il nascondi-al-rullo.** In giù si toglie, in su torna.
+
+⚠️ **Le etichette RESTANO** — richiesta esplicita: le icone da sole non bastano, «Cucino»
+e «Ricette» non si indovinano. Qui non si è toccato il contenuto della barra, solo dove
+sta. I bersagli restano a `min-height:52px` (sopra i 44 richiesti) e non c'è nessun colore
+scritto a mano: solo token.
+
+⚠️ **Tre soglie, e ognuna evita un difetto preciso:**
+- **8 px** di movimento minimo: meno di così non è una decisione, è il tremolio del dito
+  fermo sul vetro, e la barra sfarfallerebbe stando quasi immobili;
+- **90 px** dall'alto: in cima la barra **c'è sempre**. È il posto in cui si torna quando
+  ci si è persi, e trovarla nascosta proprio lì sarebbe la cosa peggiore;
+- **col la tastiera aperta il rullo tace**: iOS scorre da solo per portare il campo in
+  vista, e la barra si metterebbe a comparire e sparire mentre scrivi. Alla chiusura si
+  riparte dal punto in cui la pagina è finita, o il primo movimento del dito verrebbe letto
+  come un rullo lunghissimo.
+
+⚠️ **Le due trappole che erano state annotate, e come sono state evitate:**
+- si muove col **`transform`**, mai col `position`: `misuraTestata()` legge
+  `getComputedStyle(nav).position` per decidere `--nav-alt`, che tiene ferme le
+  intestazioni appiccicose di Dispensa e Piano. Cambiare posizionamento le sposterebbe
+  tutte;
+- il **`padding-bottom` del body resta**: lo spazio in fondo continua a essere riservato
+  anche quando la barra non si vede, altrimenti la pagina sobbalzerebbe a ogni comparsa.
+
+⚠️ **Sul computer non vale niente di tutto questo**: lì la barra sta in alto e scorre con
+la pagina, e il blocco `@media (min-width:760px)` annulla tutte e due le regole. Nascondere
+al rullo una barra che sta in cima vorrebbe dire farla sparire senza motivo.
+
+⚠️ **Cambiando tab la barra torna** (`mostraLaBarra()`): una schermata appena aperta è in
+cima, e trovarla nascosta dove non hai ancora scorso niente sarebbe inspiegabile.
+
+Se `window.visualViewport` non c'è (browser vecchi) non succede niente e tutto si comporta
+come prima: il nascondi-al-rullo funziona lo stesso, il pezzo della tastiera no.
+
 #### Rimasto indietro, minore
 
 - La texture di sfondo facoltativa della v7: non fatta. Il brief stesso dice che al

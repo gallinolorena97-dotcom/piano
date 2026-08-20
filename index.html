@@ -132,6 +132,8 @@
   /* misurate dal JS: servono alle intestazioni appiccicose */
   --h-alt:96px;
   --nav-alt:0px;
+  /* quanto della finestra si mangia la tastiera: 0 quando è chiusa */
+  --tastiera:0px;
 }
 
 @media (prefers-reduced-motion: reduce){
@@ -289,7 +291,34 @@ nav.tabs{
   border-top:1px solid var(--linea);
   padding:6px 4px calc(6px + var(--safe-b));
   box-shadow:var(--ombra-nav);
+  transition:transform 220ms cubic-bezier(.2,.8,.3,1);
 }
+
+/* ------------------------------------------------------------
+   LA BARRA CHE SI TOGLIE DI MEZZO (20/08/2026)
+
+   Due casi diversi, stessa soluzione: si sposta in giù di tutta la sua
+   altezza. ⚠️ Si muove col `transform` e NON col `position`: `misuraTestata()`
+   guarda `getComputedStyle(nav).position` per decidere `--nav-alt`, che è
+   ciò che tiene ferme le intestazioni appiccicose di Dispensa e Piano. Se
+   qui cambiasse il posizionamento, quelle si sposterebbero tutte.
+
+   ⚠️ E il `padding-bottom` del body RESTA: lo spazio in fondo alla pagina
+   deve continuare a essere riservato anche quando la barra non si vede,
+   altrimenti la pagina sobbalza a ogni comparsa e scomparsa.
+   ------------------------------------------------------------ */
+body.nav-via nav.tabs{transform:translateY(100%)}
+
+/* Tastiera aperta: la barra sparisce del tutto e non si può nemmeno
+   toccare — quello che c'è sotto la tastiera non è un bersaglio. */
+body.tastiera nav.tabs{transform:translateY(100%);pointer-events:none}
+
+/* ⚠️ IL TOAST NON SPARISCE, SI SPOSTA. È lì che vive «Annulla»: farlo
+   sparire mentre la tastiera è aperta vorrebbe dire togliere il modo di
+   tornare indietro proprio a chi ha appena salvato qualcosa.
+   Sale di tutta l'altezza della tastiera (--tastiera, misurata a runtime)
+   e si appoggia sopra i tasti. */
+body.tastiera #toast{bottom:calc(var(--tastiera) + 12px)}
 nav.tabs button{
   flex:1;min-height:52px;padding:6px 2px;
   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
@@ -317,6 +346,12 @@ section[hidden]{display:none}
   }
   nav.tabs button[aria-selected="true"]{background:none;border-bottom-color:var(--viola)}
   nav.tabs button svg{width:20px;height:20px}
+  /* ⚠️ Sul computer la barra sta IN ALTO e scorre con la pagina: nascondere
+     al rullo e spostare per la tastiera sono cose da telefono, e qui
+     farebbero sparire la navigazione senza motivo. */
+  body.nav-via nav.tabs,
+  body.tastiera nav.tabs{transform:none;pointer-events:auto}
+  body.tastiera #toast{bottom:calc(88px + var(--safe-b))}
 }
 
 /* ============================================================
@@ -9032,6 +9067,7 @@ $$('nav.tabs button').forEach(b => {
     $('#tab-profilo').hidden = true;   // se ero nel Profilo, esco
     ['piano','dispensa','ricette','cucino','spesa'].forEach(t => { $('#tab-' + t).hidden = (t !== S.tab); });
     window.scrollTo(0, 0);
+    mostraLaBarra();   // schermata nuova, in cima: la barra c'è
     if (S.tab === 'piano') renderPlan();
   };
 });
@@ -9052,6 +9088,94 @@ function misuraTestata(){
   // quindi le intestazioni appiccicose si fermano subito sotto la testata.
   const navInAlto = getComputedStyle(n).position === 'sticky';
   document.documentElement.style.setProperty('--nav-alt', navInAlto ? n.offsetHeight + 'px' : '0px');
+}
+
+/* ============================================================
+   LA BARRA IN BASSO: la tastiera e il rullo (20/08/2026)
+
+   DUE PROBLEMI, e sono lo stesso difetto visto da due lati.
+
+   1 · LA TASTIERA. Su Safari iOS un elemento `position:fixed` si appoggia
+       al *layout viewport*, che con la tastiera aperta NON si accorcia —
+       mentre quello che si vede sì. La barra resta ancorata a un fondo che
+       ormai sta sotto i tasti, e finisce in mezzo allo schermo a coprire
+       proprio il campo in cui stai scrivendo.
+       ⚠️ Lo stesso vale per il TOAST, che è fisso allo stesso modo: senza
+       sistemare anche quello il bug non si chiude, si sposta.
+
+   2 · IL RULLO. Nelle liste lunghe la barra mangia spazio: scorrendo in
+       giù si toglie, scorrendo in su torna.
+
+   ⚠️ TRE COSE DA NON DISFARE:
+   - le ETICHETTE restano. Le icone da sole non bastano: «Cucino» e
+     «Ricette» non si indovinano. Qui non si tocca il contenuto della barra,
+     solo dove sta;
+   - si muove col `transform`, mai col `position` (vedi il CSS: `--nav-alt`);
+   - il `padding-bottom` del body resta com'è.
+   ============================================================ */
+const TASTIERA_MINIMA = 120;   // sotto questa soglia non è la tastiera, è la barra del browser
+
+/**
+ * Quanto della finestra si sta mangiando la tastiera.
+ *
+ * ⚠️ Il confronto è con `documentElement.clientHeight` e non con
+ * `window.innerHeight`: il primo è il layout viewport, che resta fermo; il
+ * secondo su iOS si muove anche quando la barra degli indirizzi si
+ * rimpicciolisce, e avremmo scambiato uno scorrimento per una tastiera.
+ * `offsetTop` serve perché iOS, mettendo a fuoco un campo, sposta anche la
+ * finestra visibile: senza, il conto sbaglia di quello spostamento.
+ */
+function misuraTastiera(){
+  const vv = window.visualViewport;
+  if (!vv) return;                       // browser vecchio: tutto come prima
+  const alto = Math.max(0, document.documentElement.clientHeight - vv.height - vv.offsetTop);
+  const aperta = alto > TASTIERA_MINIMA;
+  const eraAperta = document.body.classList.contains('tastiera');
+  document.documentElement.style.setProperty('--tastiera', (aperta ? alto : 0) + 'px');
+  document.body.classList.toggle('tastiera', aperta);
+  // ⚠️ Con la tastiera aperta il nascondi-al-rullo non deve dire la sua:
+  // iOS scorre da solo per portare il campo in vista, e la barra si
+  // metterebbe a comparire e sparire da sola mentre scrivi.
+  if (aperta) document.body.classList.remove('nav-via');
+  // ⚠️ E quando la tastiera si chiude la pagina è quasi sempre in un punto
+  // diverso da dove l'avevamo lasciata: si riparte da lì, altrimenti il
+  // primo movimento del dito verrebbe letto come un rullo lunghissimo e la
+  // barra sparirebbe appena finito di scrivere.
+  if (eraAperta && !aperta) mostraLaBarra();
+}
+
+/* --- il nascondi-al-rullo --- */
+let ultimoRullo = 0;
+
+function guardaIlRullo(){
+  if (document.body.classList.contains('tastiera')) return;
+  const y = Math.max(0, window.scrollY || window.pageYOffset || 0);
+  const passo = y - ultimoRullo;
+  // ⚠️ Meno di 8 px non è una decisione, è il tremolio del dito fermo sul
+  // vetro: senza questa soglia la barra sfarfallerebbe stando quasi immobili.
+  if (Math.abs(passo) < 8) return;
+  ultimoRullo = y;
+  // ⚠️ In cima la barra c'è SEMPRE: è il posto in cui si torna quando ci si
+  // è persi, e trovarla nascosta proprio lì sarebbe la cosa peggiore.
+  document.body.classList.toggle('nav-via', passo > 0 && y > 90);
+}
+
+/** La barra torna: si chiama quando cambia schermata. ⚠️ Cambiare tab con
+    la barra nascosta la lascerebbe nascosta su una pagina appena aperta,
+    dove non hai ancora scorso niente. */
+function mostraLaBarra(){
+  document.body.classList.remove('nav-via');
+  ultimoRullo = Math.max(0, window.scrollY || window.pageYOffset || 0);
+}
+
+function avviaBarra(){
+  const vv = window.visualViewport;
+  if (vv){
+    vv.addEventListener('resize', misuraTastiera);
+    vv.addEventListener('scroll', misuraTastiera);
+    misuraTastiera();
+  }
+  window.addEventListener('scroll', guardaIlRullo, { passive:true });
 }
 
 // Il riferimento va tenuto qui fuori: un ResizeObserver senza riferimenti
@@ -9079,6 +9203,7 @@ function avviaMisureTestata(){
   }
 }
 avviaMisureTestata();
+avviaBarra();
 
 window.addEventListener('online',  () => { banner(null); loadAll(); });
 window.addEventListener('offline', () => banner('Sei senza connessione: le modifiche non verranno salvate.'));
