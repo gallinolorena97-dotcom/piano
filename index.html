@@ -1434,6 +1434,19 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 .rip-punto .rip-cosa{font-size:13px;color:var(--muted);line-height:1.4}
 .rip-punto .btn{margin-top:8px}
 
+/* «Nell'ultimo mese». ⚠️ Il numero a destra è attenuato e non colorato:
+   un conteggio in rosso o in verde diventa un voto, e qui non si giudica
+   niente — si dice solo quante volte è successo. */
+.mem-lista{margin-top:4px}
+.mem-riga{
+  display:flex;align-items:baseline;gap:10px;
+  padding:7px 0;border-top:1px solid var(--linea);
+}
+.mem-riga .mem-nome{flex:1;font-size:14px;font-weight:600;line-height:1.3}
+.mem-riga .mem-num{
+  flex:0 0 auto;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;
+}
+
 /* La seconda riga di un tasto: quanto pesa premerlo. Più piccola e più
    leggera del nome del tasto, ma DENTRO il tasto — messa accanto, la si
    legge dopo aver già premuto. */
@@ -1870,6 +1883,12 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
   <!-- ⚠️ Sta nel menu perché ci si arriva da qualunque schermata, e quando
        serve si ha fretta. Non è un'impostazione: è un'azione, e per questo
        ha una voce sua invece di stare dentro quella qui sopra. -->
+  <!-- Quello che è passato in tavola: si guarda quando si pianifica, non
+       tutti i giorni, quindi sta nel menu come le frequenze e i costi. -->
+  <div class="form-row">
+    <button class="btn ghost" id="menuMemoria" style="flex:1">Nell'ultimo mese ›</button>
+  </div>
+  <div id="menuMemoriaBox" hidden></div>
   <div class="form-row">
     <button class="btn ghost" id="menuRipristino" style="flex:1">Torna a com'era ›</button>
   </div>
@@ -4379,6 +4398,97 @@ async function salvaAlias(gruppi){ await scriviJson(CHIAVE_ALIAS, gruppi); }
    in tavola una cosa che una delle due persone non mangia — nemmeno come
    proposta. Insegnare una scambiabilità non è mai un permesso su un divieto.
    ============================================================ */
+/* ============================================================
+   LA MEMORIA FRA LE SETTIMANE (20/08/2026)
+
+   Quante volte un piatto è comparso nell'ultimo mese, e che cosa non
+   compare da troppo. Serve a due cose: a te per guardarlo, al generatore
+   per non ripetersi e per ripescare quello che è caduto dal giro.
+
+   ⚠️ DUE FONTI, E NON SI SOMMANO. `plan_meals` dice che cosa era in
+   tavola ed è completo per i giorni che copre; `meals_log` dice che cosa è
+   stato registrato davvero ed è sparso. Un pasto verificato sta in tutti e
+   due: sommarli lo conterebbe DUE VOLTE. Quindi il piano comanda, e il
+   diario riempie solo i buchi — è la stessa regola delle voci fisse
+   (`fisseDelGiorno`), dove la registrazione vera SOSTITUISCE quella data
+   per scontata invece di aggiungersi.
+
+   ⚠️ E LA MEMORIA DICE FINO A DOVE ARRIVA. Al 20/08/2026 il piano parte
+   dal 16 e il diario dall'11: dire «il merluzzo non compare da 24 giorni»
+   guardando cinque giorni di dati sarebbe un numero arrivato dal nulla.
+   Si dichiara l'orizzonte, e «non compare da un po'» si dice solo di quello
+   che nell'orizzonte c'è comparso almeno una volta.
+
+   ⚠️ Niente punteggi, niente classifiche, niente «bravo/male»: è un
+   registro, come il diario. Un conteggio è un fatto; «hai mangiato pasta
+   troppe volte» sarebbe una pagella, e in questa casa non si danno.
+   ============================================================ */
+const GIORNI_MEMORIA = 30;
+
+/** Lo storico si legge una volta per sessione, e solo quando serve: sono
+    righe che il resto dell'app non usa mai. */
+let storicoLetto = null;
+
+async function caricaStorico(){
+  if (storicoLetto) return storicoLetto;
+  const dal = addGiorni(oggiISO(), -GIORNI_MEMORIA);
+  const [p, d] = await Promise.all([
+    sb.from('plan_meals').select('day,pasto,piatto,modo,proteina_principale,categoria_principale')
+      .gte('day', dal).lt('day', oggiISO()),
+    sb.from('meals_log').select('day,pasto,piatto,proteina').gte('day', dal).lt('day', oggiISO()),
+  ]);
+  storicoLetto = { piano: p.data || [], diario: d.data || [], dal };
+  return storicoLetto;
+}
+
+/**
+ * Che cosa è passato in tavola nell'ultimo mese.
+ *
+ * ⚠️ I nomi si raggruppano con `stessoNome()`, il confronto unico dell'app:
+ * «Riso alla cantonese» e «riso cantonese» sono lo stesso piatto, e contarli
+ * come due vorrebbe dire non accorgersi di averlo fatto due volte.
+ */
+function memoriaDelMese(st){
+  const oggi = oggiISO();
+  const visti = new Map();   // chiave → { nome, volte, ultimo }
+
+  const segna = (nome, day) => {
+    const n = String(nome || '').trim();
+    if (!n) return;
+    let k = [...visti.keys()].find(x => stessoNome(visti.get(x).nome, n));
+    if (!k){ k = n; visti.set(k, { nome:n, volte:0, ultimo:'' }); }
+    const v = visti.get(k);
+    v.volte++;
+    if (day > v.ultimo) v.ultimo = day;
+  };
+
+  // il piano comanda…
+  const coperti = new Set();
+  for (const r of st.piano){
+    if (r.modo !== 'casa') continue;              // fuori e liberi non sono piatti
+    coperti.add(`${r.day}|${r.pasto}`);
+    segna(r.piatto, r.day);
+  }
+  // …e il diario riempie solo i buchi, per non contare due volte lo stesso pasto
+  for (const m of st.diario)
+    if (!coperti.has(`${m.day}|${m.pasto}`)) segna(m.piatto, m.day);
+
+  const tutti = [...visti.values()];
+  const giorniDa = (iso) => giorniFra(iso, oggi);
+
+  return {
+    dal: st.dal,
+    // ⚠️ Quanti giorni di dati ci sono DAVVERO, non quanti se ne chiedono
+    copertura: tutti.length ? giorniDa([...tutti].sort((a,b) => a.ultimo.localeCompare(b.ultimo))[0].ultimo) : 0,
+    quanti: tutti.reduce((s,v) => s + v.volte, 0),
+    ripetuti: tutti.filter(v => v.volte > 1).sort((a,b) => b.volte - a.volte || a.nome.localeCompare(b.nome,'it')),
+    // «non compare da un po'» vale SOLO per quello che è comparso almeno una
+    // volta: di quello che non c'è mai stato non si può dire da quanto manca
+    dimenticati: tutti.filter(v => giorniDa(v.ultimo) >= 14)
+      .sort((a,b) => giorniDa(b.ultimo) - giorniDa(a.ultimo)),
+  };
+}
+
 const CHIAVE_COPPIE = 'coppie_sostituti';
 
 const coppieSalvate = () => {
@@ -7835,6 +7945,55 @@ $('#menuAlias').onclick = () => {
   renderAlias();
   box.hidden = false;
 };
+
+/* --- «Nell'ultimo mese»: il registro, non la pagella --- */
+async function apriMemoria(){
+  const box = $('#menuMemoriaBox');
+  if (!box.hidden){ box.hidden = true; box.innerHTML = ''; return; }
+  box.hidden = false;
+  box.innerHTML = `<div class="panel"><span class="loading">Guardo indietro…</span></div>`;
+
+  let m;
+  try { m = memoriaDelMese(await caricaStorico()); }
+  catch(e){ box.innerHTML = `<div class="avviso attenzione">${esc(spiegaErrore(e))}</div>`; return; }
+
+  /* ⚠️ L'ORIZZONTE SI DICHIARA SEMPRE, e in cima. Al 20/08/2026 di passato
+     ce n'erano cinque giorni: dire «il merluzzo non compare da 24 giorni»
+     su cinque giorni di dati sarebbe un numero arrivato dal nulla, e questa
+     schermata esiste proprio per non farne. */
+  const giorni = giorniFra(m.dal, oggiISO());
+  const scarso = m.quanti < 10;
+
+  box.innerHTML = `<div class="panel">
+    <p class="hint" style="margin-top:0">Guardo indietro ${GIORNI_MEMORIA} giorni, e nei
+      dati ce ne sono <b>${giorni}</b>: ${m.quanti} ${m.quanti === 1 ? 'pasto' : 'pasti'}
+      in tutto.${scarso ? ' Sono ancora pochi per dire qualcosa di solido: questa pagina si riempie usando l’app.' : ''}</p>
+
+    <div class="q-label">Tornati più volte</div>
+    ${m.ripetuti.length ? `<div class="mem-lista">${m.ripetuti.map(v => `<div class="mem-riga">
+      <div class="mem-nome">${esc(v.nome)}</div>
+      <div class="mem-num">${v.volte} volte</div>
+    </div>`).join('')}</div>`
+      : `<p class="hint" style="margin:0">Nessun piatto è ancora tornato due volte.</p>`}
+
+    <div class="q-label">Non compaiono da un po'</div>
+    <p class="hint" style="margin-top:0">Cose che hai fatto e che non tornano da almeno due
+      settimane. ⚠️ Solo quelle che sono comparse almeno una volta qui dentro: di quello che
+      non c'è mai stato non si può dire da quanto manca.</p>
+    ${m.dimenticati.length ? `<div class="mem-lista">${m.dimenticati.map(v => `<div class="mem-riga">
+      <div class="mem-nome">${esc(v.nome)}</div>
+      <div class="mem-num">${giorniFra(v.ultimo, oggiISO())} giorni fa</div>
+    </div>`).join('')}</div>`
+      : `<p class="hint" style="margin:0">Niente: o è tutto recente, o non c'è ancora
+         abbastanza storia per accorgersene.</p>`}
+
+    <p class="hint">È un registro, non una pagella: nessun punteggio e nessun confronto.
+      Il generatore legge la stessa cosa per conto suo, per non ripetersi e per ripescare
+      quello che è caduto dal giro.</p>
+  </div>`;
+}
+
+$('#menuMemoria').onclick = () => apriMemoria();
 
 /* --- «Torna a com'era»: la rete sotto il trapezio --- */
 function renderRipristino(){
