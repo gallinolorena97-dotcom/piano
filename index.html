@@ -1264,6 +1264,13 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 /* ⚠️ Pesca e non menta: «non basta» è l'unica cosa in questo pannello che
    chiede qualcosa a te. Il resto sono buone notizie e restano attenuate. */
 .ric-num.manca{color:var(--pesca-ink);font-weight:600;line-height:1.35}
+/* Il marchietto delle coppie insegnate: si vede che quella riga è lì perché
+   l'hai messa tu, non perché l'app l'ha dedotta. */
+.ric-mio{
+  font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+  color:var(--menta-ink);background:var(--menta-soft);
+  border-radius:var(--r-s);padding:2px 7px;margin-left:6px;white-space:nowrap;
+}
 
 /* L'elenco della dispensa quando dici tu che cos'è una cosa.
    ⚠️ Scorre invece di allungarsi: sessanta voci spingerebbero fuori
@@ -4137,6 +4144,125 @@ async function scordaAlias(indice){
 async function salvaAlias(gruppi){ await scriviJson(CHIAVE_ALIAS, gruppi); }
 
 /* ============================================================
+   LE COPPIE DI SOSTITUTI CHE DECIDI TU (20/08/2026)
+
+   «Pulled chicken» e «Pulled pork» stanno in due categorie diverse, e la
+   proposta automatica non li accosterà mai — giustamente: fra categorie
+   diverse indovinare vorrebbe dire proporre le lenticchie al posto del
+   merluzzo. Ma tu sai che in quel piatto uno vale l'altro, e questo lo puoi
+   dire solo tu.
+
+   ⚠️ NON È UN ALIAS, ed è la differenza che regge tutto il resto. Un alias
+   dice «sono la stessa cosa scritta in due modi», e allora i numeri non si
+   toccano. Una coppia dice «sono due cose diverse e le scambio»: quindi i
+   numeri SI RICALCOLANO con la differenza, e la griglia delle frequenze
+   conta la categoria di quello che finisce davvero nel piatto — col maiale
+   consumi carne rossa, che ha il tetto di 1 a settimana.
+
+   ⚠️ VALE NEI DUE SENSI. Se il piano chiede il maiale e in casa c'è il
+   pollo, la coppia serve identica: una scambiabilità che funziona in una
+   direzione sola non è una scambiabilità, è una regola con un verso.
+
+   ⚠️ I DIVIETI VINCONO SEMPRE. Una coppia insegnata non deve poter portare
+   in tavola una cosa che una delle due persone non mangia — nemmeno come
+   proposta. Insegnare una scambiabilità non è mai un permesso su un divieto.
+   ============================================================ */
+const CHIAVE_COPPIE = 'coppie_sostituti';
+
+const coppieSalvate = () => {
+  const v = leggiJson(CHIAVE_COPPIE, []);
+  return Array.isArray(v) ? v.filter(c => Array.isArray(c) && c.length === 2) : [];
+};
+
+/** ⚠️ Le coppie NON si fondono in gruppi come gli alias: «A vale B» e «B
+    vale C» non vuol dire che A valga C. Un gruppo direbbe una cosa che non
+    hai mai detto. Restano coppie distinte, e si guardano nei due sensi. */
+function compagniDi(nome){
+  const fuori = [];
+  for (const [a, b] of coppieSalvate()){
+    if (stessoNome(a, nome)) fuori.push(b);
+    else if (stessoNome(b, nome)) fuori.push(a);
+  }
+  return fuori;
+}
+
+async function imparaCoppia(a, b){
+  if (compagniDi(a).some(x => stessoNome(x, b))) return;
+  await scriviJson(CHIAVE_COPPIE, [...coppieSalvate(), [String(a).trim(), String(b).trim()]]);
+}
+
+async function scordaCoppia(i){
+  const l = coppieSalvate();
+  if (i < 0 || i >= l.length) return;
+  await scriviJson(CHIAVE_COPPIE, l.filter((_, k) => k !== i));
+}
+
+/**
+ * Quel nome è vietato a qualcuno che mangia questi pasti?
+ *
+ * ⚠️ Largo apposta: si confrontano le PAROLE, non i nomi interi, perché un
+ * divieto senza precisazioni vieta tutta la famiglia in ogni forma (vedi la
+ * regola del pomodoro in questo file). Sbagliare qui verso il silenzio vuol
+ * dire non proporre una cosa che si poteva proporre; sbagliare verso il
+ * permesso vuol dire metterla nel piatto di chi non la mangia. Le due cose
+ * non si equivalgono.
+ */
+function vietatoNeiPasti(nome, pasti){
+  const parole = new Set(paroleNome(nome));
+  if (!parole.size) return null;
+
+  for (const r of (pasti || [])){
+    const chi = r.chi === 'entrambi' ? ['ciprian','lorena'] : [r.chi];
+    for (const c of chi){
+      const p = profilo(SLUG_DI_CHI[c]);
+      for (const divieto of (p?.non_mangia || [])){
+        // basta che UNA parola che conta del divieto compaia nel nome
+        if (paroleNome(divieto).some(x => [...parole].some(y => stessaParola(x, y))))
+          return { chi:nomeDiChi(c), divieto };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * Se metto questo al posto di quello, sforo un tetto della griglia?
+ *
+ * ⚠️ Si dice PRIMA di confermare, non nel riepilogo della settimana dopo.
+ * Scoprire di aver bruciato l'unica carne rossa della settimana quando ormai
+ * il piano è scritto vuol dire scoprirlo quando non serve più a niente.
+ */
+function sforaIlTetto(candidato, pasti){
+  if (!S.frequenze.length || !pasti?.length) return null;
+  const cat = categoriaProposta(candidato);
+  const f = S.frequenze.find(x => x.categoria === cat);
+  if (!f || f.max_sett == null) return null;
+
+  // la settimana dei pasti toccati, da lunedì a domenica del primo
+  const giorni = pasti.map(r => r.day).sort();
+  const dal = lunediDi(giorni[0]);
+  const settimana = S.piano.filter(r => r.day >= dal && r.day <= addGiorni(dal, 6));
+
+  // com'è adesso, e come sarebbe dopo il cambio
+  const dopo = settimana.map(r => pasti.some(p => p.day === r.day && p.pasto === r.pasto)
+    ? { ...r, categoria_principale: cat } : r);
+  const ora = (verificaFrequenze(settimana).sopra || []).find(x => x.categoria === cat);
+  const poi = (verificaFrequenze(dopo).sopra || []).find(x => x.categoria === cat);
+
+  // ⚠️ Si avvisa solo se è il CAMBIO a far sforare: se il tetto era già
+  // superato prima, non è questa scelta ad averlo rotto e dirlo qui
+  // sposterebbe la colpa sulla cosa sbagliata.
+  return (poi && !ora) ? { categoria:cat, tetto:f.max_sett, avrai:poi.ha } : null;
+}
+
+/** Il lunedì della settimana di quel giorno. */
+function lunediDi(iso){
+  const d = new Date(iso + 'T12:00:00');
+  const g = (d.getDay() + 6) % 7;      // 0 = lunedì
+  return addGiorni(iso, -g);
+}
+
+/* ============================================================
    «È QUESTA COSA QUI» — l'appaiamento scelto a mano (20/08/2026)
 
    `nomiSimili()` è stretta apposta e tace su tutto quello che non è lo
@@ -4172,17 +4298,26 @@ function dispensaPerScelta(nome, filtro){
     .map(x => x.v);
 }
 
-function apriScelta(nome, dentro, filtro){
+function apriScelta(nome, dentro, filtro, modo){
   dentro.querySelector('.sost-box')?.remove();
-  const lista = dispensaPerScelta(nome, filtro);
+  const coppia = modo === 'coppia';
+  const lista = dispensaPerScelta(nome, filtro)
+    // ⚠️ Nell'elenco delle coppie non compare quello che una delle due
+    // persone non mangia: un divieto non si può insegnare via.
+    .filter(v => !coppia || !vietatoNeiPasti(v.name, pastiConIngrediente(nome)));
   const cat = categoriaProposta(nome);
 
   dentro.insertAdjacentHTML('beforeend', `
-    <div class="sost-box" data-scelta-per="${esc(nome)}">
-      <div class="q-label" style="margin-top:0">«${esc(nome)}» è…</div>
-      <p class="hint" style="margin-top:0">Scegli la voce di dispensa che è la stessa cosa.
-        Il piano resta scritto com'è: mi ricordo io che i due nomi vanno insieme, e da lì
-        in poi combaciano dappertutto.</p>
+    <div class="sost-box" data-scelta-per="${esc(nome)}" data-modo="${coppia ? 'coppia' : 'alias'}">
+      <div class="q-label" style="margin-top:0">${coppia
+        ? `Al posto di «${esc(nome)}» posso usare…` : `«${esc(nome)}» è…`}</div>
+      <p class="hint" style="margin-top:0">${coppia
+        ? `Scegli che cosa vale come sostituto, anche di un'altra categoria. Sono due cose
+           diverse: i numeri si rifanno con la differenza, e la griglia delle frequenze
+           conta quello che finisce davvero nel piatto. Vale anche al contrario.`
+        : `Scegli la voce di dispensa che è la stessa cosa. Il piano resta scritto com'è:
+           mi ricordo io che i due nomi vanno insieme, e da lì in poi combaciano
+           dappertutto.`}</p>
       <input class="field" data-scelta-filtro placeholder="cerca in dispensa"
              autocomplete="off" value="${esc(filtro || '')}">
       <div class="scelta-lista">
@@ -4841,7 +4976,9 @@ $('#planBody').addEventListener('input', (ev) => {
   if (!c) return;
   const box = c.closest('[data-scelta-per]');
   const dentro = box.parentElement;
-  apriScelta(box.dataset.sceltaPer, dentro, c.value);
+  // ⚠️ Il modo si porta avanti: cercando in un elenco di coppie non si deve
+  // finire a salvare un alias, che vuol dire un'altra cosa.
+  apriScelta(box.dataset.sceltaPer, dentro, c.value, box.dataset.modo);
 });
 
 /**
@@ -5001,21 +5138,36 @@ $('#planBody').addEventListener('click', async (ev) => {
     ev.target.closest('.sost-box')?.remove();
     return;
   }
+  /* «Nessuno di questi: te lo indico io» — si insegna una coppia.
+     ⚠️ Riusa l'elenco della dispensa di apriScelta(), ma quello che si
+     salva è un'altra cosa: un alias dice «stesso nome», una coppia dice
+     «cose diverse, scambiabili». Il marchio `data-modo` distingue i due,
+     perché il pannello è lo stesso e la conseguenza no. */
+  const coppia = ev.target.closest('[data-coppia]');
+  if (coppia){
+    apriScelta(coppia.dataset.coppia, coppia.closest('.avviso-scorte'), undefined, 'coppia');
+    return;
+  }
+
   const scelto = ev.target.closest('[data-scelto]');
   if (scelto){
     const box = scelto.closest('[data-scelta-per]');
     const scritto = box.dataset.sceltaPer, voce = scelto.dataset.scelto;
-    const prima = S.settings[CHIAVE_ALIAS] || '';
+    const coppia = box.dataset.modo === 'coppia';
+    const chiave = coppia ? CHIAVE_COPPIE : CHIAVE_ALIAS;
+    const prima = S.settings[chiave] || '';
     box.querySelectorAll('button').forEach(b => b.disabled = true);
     (async () => {
       try{
-        await imparaAlias(scritto, voce);
+        if (coppia) await imparaCoppia(scritto, voce); else await imparaAlias(scritto, voce);
         rifaiDoveContanoINomi();
-        toast(`«${scritto}» e «${voce}»: la stessa cosa. Il piano non cambia.`, async () => {
+        toast(coppia
+          ? `Da adesso «${voce}» vale al posto di «${scritto}», e viceversa.`
+          : `«${scritto}» e «${voce}»: la stessa cosa. Il piano non cambia.`, async () => {
           try{
-            await salvaAlias(prima ? JSON.parse(prima) : []);
+            await scriviJson(chiave, prima ? JSON.parse(prima) : []);
             rifaiDoveContanoINomi();
-            toast('Appaiamento tolto.');
+            toast(coppia ? 'Coppia tolta.' : 'Appaiamento tolto.');
           }catch(e){ esitoErrore(e); }
         });
       }catch(e){
@@ -7212,6 +7364,7 @@ function renderAlias(){
   const box = $('#menuAliasBox');
   const { gruppi } = aliasIndice();
   const liberi = contorniLiberi();
+  const coppie = coppieSalvate();
 
   box.innerHTML = `<div class="panel">
     <div class="q-label" style="margin-top:0">I nomi che ho appaiato</div>
@@ -7260,6 +7413,19 @@ function renderAlias(){
       <input class="field" id="contornoNuovo" placeholder="un nome da non seguire" style="flex:1">
       <button class="btn ghost" id="contornoAggiungi">Non seguirlo</button>
     </div>
+  </div>
+
+  <div class="panel">
+    <div class="q-label" style="margin-top:0">Le coppie che ho insegnato</div>
+    <p class="hint" style="margin-top:0">Due cose diverse che per te si scambiano, anche di
+      categorie diverse — «pulled chicken» e «pulled pork». Valgono nei due sensi. Quando ne
+      usi una al posto dell'altra i numeri si rifanno con la differenza, e la griglia delle
+      frequenze conta quello che finisce davvero nel piatto.</p>
+    ${coppie.length ? coppie.map((c, i) => `<div class="alias-riga">
+      <div class="alias-nomi">${esc(c[0])} ⇄ ${esc(c[1])}</div>
+      <button class="btn small ghost" data-scorda-coppia="${i}">Togli</button>
+    </div>`).join('') : `<p class="hint" style="margin:0">Nessuna. Si insegnano dal pannello
+      dei sostituti, con «nessuno di questi: te lo indico io».</p>`}
   </div>
 
   <div class="panel">
@@ -7423,6 +7589,20 @@ $('#menuAliasBox').addEventListener('click', async (ev) => {
     return;
   }
 
+  const viaCoppia = ev.target.closest('[data-scorda-coppia]');
+  if (viaCoppia){
+    const i = Number(viaCoppia.dataset.scordaCoppia);
+    const c = coppieSalvate()[i];
+    viaCoppia.disabled = true;
+    try{
+      await scordaCoppia(i);
+      renderAlias();
+      rifaiDoveContanoINomi();
+      toast(`«${c[0]}» e «${c[1]}» non si scambiano più.`);
+    }catch(e){ viaCoppia.disabled = false; esitoErrore(e); }
+    return;
+  }
+
   const tornaC = ev.target.closest('[data-scorda-contorno]');
   if (tornaC){
     const i = Number(tornaC.dataset.scordaContorno);
@@ -7518,9 +7698,17 @@ function ammanco(serve, voce){
  */
 function sostitutiPer(nome, serve, tutti){
   const cat = categoriaProposta(nome);
+  /* ⚠️ Le coppie che hai insegnato tu valgono ANCHE dove la categoria non è
+     sostituibile e anche fra categorie diverse: è tutto il senso di
+     insegnarle. La proposta automatica resta conservativa; questa è una tua
+     risposta, e viene prima. */
+  const insegnati = compagniDi(nome)
+    .map(n => S.inv.find(v => stessoNome(v.name, n)))
+    .filter(Boolean);
+
   // ⚠️ Dove l'ingrediente è il piatto non si sostituisce: si cambia piatto,
   // e quello si fa dalla matita. Vedi CHIAVE_SOSTITUIBILI.
-  if (!cat || !sostituibile(cat)) return [];
+  if ((!cat || !sostituibile(cat)) && !insegnati.length) return [];
 
   /* L'ordine, in quattro gradini. ⚠️ A pari merito NON si ordina per nome:
      l'alfabeto non è un criterio, e faceva sembrare la Mozzarella più adatta
@@ -7534,9 +7722,21 @@ function sostitutiPer(nome, serve, tutti){
     return leggiQta(v.qty) && !String(v.qty).includes('?') ? 2 : 3;  // quantità illeggibile
   };
 
-  const punti = S.inv
-    .filter(v => v.categoria === cat && !stessoNome(v.name, nome))
-    .map(v => ({ v, g:gradino(v), m:ammanco(serve, v) }))
+  /* ⚠️ I DIVIETI TAGLIANO TUTTO, e per ultimi: né una categoria né una
+     coppia insegnata possono far arrivare nel piatto una cosa che una delle
+     due persone non mangia. Nemmeno come proposta — una proposta si accetta
+     distrattamente, e a quel punto il divieto è già in tavola. */
+  const pasti = pastiConIngrediente(nome);
+  const ammesso = (v) => !vietatoNeiPasti(v.name, pasti);
+
+  const daCategoria = (cat && sostituibile(cat))
+    ? S.inv.filter(v => v.categoria === cat && !stessoNome(v.name, nome)) : [];
+
+  const punti = [...insegnati, ...daCategoria.filter(v => !insegnati.includes(v))]
+    .filter(ammesso)
+    // ⚠️ Quelli insegnati restano in cima: li hai scelti tu, e una tua
+    // risposta non va messa in fila dietro a una deduzione dell'app.
+    .map(v => ({ v, g: insegnati.includes(v) ? -1 : gradino(v), m:ammanco(serve, v) }))
     .sort((a, b) => a.g - b.g || (a.m ?? 0) - (b.m ?? 0));
 
   /* ⚠️ Doppioni FRA i candidati: «Fesa di tacchino» e «Fesa tacchino» sono
@@ -7615,13 +7815,36 @@ async function sostituisciIngrediente(vecchio, nuovo){
     const n = numeriDopoIlCambio(r, vecchio, nuovo, qta);
     if (!n.sicuro) senzaNumeri++;
     const campi = { ingredienti:ing, prot:n.prot, kcal:n.kcal };
+
+    /* ⚠️ LA GRIGLIA DEVE CONTARE QUELLO CHE FINISCE NEL PIATTO. Scambiando
+       il pollo col maiale quel pasto smette di essere carne bianca e diventa
+       carne rossa, che ha il tetto di 1 a settimana: se `categoria_principale`
+       restasse quella di prima, la griglia conterebbe una cosa per un'altra e
+       il riepilogo direbbe il falso.
+
+       ⚠️ MA SOLO SE L'INGREDIENTE SCAMBIATO È QUELLO CHE DÀ IL NOME AL
+       PIATTO, cioè se la sua categoria è quella con cui il pasto è contato.
+       Se cambi il contorno, la categoria del pasto non c'entra: riscriverla
+       vorrebbe dire contare il pasto per un'altra cosa a causa di un
+       dettaglio. */
+    const catVecchia = String(r.categoria_principale || '').toLowerCase().trim();
+    const catNuova = categoriaProposta(nuovo);
+    if (catVecchia && catNuova && catVecchia === categoriaProposta(vecchio) && catNuova !== catVecchia)
+      campi.categoria_principale = catNuova;
     // ⚠️ plan_meals NON HA una colonna `id`: la chiave è (day, pasto), ed è
     // il motivo per cui si scrive con upsert onConflict:'day,pasto'. Qui
     // c'era `.eq('id', r.id)` con r.id sempre undefined: la sostituzione
     // falliva SEMPRE, dal giorno in cui è stata scritta. Trovato il
     // 20/08/2026. Se serve indicare un pasto, si indica con day e pasto.
-    const { error } = await sb.from('plan_meals').update(campi)
+    let { error } = await sb.from('plan_meals').update(campi)
       .eq('day', r.day).eq('pasto', r.pasto);
+    // ⚠️ Su un database senza tabelle-frequenze-v8.sql quella colonna non
+    // c'è: si riprova senza, invece di far fallire un cambio che funzionava.
+    if (error && /categoria_principale/i.test(String(error.message || ''))){
+      delete campi.categoria_principale;
+      ({ error } = await sb.from('plan_meals').update(campi)
+        .eq('day', r.day).eq('pasto', r.pasto));
+    }
     if (error) throw error;
     Object.assign(r, campi);
   }
@@ -7703,8 +7926,16 @@ function apriSostituti(nome, serve, dentro){
            va in lista spesa. Un candidato che non basta e non lo dice
            farebbe nascere il pasto zoppo in silenzio. */
         const m = ammanco(serve, v);
+        /* ⚠️ Il tetto della griglia si dice QUI, sulla riga, prima che tu
+           tocchi: scoprire nel riepilogo di aver bruciato l'unica carne
+           rossa della settimana vuol dire scoprirlo quando non serve più. */
+        const sfora = sforaIlTetto(v.name, pastiConIngrediente(nome));
+        const mio = compagniDi(nome).some(x => stessoNome(x, v.name));
         return `<div class="ric-riga">
-          <div class="item-name">${esc(v.name)}</div>
+          <div class="item-name">${esc(v.name)}${mio
+            ? ' <span class="ric-mio">coppia tua</span>' : ''}</div>
+          ${sfora ? `<div class="ric-num manca">con questo fai ${sfora.avrai}
+            ${esc(sfora.categoria)} in settimana, e il tetto è ${sfora.tetto}</div>` : ''}
           <div class="ric-num">ne hai ${esc(mostraQta(v.qty))}${m
             ? ` — ne servono ${esc(serve)}` : ''}</div>
           ${m ? `<div class="ric-num manca">ne mancano ${esc(scriviQta(m, leggiQta(serve).u))}:
@@ -7716,6 +7947,12 @@ function apriSostituti(nome, serve, dentro){
                   data-sost-vecchio="${esc(nome)}">Usa questo</button>
         </div>`;
       }).join('')}
+      <!-- ⚠️ L'uscita per insegnare una coppia. Sta QUI, in fondo
+           all'elenco, perché è il momento in cui scopri che quello che ti
+           serve non c'è: chiederlo altrove vorrebbe dire ricordarsi di
+           andarlo a cercare quando il problema è passato. -->
+      <button class="btn-testo sost" data-coppia="${esc(nome)}"
+        >nessuno di questi: te lo indico io</button>
       <div class="form-row">
         <button class="btn small ghost" data-sost-no style="flex:1">Lascia stare</button>
       </div>
