@@ -1748,6 +1748,96 @@ del giorno senza distinguere chi. Filtrarlo per `chi` sarebbe sbagliato finché 
 è relativo al telefono — prima andrebbe spostato sui nomi veri, come dice il blocco 3.
 Mostrare il nome è una cosa, contarci sopra è un'altra.
 
+#### I nomi appaiati: l'app impara, il piano resta com'è (20/08/2026)
+
+Nessun file SQL: la memoria sta in `settings`, chiave **`alias_nomi`**, un JSON di
+gruppi (`[["Straccetti di tacchino","Fesa di tacchino"], …]`). Stessa ragione di
+`nutrienti_noti`: **i telefoni sono due**, e una cosa imparata da uno la deve sapere
+anche l'altro.
+
+Quando un ingrediente del piano non si riconosce in dispensa ma c'è una voce che gli
+somiglia, l'avviso delle scorte lo chiede: *«in dispensa c'è «Fesa di tacchino»: è la
+stessa cosa?»*. Rispondendo di sì l'app **impara l'appaiamento**.
+
+⚠️ **IL PIANO NON SI RISCRIVE, ed è una scelta dell'utente del 20/08/2026.** Il primo
+disegno era «rinomina l'ingrediente nei pasti futuri»; è stato **capovolto**: è la
+dispensa che cambia col tempo — la confezione nuova, il nome sulla busta — non il modo
+in cui una persona chiama le cose. Riscrivere il piano sarebbe farla parlare come il
+frigo. Si tocca solo `settings`, mai `plan_meals`, e prot/kcal non si toccano mai.
+
+⚠️ **Da lì in avanti vale OVUNQUE**, perché entra in `stessoNome()` come prima cosa
+(prima di qualunque regola di grammatica: è la risposta di una persona): avviso delle
+scorte, scalo di «Ho cucinato questo», deduplica della spesa, sostituti, valori per
+100 g. Un appaiamento che valesse in un punto solo lascerebbe l'app a sapere una cosa
+in una schermata e a ignorarla in quella accanto.
+
+⚠️ **Proprio perché vale ovunque, un appaiamento sbagliato SCALA la dispensa sbagliata.**
+Per questo: si conferma **rispondendo a una domanda**, mai da soli; ogni conferma lascia
+un **annulla**; e si toglie in un posto solo, facile da trovare — ☰ menu → **«I nomi che
+ho appaiato»**, dove c'è l'elenco con «Togli» su ogni riga. L'annulla **rimette il testo
+di prima**, non toglie il gruppo: se la risposta ne aveva uniti due, toglierlo
+separerebbe anche quello che era già appaiato da prima.
+
+⚠️ **`nomiSimili()` è STRETTA APPOSTA**: le parole che contano di un nome devono essere
+**tutte dentro** quelle dell'altro (`stessoNome()` senza il vincolo della stessa
+lunghezza). «Petto di pollo» ⊂ «Fetto Petto di pollo» ✓, «Parmigiano» ⊂ «Parmigiano
+grattugiato» ✓; ma **«Filetti di merluzzo» vs «Filetti di pollo» tace**, perché
+condividono solo «filetti» e proporre il pollo al posto del merluzzo sarebbe un danno
+vero. *Una domanda sbagliata fatta con sicurezza è peggio del silenzio.*
+
+⚠️ Per lo stesso motivo nel menu c'è **«Appaiane due tu»**, due campi e un bottone: la
+regola stretta tace su tutti i casi in cui i due nomi si somigliano senza che uno
+contenga l'altro — «straccetti di tacchino» e «fesa di tacchino» è proprio quello.
+Senza quei due campi la prudenza smetterebbe di essere prudenza e diventerebbe un muro.
+
+⚠️ **`forseInCasa()` resta com'era e continua a zittire per primo**: le somiglianze si
+cercano **dopo**. Altrimenti l'avviso si riempirebbe di «forse è questo» e spingerebbe
+fuori dalle prime sei i guai veri. Il costo dichiarato: «Petto di pollo» resta silenzioso
+(`forseInCasa` trova «pollo» dentro «Fetto Petto di pollo»), e per appaiarlo si passa dai
+due campi del menu.
+
+**Tre guai, tre parole diverse** (`comeManca()`): `poco` → «servono 5, ne hai 3»;
+`assente` → «non ce l'hai in dispensa»; `nome` → «non l'ho riconosciuto in dispensa».
+⚠️ Quando sono **tutti** di tipo `nome`, il titolo dell'avviso cambia («usa nomi che non
+ritrovo in dispensa») e **il tasto «Rigenera da…» sparisce**: non manca niente da rifare,
+e una settimana costa sette generazioni delle trenta del giorno — un tasto che non serve,
+lì, costa soldi. Sui guai di tipo `nome` non si offrono nemmeno i **sostituti**: la cosa
+ce l'hai già, cambiare il piatto sarebbe la risposta sbagliata alla domanda giusta.
+
+**E il messaggio dopo il salvataggio dice COSA.** `cosaNonTorna(iso, pasto)` sostituisce
+il vecchio «da qui in avanti qualcosa non torna più»: nomina i primi due, con le parole di
+`comeManca()`. ⚠️ **Nomina prima i guai del pasto appena salvato** (il campo `dove` sa già
+giorno e pasto): l'avviso guarda tutti i giorni futuri, e rispondere del merluzzo di
+venerdì a chi ha appena salvato lunedì è come non rispondere.
+
+#### ⚠️ Un totale metà completo e metà parziale è una bugia (20/08/2026)
+
+Trovato sui dati veri: lunedì 24 diceva **«TOT Ciprian 153 g proteine · 470 kcal»**. Le
+proteine erano complete (68 + 44 + 41 delle fisse); le 470 kcal erano **solo colazione e
+shaker**, cioè zero dai due pasti, perché il piatto scritto a mano aveva le proteine e non
+le calorie. 153 g di proteine da sole superano le 600 kcal: il numero era impossibile, e
+la dichiarazione stava in piccolo sotto, dove sembrava riferirsi a tutti e due.
+
+La causa: **un contatore solo**, `senzaNumeri`. Il 18/08 la «e» era diventata «o» per
+*accorgersi* del buco, ma non per *dire quale*. Ora `totaleGiorno()`, `totaleFinora()` e
+`fisseDelGiorno()` contano **`senzaProt` e `senzaKcal` separati**.
+
+⚠️ **LA REGOLA, e vale ovunque si scriva un numero**: un numero parziale non si scrive mai
+come uno completo, e **la differenza sta accanto al numero**, non in piccolo sotto — la
+riga sotto la si legge dopo, e intanto la cifra grande è già stata creduta. Il numero resta
+ma cambia mestiere: `numeroParziale()` scrive **«almeno 470 kcal»** in grigio, che è un
+minimo ed è vero, dove «470 kcal» era un totale ed era falso. ⚠️ Se invece non si sa
+niente **non si scrive nemmeno lo zero** («le kcal non ci sono ancora»): uno zero è una
+bugia, un'assenza è un'assenza.
+
+Vale in tutti e quattro i punti che sommano — il TOT di Ciprian, il TOT di Lorena,
+«finora oggi» e il riepilogo della settimana, dove per lo spazio è un **`+`** attaccato al
+numero, spiegato lì sotto. ⚠️ Se un giorno se ne aggiunge un quinto, si passa da
+`numeroParziale()`: quattro copie della stessa regola si scollerebbero come è già successo.
+
+`notaFisse()` di conseguenza non dice più «(senza numeri)» quando ne manca uno solo, ma
+«(senza le kcal)» o «(senza le proteine)» (`cosaManca()`).
+
 #### Le voci fisse di Ciprian: 41 g e 470 kcal (19/08/2026)
 
 Il brief del 19/08 dichiara la base giornaliera fuori dai pasti del piano: porridge

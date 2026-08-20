@@ -623,6 +623,13 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 .day-tot .tot-nota{
   display:block;margin-top:4px;font-size:12px;font-weight:500;color:var(--muted);
 }
+/* Un numero che non è finito non deve avere l'aria di uno finito.
+   ⚠️ La differenza sta ACCANTO al numero — la parola «almeno» e il grigio —
+   non solo in piccolo sotto: la riga sotto la si legge dopo, e intanto la
+   cifra grande è già stata creduta. Peso normale e colore attenuato: due
+   segnali, così basta l'occhio senza dover leggere. */
+.day-tot .tot-parziale,
+.day-finora .tot-parziale{font-weight:500;color:var(--muted)}
 
 /* «Finora oggi»: quanto e' stato messo insieme davvero, non quanto era
    previsto. Fondo lavanda per distinguerlo dal totale del piano (menta):
@@ -1173,6 +1180,15 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 .freq-riga .item-name{flex:1;font-weight:600;text-transform:capitalize}
 .freq-riga .campo{flex:0 0 62px}
 .freq-riga .field.mini{text-align:center}
+/* I nomi appaiati si scrivono ESATTAMENTE come sono scritti: niente
+   text-transform, a differenza delle categorie qui sopra. Sono le parole
+   tue e quelle della dispensa, e servono a riconoscerle — «Straccetti Di
+   Tacchino» non è quello che hai scritto. */
+.alias-riga{
+  display:flex;gap:10px;align-items:center;
+  padding:9px 0;border-top:1px solid var(--linea);
+}
+.alias-riga .alias-nomi{flex:1;font-weight:600;font-size:14px;line-height:1.35}
 .sost-box{
   margin-top:9px;padding:10px 12px;border-radius:14px;
   background:var(--surface);border:1px solid var(--linea);
@@ -1581,6 +1597,15 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
     <button class="btn ghost" id="menuFrequenze" style="flex:1">Quante volte a settimana ›</button>
   </div>
   <div id="menuFrequenzeBox" hidden></div>
+  <!-- Gli appaiamenti stanno qui per la stessa ragione delle frequenze: si
+       toccano di rado, ma quando servono devono trovarsi in un posto solo e
+       sempre lo stesso. ⚠️ È IL POSTO DOVE SI TOLGONO: un appaiamento vale
+       in tutta l'app e scala la dispensa, quindi disfarlo dev'essere facile
+       almeno quanto è stato farlo. -->
+  <div class="form-row">
+    <button class="btn ghost" id="menuAlias" style="flex:1">I nomi che ho appaiato ›</button>
+  </div>
+  <div id="menuAliasBox" hidden></div>
   <div class="form-row">
     <button class="btn ghost" id="menuCosti" style="flex:1">Quanto sto spendendo ›</button>
   </div>
@@ -2050,6 +2075,17 @@ function renderAll(){
   $('#dgGiorno').value = oggiISO();
 }
 
+/**
+ * Rifà le schermate in cui i nomi si confrontano fra loro. Serve dopo un
+ * appaiamento: da quel momento due nomi sono la stessa cosa dappertutto, e
+ * una schermata già disegnata continuerebbe a dire il contrario.
+ *
+ * ⚠️ Non è renderAll(): quello rimette anche il Diario sul giorno di oggi,
+ * e chi ha appena risposto a una domanda nel Piano non si aspetta di
+ * ritrovarsi il Diario spostato.
+ */
+function rifaiDoveContanoINomi(){ renderPlan(); renderInv(); renderSpesa(); }
+
 function renderTargets(){
   const mio = ioProfilo();
   if (mio){
@@ -2157,19 +2193,25 @@ const sommaKcal = (righe) => righe.reduce((s,m) => s + (Number(m.kcal) || 0), 0)
 function fisseDelGiorno(iso, slug){
   return fisseDi(slug).map(f => {
     const vere = S.diario.filter(m => m.day === iso && m.pasto === f.pasto);
-    if (!vere.length) return { ...f, reale:false, senzaNumeri:false };
+    if (!vere.length) return { ...f, reale:false, senzaProt:false, senzaKcal:false, senzaNumeri:false };
+    // Registrata senza numeri: entra come 0 e il totale lo deve dire.
+    // ⚠️ some(…), non every(…): basta che UNA registrazione abbia quel
+    // numero mancante perché la voce sia incompleta. Con «every» servivano
+    // tutte le registrazioni senza numero prima di dirlo — cioè quasi mai.
+    // ⚠️ E si guardano SEPARATAMENTE, proteine da una parte e calorie
+    // dall'altra: il caso normale è che manchi solo una delle due, e un
+    // buco solo sulle calorie non deve poter passare per un buco su tutto
+    // (né viceversa). Vedi totaleGiorno().
+    const senzaProt = vere.some(m => m.prot == null);
+    const senzaKcal = vere.some(m => m.kcal == null);
     return {
       nome: vere.map(m => m.piatto).join(' + '),
       pasto: f.pasto,
       prot: sommaProt(vere),
       kcal: sommaKcal(vere),
       reale: true,
-      // Registrata senza numeri: entra come 0 e il totale lo deve dire.
-      // ⚠️ some(…||…), non every(…&&…): basta che UNA registrazione abbia
-      // UN numero mancante perché quella voce sia incompleta. Con «every»
-      // e «&&» servivano tutte le registrazioni e tutti e due i numeri
-      // vuoti prima di dirlo — cioè quasi mai.
-      senzaNumeri: vere.some(m => m.prot == null || m.kcal == null),
+      senzaProt, senzaKcal,
+      senzaNumeri: senzaProt || senzaKcal,
     };
   });
 }
@@ -2177,8 +2219,14 @@ function fisseDelGiorno(iso, slug){
 /** Dice, voce per voce, se il totale sta usando quella di sempre o
     quella registrata davvero. Un numero non deve mai arrivare dal nulla. */
 const notaFisse = (fisse) => fisse.map(f => f.reale
-  ? `${f.pasto} dal diario${f.senzaNumeri ? ' (senza numeri)' : ` (${f.prot} g · ${f.kcal} kcal)`}`
+  ? `${f.pasto} dal diario${f.senzaNumeri ? ` (${cosaManca(f.senzaProt, f.senzaKcal)})` : ` (${f.prot} g · ${f.kcal} kcal)`}`
   : `${f.nome} di sempre (${f.prot} g · ${f.kcal} kcal)`);
+
+/** Quale dei due numeri manca, detto con parole diverse per ciascun caso.
+    ⚠️ «senza numeri» quando ne manca uno solo è già mezza bugia: fa credere
+    che sia incerto anche quello che invece è scritto. */
+const cosaManca = (senzaProt, senzaKcal) => senzaProt && senzaKcal
+  ? 'senza numeri' : (senzaKcal ? 'senza le kcal' : 'senza le proteine');
 
 /* ⚠️ Gli slug della tabella profiles NON sono i nomi delle persone
    (vedi CLAUDE.md): lo slug 'lorena' contiene il profilo di Ciprian e
@@ -2757,33 +2805,62 @@ function totaleGiorno(righe, iso){
   const suoi = righe.filter(r => r.modo === 'casa' && mangiaCiprian(r));
   if (!suoi.length) return null;
 
-  let prot = 0, kcal = 0, senzaNumeri = 0;
+  let prot = 0, kcal = 0, senzaProt = 0, senzaKcal = 0;
   for (const r of suoi){
     // ⚠️ BASTA UN NUMERO SOLO CHE MANCHI. Fino al 18/08/2026 qui c'era una
     // «e» al posto della «o», e il totale si dichiarava parziale solo se
     // mancavano tutti e due. Ma il caso più probabile è proprio l'altro:
-    // le proteine uno se le ricorda, le kcal no. Con la «e» quel pasto
-    // entrava con le proteine giuste, sommava ZERO calorie e il totale
-    // taceva: le kcal del giorno risultavano più basse del vero senza che
-    // niente lo segnalasse. Un buco che non si dichiara è peggio del buco.
-    if (r.prot == null || r.kcal == null) senzaNumeri++;
+    // le proteine uno se le ricorda, le kcal no.
+    //
+    // ⚠️ E DAL 20/08/2026 I DUE BUCHI SI CONTANO SEPARATI. Con un contatore
+    // solo ci si accorgeva del buco ma non si sapeva DOVE fosse, e i due
+    // numeri finivano scritti appaiati come se valessero uguale: lunedì 24
+    // diceva «153 g proteine · 470 kcal», dove le proteine erano complete e
+    // le 470 kcal erano solo colazione e shaker, cioè zero dai due pasti.
+    // Un totale metà vero e metà finto è peggio di un totale mancante.
+    if (r.prot == null) senzaProt++;
+    if (r.kcal == null) senzaKcal++;
     prot += Number(r.prot) || 0;
     kcal += Number(r.kcal) || 0;
   }
   // le fisse, già sostituite dalle registrazioni vere dove ce ne sono
   const fisse = fisseDelGiorno(iso || righe[0]?.day, SLUG_DI_CHI.ciprian);
-  senzaNumeri += fisse.filter(f => f.senzaNumeri).length;
+  senzaProt += fisse.filter(f => f.senzaProt).length;
+  senzaKcal += fisse.filter(f => f.senzaKcal).length;
   return {
     prot: prot + sommaProt(fisse),
     kcal: kcal + sommaKcal(fisse),
-    fisse, senzaNumeri,
+    fisse, senzaProt, senzaKcal,
+    senzaNumeri: senzaProt + senzaKcal,   // resta per chi vuole solo sapere se c'è un buco
   };
 }
+
+/**
+ * Un numero che non è finito, scritto in modo che non sembri finito.
+ *
+ * ⚠️ REGOLA: un numero parziale non si scrive MAI come uno completo, e la
+ * differenza dev'essere lì accanto al numero, non in piccolo sotto. Quando
+ * una parte è nota il numero resta ma cambia mestiere — «almeno 470 kcal»
+ * è un minimo, ed è vero; «470 kcal» era un totale, ed era falso. Quando
+ * invece non si sa niente, non si scrive nemmeno lo zero: uno zero è una
+ * bugia, un'assenza è un'assenza.
+ */
+function numeroParziale(valore, unita, quanti, cosa){
+  if (!quanti) return `${valore} ${unita}`;
+  return `<span class="tot-parziale">${valore
+    ? `almeno ${valore} ${unita}`
+    : `${cosa || unita} non ci sono ancora`}</span>`;
+}
+
+/** «su 2 pasti mancano le kcal»: quanti sono e quale numero manca. */
+const notaParziale = (quanti, cosa) => quanti
+  ? `su ${quanti === 1 ? 'un pasto' : quanti + ' pasti'} mancano ${cosa}`
+  : '';
 
 function totaliHtml(righe, iso){
   const t = totaleGiorno(righe, iso);
   if (!t) return '';
-  const { prot, kcal, fisse, senzaNumeri } = t;
+  const { prot, kcal, fisse, senzaProt, senzaKcal } = t;
 
   // Nei giorni con un pasto fuori o libero il totale scende, e va bene
   // cosi': non si compensa nei giorni vicini. Lo diciamo, non lo nascondiamo.
@@ -2791,13 +2868,18 @@ function totaliHtml(righe, iso){
   const comeSiChiama = (r) => r.modo === 'fuori'
     ? `${r.pasto} fuori casa`
     : (r.pasto === 'cena' ? 'cena libera' : 'pranzo libero');
+  // ⚠️ I due buchi si dichiarano SEPARATI, perché separati sono: dire «su
+  // qualche pasto mancano i numeri» sotto due cifre appaiate lasciava
+  // credere che fossero incerte tutte e due — o, peggio, nessuna.
   const note = [
     ...notaFisse(fisse),
     fuori.length ? `${fuori.map(comeSiChiama).join(' e ')} non nel totale` : '',
-    senzaNumeri  ? 'su qualche pasto mancano i numeri: totale parziale' : '',
+    notaParziale(senzaProt, 'le proteine'),
+    notaParziale(senzaKcal, 'le kcal'),
+    (senzaProt || senzaKcal) ? 'il numero in grigio è un minimo, non il totale' : '',
   ].filter(Boolean).join(' · ');
 
-  return `<div class="day-tot">TOT ${esc(nomeDiChi('ciprian'))} ${prot} g proteine · ${kcal} kcal
+  return `<div class="day-tot">TOT ${esc(nomeDiChi('ciprian'))} ${numeroParziale(prot, 'g proteine', senzaProt, 'le proteine')} · ${numeroParziale(kcal, 'kcal', senzaKcal, 'le kcal')}
     <span class="tot-nota">${esc(note)}</span></div>${totaleLorenaHtml(righe)}`;
 }
 
@@ -2823,9 +2905,12 @@ function totaleLorenaHtml(righe){
 
   const kcal = conNumero.reduce((s,r) => s + (Number(r.kcal_lorena) || 0), 0);
   const mancano = suoi.length - conNumero.length;
-  return `<div class="day-tot lorena">TOT ${esc(nomeDiChi('lorena'))} ${kcal} kcal
+  // ⚠️ Stessa regola del totale di Ciprian, e deve restare la stessa: un
+  // numero parziale non si scrive come uno completo. Qui il numero è uno
+  // solo, ma la promessa a chi legge è la stessa.
+  return `<div class="day-tot lorena">TOT ${esc(nomeDiChi('lorena'))} ${numeroParziale(kcal, 'kcal', mancano, 'le kcal')}
     <span class="tot-nota">${mancano
-      ? esc(`su ${mancano === 1 ? 'un pasto' : mancano + ' pasti'} manca il numero: totale parziale`)
+      ? esc(`${notaParziale(mancano, 'le kcal')}: il numero in grigio è un minimo, non il totale`)
       : ''}</span></div>`;
 }
 
@@ -2849,17 +2934,22 @@ function totaleFinora(iso, slug){
   const resto = S.diario.filter(m => m.day === iso && !gestiti.has(m.pasto));
 
   // ⚠️ Stessa regola del TOT del piano, e deve restare la stessa: basta un
-  // numero solo che manchi perché «finora oggi» sia un parziale. Le due
-  // fonti sono diverse (il piano e il diario) ma la promessa a chi legge è
-  // una: un numero non deve mai sembrare più completo di quello che è.
-  const senzaNumeri = fisse.filter(f => f.senzaNumeri).length
-                    + resto.filter(m => m.prot == null || m.kcal == null).length;
+  // numero solo che manchi perché «finora oggi» sia un parziale, e i due
+  // buchi si contano SEPARATI. Le due fonti sono diverse (il piano e il
+  // diario) ma la promessa a chi legge è una: un numero non deve mai
+  // sembrare più completo di quello che è.
+  const senzaProt = fisse.filter(f => f.senzaProt).length
+                  + resto.filter(m => m.prot == null).length;
+  const senzaKcal = fisse.filter(f => f.senzaKcal).length
+                  + resto.filter(m => m.kcal == null).length;
 
   return {
     prot: sommaProt(fisse) + sommaProt(resto),
     kcal: sommaKcal(fisse) + sommaKcal(resto),
     quanti: fisse.length + resto.length,
-    fisse, senzaNumeri, profilo: p,
+    fisse, senzaProt, senzaKcal,
+    senzaNumeri: senzaProt + senzaKcal,
+    profilo: p,
   };
 }
 
@@ -2875,11 +2965,13 @@ function finoraHtml(iso, slug){
 
   const note = [
     ...notaFisse(f.fisse),
-    f.senzaNumeri ? 'qualcosa è segnato senza numeri: è un parziale' : '',
+    notaParziale(f.senzaProt, 'le proteine'),
+    notaParziale(f.senzaKcal, 'le kcal'),
+    f.senzaNumeri ? 'il numero in grigio è un minimo, non il totale' : '',
   ].filter(Boolean).join(' · ');
 
   return `<div class="day-finora">
-    <b>Finora oggi</b> ${f.prot} g proteine · ${f.kcal} kcal${obiettivo ? ` <span class="finora-obi">${esc(obiettivo)}</span>` : ''}
+    <b>Finora oggi</b> ${numeroParziale(f.prot, 'g proteine', f.senzaProt, 'le proteine')} · ${numeroParziale(f.kcal, 'kcal', f.senzaKcal, 'le kcal')}${obiettivo ? ` <span class="finora-obi">${esc(obiettivo)}</span>` : ''}
     ${note ? `<span class="tot-nota">${esc(note)}</span>` : ''}
   </div>`;
 }
@@ -3434,11 +3526,9 @@ async function salvaPastoAMano(iso, quale, box){
     renderPlan();
 
     // Regola 2: quello che hai scritto può far saltare i conti dei giorni
-    // dopo. Non si rigenera niente da soli: si avvisa e si propone.
-    const guai = scorteMancanti();
-    toast(guai.length
-      ? `Salvato: ${piatto}. Attenzione: da qui in avanti qualcosa non torna più — guarda l’avviso in cima.`
-      : `Salvato: ${piatto}.`);
+    // dopo. Non si rigenera niente da soli: si avvisa e si propone — ma
+    // dicendo COSA, non «qualcosa».
+    toast(`Salvato: ${piatto}.${cosaNonTorna(iso, quale)}`);
   }catch(e){
     esitoErrore(e);
     box.querySelectorAll('button, input').forEach(x => x.disabled = false);
@@ -3518,14 +3608,138 @@ function paroleNome(nome){
     .filter(p => p && !PAROLE_VUOTE.has(p));
 }
 
+/* ============================================================
+   I NOMI CHE HAI APPAIATO TU (20/08/2026)
+
+   ALIAS_NOMI qui sopra sono i plurali irregolari della lingua, scritti una
+   volta per tutte. Questi sono un'altra cosa: gli appaiamenti che nascono
+   dalla TUA cucina — «straccetti di tacchino» e «fesa di tacchino» sono la
+   stessa cosa perché me l'hai detto tu, non perché lo dica l'italiano.
+
+   ⚠️ IL PIANO NON SI RISCRIVE. Quando confermi un appaiamento l'app impara
+   che i due nomi indicano la stessa cosa e basta: il pasto resta scritto
+   con le parole che hai usato tu. È la dispensa che cambia col tempo — la
+   confezione nuova, il nome sulla busta, la voce scritta di fretta — non il
+   modo in cui chiami le cose. Riscrivere il piano sarebbe farti parlare
+   come il frigo.
+
+   ⚠️ Da lì in avanti vale OVUNQUE si confrontino due nomi, perché passa da
+   stessoNome(): l'avviso delle scorte, lo scalo di «Ho cucinato questo», la
+   lista della spesa, i sostituti, i valori per 100 g. È il senso della
+   cosa — un appaiamento che valesse in un punto solo lascerebbe l'app a
+   sapere una cosa in una schermata e a ignorarla in quella accanto.
+
+   ⚠️ Proprio perché vale ovunque, un appaiamento sbagliato SCALA la
+   dispensa sbagliata. Per questo si conferma rispondendo a una domanda, mai
+   da soli, e si toglie in un posto solo che è facile da trovare:
+   ☰ menu → «I nomi che ho appaiato».
+
+   ⚠️ Sta in `settings`, non in localStorage, per la stessa ragione dei
+   valori per 100 g: i telefoni sono due, e una cosa imparata da uno la deve
+   sapere anche l'altro. Nessun file SQL da eseguire.
+   ============================================================ */
+const CHIAVE_ALIAS = 'alias_nomi';
+
+/* La forma con cui un nome si cerca fra gli appaiamenti: le sue parole che
+   contano. Così «Fesa di tacchino» e «fesa tacchino» sono la stessa chiave. */
+const chiaveAlias = (n) => paroleNome(n).join(' ') || senzaAccenti(n);
+
+/* Rileggere e reindicizzare a ogni confronto costerebbe caro: stessoNome()
+   gira dentro cicli su tutta la dispensa. Si ricostruisce solo quando il
+   testo salvato cambia. */
+let aliasCache = { src:null, gruppi:[], idx:new Map() };
+
+function aliasIndice(){
+  const src = (S.settings && S.settings[CHIAVE_ALIAS]) || '';
+  if (aliasCache.src === src) return aliasCache;
+
+  let gruppi = [];
+  try{
+    const v = JSON.parse(src || '[]');
+    // un gruppo di un nome solo non appaia niente: si butta
+    if (Array.isArray(v)) gruppi = v.filter(g => Array.isArray(g) && g.length > 1);
+  }catch{ gruppi = []; }   // valore illeggibile: si riparte da zero, senza rumore
+
+  const idx = new Map();
+  gruppi.forEach((g, i) => g.forEach(n => {
+    const k = chiaveAlias(n);
+    if (k) idx.set(k, i);
+  }));
+  aliasCache = { src, gruppi, idx };
+  return aliasCache;
+}
+
+/** I due nomi sono nello stesso gruppo di appaiamenti? */
+function stessoAlias(a, b){
+  const { idx } = aliasIndice();
+  // finché non ne hai appaiato nessuno questo confronto non deve costare
+  // niente: stessoNome() gira dentro cicli su tutta la dispensa
+  if (!idx.size) return false;
+  const ka = chiaveAlias(a), kb = chiaveAlias(b);
+  if (!ka || !kb || ka === kb) return false;      // uguali: se ne occupa stessoNome()
+  const ia = idx.get(ka);
+  return ia !== undefined && ia === idx.get(kb);
+}
+
+/**
+ * Impara che due nomi indicano la stessa cosa.
+ *
+ * Se uno dei due è già in un gruppo, l'altro si unisce a quello — e se lo
+ * sono tutti e due, i due gruppi diventano uno. È l'unico modo perché
+ * «A = B» e poi «B = C» non lascino A e C estranei fra loro.
+ */
+async function imparaAlias(a, b){
+  const { gruppi } = aliasIndice();
+  const nuovi = gruppi.map(g => [...g]);
+  const ia = nuovi.findIndex(g => g.some(n => chiaveAlias(n) === chiaveAlias(a)));
+  const ib = nuovi.findIndex(g => g.some(n => chiaveAlias(n) === chiaveAlias(b)));
+
+  if (ia >= 0 && ib >= 0){
+    if (ia === ib) return;                        // lo sapeva già
+    nuovi[ia] = [...nuovi[ia], ...nuovi[ib]];
+    nuovi.splice(ib, 1);
+  }
+  else if (ia >= 0) nuovi[ia].push(b);
+  else if (ib >= 0) nuovi[ib].push(a);
+  else nuovi.push([a, b]);
+
+  await salvaAlias(nuovi);
+}
+
+/** Toglie un gruppo intero: quei nomi tornano a essere cose diverse. */
+async function scordaAlias(indice){
+  const { gruppi } = aliasIndice();
+  const nuovi = gruppi.map(g => [...g]);
+  if (indice < 0 || indice >= nuovi.length) return;
+  nuovi.splice(indice, 1);
+  await salvaAlias(nuovi);
+}
+
+/**
+ * ⚠️ Questo salvataggio, a differenza del ricordo dei valori per 100 g,
+ * NON può fallire in silenzio: lì il numero era una comodità, qui è una
+ * risposta che hai dato a una domanda. Se non si scrive, chi ha risposto
+ * deve saperlo, altrimenti la stessa domanda tornerà domani.
+ */
+async function salvaAlias(gruppi){
+  const value = JSON.stringify(gruppi);
+  const { error } = await sb.from('settings').upsert({ key:CHIAVE_ALIAS, value });
+  if (error) throw error;
+  S.settings[CHIAVE_ALIAS] = value;
+}
+
 /**
  * I due nomi indicano la stessa cosa? È IL confronto dell'app.
  *
- * Devono avere lo stesso numero di parole che contano, e ogni parola
- * dell'uno deve trovare la sua nell'altro (singolare o plurale che sia).
- * «panino per burger» = «panini burger» ✓   «latte» = «latte di cocco» ✗
+ * Prima di tutto si guarda se li hai appaiati tu: quella è una risposta di
+ * una persona, e viene prima di qualunque regola di grammatica.
+ *
+ * Altrimenti devono avere lo stesso numero di parole che contano, e ogni
+ * parola dell'uno deve trovare la sua nell'altro (singolare o plurale che
+ * sia). «panino per burger» = «panini burger» ✓  «latte» = «latte di cocco» ✗
  */
 function stessoNome(a, b){
+  if (stessoAlias(a, b)) return true;
   const A = paroleNome(a), B = paroleNome(b);
   // nomi fatti di sole parole di servizio o di segni: si confrontano com'erano
   if (!A.length && !B.length) return senzaAccenti(a) === senzaAccenti(b);
@@ -3538,6 +3752,68 @@ function stessoNome(a, b){
     restano[k] = null;                       // ogni parola si spende una volta sola
     return true;
   });
+}
+
+/** Due parole sono la stessa parola (singolare o plurale che sia). */
+function stessaParola(x, y){
+  const fx = formeParola(x);
+  for (const w of formeParola(y)) if (fx.has(w)) return true;
+  return false;
+}
+
+/**
+ * Le voci di dispensa che SOMIGLIANO a un nome, per poterti chiedere se
+ * sono la stessa cosa. Non decide niente: prepara una domanda.
+ *
+ * ⚠️ LA REGOLA È STRETTA APPOSTA: le parole che contano di un nome devono
+ * essere TUTTE dentro quelle dell'altro. È stessoNome() senza il vincolo di
+ * avere lo stesso numero di parole.
+ *
+ *   «Petto di pollo»          ⊂ «Fetto Petto di pollo»   ✓ chiede
+ *   «Parmigiano»              ⊂ «Parmigiano grattugiato» ✓ chiede
+ *   «Prosciutto cotto magro»  ⊃ «Prosciutto cotto»       ✓ chiede
+ *   «Filetti di merluzzo»  vs  «Filetti di pollo»        ✗ tace
+ *   «Pane»                 vs  «Panini burger»           ✗ tace
+ *
+ * La riga che si è tentati di allargare è proprio la quarta: condividono
+ * «filetti», e con una regola più larga l'app proporrebbe il pollo al posto
+ * del merluzzo. Una domanda sbagliata fatta con sicurezza è peggio del
+ * silenzio, perché a rispondere di sì si fa un danno vero.
+ *
+ * Resta fuori anche il caso opposto — «Straccetti di tacchino» e «Fesa di
+ * tacchino», che si somigliano ma nessuno dei due contiene l'altro. Lì
+ * l'app tace, e l'appaiamento si fa a mano dal menu.
+ */
+function nomiSimili(nome){
+  const A = paroleNome(nome);
+  if (!A.length) return [];
+
+  const dentro = (piccole, grandi) => {
+    const restano = [...grandi];
+    return piccole.every(x => {
+      const k = restano.findIndex(y => stessaParola(x, y));
+      if (k < 0) return false;
+      restano.splice(k, 1);
+      return true;
+    });
+  };
+
+  const visti = new Set([chiaveAlias(nome)]);
+  return S.inv.filter(v => {
+    const B = paroleNome(v.name);
+    if (!B.length || A.length === B.length) return false;   // stessa lunghezza: è stessoNome()
+    const dentroDavvero = A.length < B.length ? dentro(A, B) : dentro(B, A);
+    if (!dentroDavvero) return false;
+    // la parte in comune dev'essere una parola vera, non un «di» o un «2»:
+    // «Cheddar» ⊂ «Cheddar 250)» sì, «250» ⊂ «250 g qualcosa» no
+    const corte = (A.length < B.length ? A : B);
+    if (!corte.some(p => p.length >= 4)) return false;
+    // «Fesa di tacchino» e «Fesa tacchino» sono la stessa domanda: si chiede una volta
+    const k = chiaveAlias(v.name);
+    if (visti.has(k)) return false;
+    visti.add(k);
+    return true;
+  }).sort((a,b) => paroleNome(a.name).length - paroleNome(b.name).length).slice(0, 2);
 }
 
 /* ---------- 2 · LE BOZZE NON TORNANO PIÙ ---------- */
@@ -3665,7 +3941,14 @@ function scorteMancanti(){
       // prima di gridare che manca: forse c'è con un altro nome, o è già
       // sulla lista della spesa e quindi non è una notizia
       if (forseInCasa(s.nome) || inListaSpesa(s.nome)) continue;
-      guai.push({ ...s, tipo:'assente' });
+      // ⚠️ «Non ce l'hai» e «non l'ho riconosciuto» sono due guai diversi e
+      // si rimediano in due modi diversi: il primo si compra, il secondo si
+      // chiarisce in un tocco. Chiamarli con lo stesso nome mandava a fare
+      // la spesa di roba che era già in frigo.
+      // ⚠️ Si guarda DOPO forseInCasa: le somiglianze non devono riempire
+      // l'avviso di «forse», spingendo fuori dalle prime sei i guai veri.
+      const simili = nomiSimili(s.nome);
+      guai.push({ ...s, tipo: simili.length ? 'nome' : 'assente', simili });
       continue;
     }
     if (!s.sicuro) continue;
@@ -3687,6 +3970,47 @@ function scorteMancanti(){
   return guai.sort((a,b) => a.giorni[0].localeCompare(b.giorni[0]));
 }
 
+/**
+ * La coda del messaggio dopo un salvataggio: che cosa, di preciso, non
+ * torna più da qui in avanti.
+ *
+ * ⚠️ Prima diceva «qualcosa non torna più — guarda l'avviso in cima», e
+ * l'informazione c'era già tutta: nome, tipo di guaio, quanto serve, quanto
+ * ce n'è. Un avviso che non dice cosa costringe ad andarlo a cercare, e
+ * quello che si va a cercare spesso non si trova.
+ *
+ * ⚠️ SI NOMINANO PRIMA I GUAI DEL PASTO APPENA SALVATO. L'avviso guarda
+ * tutti i giorni futuri: nominare il primo della lista vorrebbe dire
+ * rispondere del merluzzo di venerdì a chi ha appena salvato lunedì. Se il
+ * pasto salvato non c'entra niente, si nominano i primi della lista — ma
+ * allora è giusto che si veda che sono altri giorni.
+ */
+function cosaNonTorna(iso, quale){
+  const guai = scorteMancanti();
+  if (!guai.length) return '';
+
+  const miei = guai.filter(g => (g.dove || []).some(d => d.day === iso && d.pasto === quale));
+  const primi = (miei.length ? miei : guai).slice(0, 2);
+  const resto = guai.length - primi.length;
+
+  const elenco = primi.map(g => `${g.nome} (${comeManca(g)})`).join(' e ');
+  return ` Attenzione: ${elenco}${resto ? `, e altre ${resto} cose` : ''}`
+       + ` — l’avviso in cima al Piano le ha tutte.`;
+}
+
+/**
+ * Come si dice un guaio, ed è diverso per ognuno dei tre.
+ *
+ * ⚠️ «non ce l'hai» manda a fare la spesa, «non l'ho riconosciuto» manda a
+ * rispondere a una domanda. Dirli con le stesse parole faceva comprare roba
+ * che era già in frigo sotto un altro nome.
+ */
+function comeManca(g){
+  if (g.tipo === 'poco') return `servono ${g.serve}, ne hai ${g.hai}`;
+  if (g.tipo === 'nome') return 'non l’ho riconosciuto in dispensa';
+  return 'non ce l’hai in dispensa';
+}
+
 function avvisoScorteHtml(){
   if (S.avvisoVia) return '';
   const guai = scorteMancanti();
@@ -3694,25 +4018,33 @@ function avvisoScorteHtml(){
 
   const dal = guai[0].giorni[0];
   const ultimo = S.piano.map(r => r.day).sort().slice(-1)[0];
+  // ⚠️ Se sono tutti nomi da chiarire, «cose che non hai più» è falso: non
+  // manca niente, si chiamano solo in due modi. Il titolo lo deve dire.
+  const soloNomi = guai.every(g => g.tipo === 'nome');
 
   return `<div class="avviso attenzione avviso-scorte" data-dal="${esc(dal)}"
        data-quanti="${giorniFra(dal, ultimo) + 1}">
-    <b>Da ${esc(quandoRelativo(dal))} in poi il piano conta su cose che non hai più.</b>
+    <b>${soloNomi
+      ? `Da ${esc(quandoRelativo(dal))} in poi il piano usa nomi che non ritrovo in dispensa.`
+      : `Da ${esc(quandoRelativo(dal))} in poi il piano conta su cose che non hai più.`}</b>
     <ul class="avviso-lista">
       ${guai.slice(0, 6).map(g => {
-        const testo = `${esc(g.nome)} — ${g.tipo === 'assente'
-          ? 'non è in dispensa'
-          : `servono ${esc(g.serve)}, ne hai ${esc(g.hai)}`}`;
+        const testo = `${esc(g.nome)} — ${esc(comeManca(g))}`;
         // ⚠️ Toccabile: porta al primo pasto che lo richiede. Spesso il
         // «mancante» non manca davvero, è solo scritto con un altro nome —
         // e da lì lo si corregge invece di leggere un elenco e arrangiarsi.
         // «Non hai il merluzzo» serve a poco se in freezer c'è il nasello:
         // quando in dispensa c'è qualcosa della stessa categoria, si dice.
-        const alt = sostitutiPer(g.nome, g.serve);
+        // ⚠️ Ma NON quando il guaio è il nome: lì la cosa ce l'hai già, e
+        // offrire un sostituto vorrebbe dire proporre di cambiare il piatto
+        // per un problema che si risolve rispondendo a una domanda.
+        const alt = g.tipo === 'nome' ? [] : sostitutiPer(g.nome, g.serve);
         return `<li>${g.primo
           ? `<button class="btn-testo" data-vai-mancante="${esc(g.primo.day)}"
                 data-vai-pasto="${esc(g.primo.pasto)}">${testo}</button>`
-          : testo}${alt.length ? `
+          : testo}${(g.simili || []).map(v => `
+          <button class="btn-testo sost" data-alias="${esc(g.nome)}"
+                  data-alias-voce="${esc(v.name)}">in dispensa c’è «${esc(v.name)}»: è la stessa cosa?</button>`).join('')}${alt.length ? `
           <button class="btn-testo sost" data-sost="${esc(g.nome)}"
                   data-sost-serve="${esc(g.serve || '')}">${alt.length === 1
             ? `hai ${esc(alt[0].name)}: lo uso al suo posto?`
@@ -3721,10 +4053,16 @@ function avvisoScorteHtml(){
       ${guai.length > 6 ? `<li>e altre ${guai.length - 6}</li>` : ''}
     </ul>
     <p class="hint" style="margin:6px 0 0">Tocca una riga per aprire il pasto che la usa
-      per primo: se è solo un nome scritto diverso, si corregge da lì.</p>
+      per primo: se è solo un nome scritto diverso, si corregge da lì.
+      ${guai.some(g => g.tipo === 'nome') ? `Rispondendo «è la stessa cosa» il piano resta
+      scritto come l’hai scritto tu: me lo ricordo io, e da lì in poi li tratto come una
+      cosa sola. Si disfa dal menu ☰, «I nomi che ho appaiato».` : ''}</p>
     <div class="form-row">
-      <button class="btn small" data-rigenera-coda style="flex:1">Rigenera da ${esc(quandoRelativo(dal))}</button>
-      <button class="btn small ghost" data-avviso-via>Non ora</button>
+      <!-- ⚠️ Se il guaio è solo di nomi non si offre di rigenerare: non
+           manca niente da rifare, e una settimana costa sette generazioni
+           delle trenta del giorno. Un tasto che non serve, lì, costa soldi. -->
+      ${soloNomi ? '' : `<button class="btn small" data-rigenera-coda style="flex:1">Rigenera da ${esc(quandoRelativo(dal))}</button>`}
+      <button class="btn small ghost" data-avviso-via${soloNomi ? ' style="flex:1"' : ''}>Non ora</button>
     </div>
   </div>`;
 }
@@ -3923,6 +4261,39 @@ $('#planBody').addEventListener('click', async (ev) => {
   if (ev.target.closest('[data-rigenera]') && card){
     apriPassata({ dal:card.dataset.day, quanti:1, daPiano:true,
                   titolo:`Rigenero solo ${labelData(card.dataset.day)}` });
+    return;
+  }
+
+  /* «È la stessa cosa?» — l'app impara l'appaiamento, e il piano NON si
+     tocca: resta scritto con le parole di chi l'ha scritto.
+     ⚠️ Non basta renderPlan(): un appaiamento vale in tutta l'app, e le
+     altre tab sono già disegnate — se non si rifanno, la stessa cosa
+     risulta appaiata nel Piano e ancora estranea nella Spesa. */
+  const alias = ev.target.closest('[data-alias]');
+  if (alias){
+    const scritto = alias.dataset.alias, voce = alias.dataset.aliasVoce;
+    const prima = S.settings[CHIAVE_ALIAS] || '';
+    alias.disabled = true;
+    (async () => {
+      try{
+        await imparaAlias(scritto, voce);
+        rifaiDoveContanoINomi();
+        toast(`Me lo ricordo: «${scritto}» e «${voce}» sono la stessa cosa. `
+            + `Il piano resta scritto com’era.`, async () => {
+          // ⚠️ Si rimette esattamente il testo di prima, non si toglie il
+          // gruppo: se la risposta ne aveva uniti due, toglierlo lascerebbe
+          // separato anche quello che era già appaiato da prima.
+          try{
+            await salvaAlias(prima ? JSON.parse(prima) : []);
+            rifaiDoveContanoINomi();
+            toast('Appaiamento tolto.');
+          }catch(e){ esitoErrore(e); }
+        });
+      }catch(e){
+        alias.disabled = false;
+        esitoErrore(e);
+      }
+    })();
     return;
   }
 
@@ -4824,7 +5195,7 @@ function vistaRiepilogo(){
     return `<div class="ps-riga">
       <div class="ps-riga-gg">${esc(labelData(g.day).split(' ')[0].slice(0,3))} ${esc(g.day.slice(8))}</div>
       <div class="ps-riga-txt">${esc(testo)}</div>
-      ${t ? `<div class="ps-riga-num">${t.prot} g · ${t.kcal}</div>` : ''}
+      ${t ? `<div class="ps-riga-num">${t.prot} g${t.senzaProt ? '+' : ''} · ${t.kcal}${t.senzaKcal ? '+' : ''}</div>` : ''}
     </div>`;
   }).join('');
 
@@ -4843,7 +5214,9 @@ function vistaRiepilogo(){
       ${frequenzeHtml(S.piano.filter(r => PS.giorni.some(g => g.day === r.day)))}
       <p class="hint">I numeri sono di ${esc(nomeDiChi('ciprian'))}, colazione e spuntini compresi
         (${FISSE_CIPRIAN.reduce((s,f) => s+f.prot, 0)} g · ${FISSE_CIPRIAN.reduce((s,f) => s+f.kcal, 0)} kcal).
-        Nei giorni con un pasto fuori o libero il totale scende, ed è giusto così.</p>
+        Nei giorni con un pasto fuori o libero il totale scende, ed è giusto così.
+        Il <b>+</b> vuol dire che su qualche pasto quel numero non c’è: quello scritto
+        è un minimo, non il totale.</p>
     </div>
 
     ${PS.resta ? `<div class="panel">
@@ -5617,6 +5990,104 @@ $('#menuFrequenzeBox').addEventListener('click', async (ev) => {
     // generazione, e cambiarla adesso non cambia quello che è già scritto.
     toast('Frequenze salvate. Valgono dalla prossima generazione.');
     $('#menuFrequenzeBox').hidden = true;
+  }catch(e){ b.disabled = false; esitoErrore(e); }
+});
+
+/* ============================================================
+   I NOMI APPAIATI — DOVE SI TOLGONO
+
+   Un appaiamento nasce da un tocco nell'avviso del Piano e da lì vale
+   dappertutto: coerenza, scali, spesa, sostituti. Proprio per questo deve
+   esistere un posto — uno solo, e sempre lo stesso — dove si vede la
+   lista e si disfa. È questo.
+
+   ⚠️ Si toglie il GRUPPO intero, non un nome: se hai detto che A, B e C
+   sono la stessa cosa, la cosa da poter disfare è quella risposta lì.
+   ============================================================ */
+function renderAlias(){
+  const box = $('#menuAliasBox');
+  const { gruppi } = aliasIndice();
+
+  box.innerHTML = `<div class="panel">
+    <p class="hint" style="margin-top:0">I nomi che mi hai detto di trattare come una cosa
+      sola. Valgono ovunque: avviso delle scorte, scalo della dispensa, lista della spesa,
+      sostituti. Il piano resta sempre scritto con le parole che hai usato tu.</p>
+    ${gruppi.length ? gruppi.map((g, i) => `<div class="alias-riga">
+      <div class="alias-nomi">${g.map(n => esc(n)).join(' = ')}</div>
+      <button class="btn small ghost" data-scorda="${i}">Togli</button>
+    </div>`).join('') : `<p class="hint" style="margin:0">Non ne hai ancora appaiato
+      nessuno. Succede dall'avviso in cima al Piano, quando un ingrediente non si
+      riconosce e in dispensa c'è qualcosa che gli somiglia.</p>`}
+
+    <!-- ⚠️ Serve, e non è un di più: la proposta automatica è stretta
+         apposta (vedi nomiSimili) e sta zitta su tutti i casi in cui i due
+         nomi si somigliano senza che uno contenga l'altro — «straccetti di
+         tacchino» e «fesa di tacchino» sono proprio quello. Senza questo
+         campo quei casi non si potrebbero appaiare in nessun modo, e la
+         regola stretta smetterebbe di essere prudenza per diventare un
+         muro. -->
+    <div class="q-label">Appaiane due tu</div>
+    <div class="form-row" style="margin-top:0">
+      <input class="field" id="aliasA" placeholder="come lo chiamo io" style="flex:1">
+      <input class="field" id="aliasB" placeholder="come si chiama in dispensa" style="flex:1">
+    </div>
+    <div class="form-row">
+      <button class="btn" id="aliasAggiungi" style="flex:1">Sono la stessa cosa</button>
+    </div>
+  </div>`;
+}
+
+$('#menuAlias').onclick = () => {
+  const box = $('#menuAliasBox');
+  if (!box.hidden){ box.hidden = true; return; }
+  renderAlias();
+  box.hidden = false;
+};
+
+$('#menuAliasBox').addEventListener('click', async (ev) => {
+  const piu = ev.target.closest('#aliasAggiungi');
+  if (piu){
+    const a = $('#aliasA').value.trim(), b2 = $('#aliasB').value.trim();
+    // ⚠️ Si controlla prima di scrivere, e si dice perché: un appaiamento
+    // che non appaia niente resterebbe nell'elenco a far credere di valere.
+    if (!a || !b2){ toast('Servono tutti e due i nomi.'); return; }
+    if (!chiaveAlias(a) || !chiaveAlias(b2)){ toast('Uno dei due non ha parole da confrontare.'); return; }
+    if (stessoNome(a, b2)){ toast(`«${a}» e «${b2}» sono già la stessa cosa per me.`); return; }
+    const prima = S.settings[CHIAVE_ALIAS] || '';
+    piu.disabled = true;
+    try{
+      await imparaAlias(a, b2);
+      renderAlias();
+      rifaiDoveContanoINomi();
+      toast(`Appaiati: «${a}» e «${b2}».`, async () => {
+        try{
+          await salvaAlias(prima ? JSON.parse(prima) : []);
+          renderAlias(); rifaiDoveContanoINomi();
+          toast('Rimesso com’era.');
+        }catch(e){ esitoErrore(e); }
+      });
+    }catch(e){ piu.disabled = false; esitoErrore(e); }
+    return;
+  }
+
+  const b = ev.target.closest('[data-scorda]');
+  if (!b) return;
+  const i = Number(b.dataset.scorda);
+  const prima = S.settings[CHIAVE_ALIAS] || '';
+  b.disabled = true;
+  try{
+    await scordaAlias(i);
+    renderAlias();
+    rifaiDoveContanoINomi();
+    // ⚠️ L'annulla rimette il testo di prima, non ricostruisce il gruppo:
+    // è l'unico modo perché torni indietro esattamente quello che è uscito.
+    toast('Non sono più la stessa cosa.', async () => {
+      try{
+        await salvaAlias(prima ? JSON.parse(prima) : []);
+        renderAlias(); rifaiDoveContanoINomi();
+        toast('Rimesso com’era.');
+      }catch(e){ esitoErrore(e); }
+    });
   }catch(e){ b.disabled = false; esitoErrore(e); }
 });
 
