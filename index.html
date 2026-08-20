@@ -4113,7 +4113,15 @@ function scorteMancanti(){
       // ⚠️ Si guarda DOPO forseInCasa: le somiglianze non devono riempire
       // l'avviso di «forse», spingendo fuori dalle prime sei i guai veri.
       const simili = nomiSimili(s.nome);
-      guai.push({ ...s, tipo: simili.length ? 'nome' : 'assente', simili });
+      /* ⚠️ IL FABBISOGNO SI PORTA DIETRO ANCHE QUANDO LA COSA NON C'È.
+         Fino al 20/08/2026 `serve` veniva attaccato solo ai guai di tipo
+         «poco», cioè solo quando in dispensa c'era già qualcosa. Ma il
+         fabbisogno è stato calcolato lo stesso — sta in `s.n` e `s.u` — e
+         senza portarlo avanti il pannello dei sostituti non poteva né
+         ordinare né dire quanto ne manca: proprio sui due casi che erano
+         nati per essere risolti (merluzzo e provolone) restava muto. */
+      guai.push({ ...s, tipo: simili.length ? 'nome' : 'assente', simili,
+                  serve: (s.sicuro && s.n > 0) ? scriviQta(s.n, s.u) : undefined });
       continue;
     }
     if (!s.sicuro) continue;
