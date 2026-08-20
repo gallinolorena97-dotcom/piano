@@ -223,6 +223,8 @@ type Contesto = {
     categoria: string; min_sett: number | null; max_sett: number | null;
     rotazione_max: number | null; nota: string | null;
   }>;
+  // l'ultimo mese di piano, per la memoria fra le settimane
+  mese: Array<{ day: string; piatto: string; proteina_principale: string | null }>;
 };
 
 async function leggiContesto(): Promise<Contesto> {
@@ -260,7 +262,25 @@ async function leggiContesto(): Promise<Contesto> {
   let frequenze: Contesto['frequenze'] = [];
   try { frequenze = await leggi('frequenze_categorie', '*'); } catch { /* v8 non installata */ }
 
-  return { inv, rec, setRows, profili, voti, recenti, frequenze };
+  /* L'ULTIMO MESE DI PIANO, per la memoria fra le settimane.
+     ⚠️ Si legge `plan_meals` e non il diario: il piano è COMPLETO per i
+     giorni che copre, il diario è sparso (solo quello che è stato
+     verificato). Per «quante volte è tornato questo piatto» serve la fonte
+     completa; il diario resta quello degli ultimi 5 giorni, che risponde a
+     un'altra domanda — che cosa è stato mangiato DAVVERO, appena ieri. */
+  let mese: Contesto['mese'] = [];
+  try {
+    const oggiUTC = new Date().toISOString().slice(0, 10);
+    const da = new Date();
+    da.setDate(da.getDate() - 30);
+    mese = await leggi(
+      'plan_meals',
+      `day,piatto,proteina_principale&modo=eq.casa&day=gte.${da.toISOString().slice(0, 10)}`
+        + `&day=lt.${oggiUTC}&order=day.desc`,
+    );
+  } catch { /* niente storico: si genera come prima */ }
+
+  return { inv, rec, setRows, profili, voti, recenti, frequenze, mese };
 }
 
 /**
@@ -347,6 +367,58 @@ function descriviRecenti(c: Contesto): string {
     : '- (nessun pasto registrato)';
 }
 
+/**
+ * L'ULTIMO MESE: quante volte è tornato un piatto, e che cosa non torna.
+ *
+ * ⚠️ Non è l'elenco dei pasti: è il CONTEGGIO. Dare al modello trenta giorni
+ * di righe vorrebbe dire trenta giorni di token a ogni chiamata — e per
+ * sette chiamate a settimana — per fargli fare a mente un conto che qui si
+ * fa in tre righe. Il conto lo facciamo noi, e gli diamo il risultato.
+ *
+ * ⚠️ SI DICHIARA QUANTA STORIA C'È. Con cinque giorni di dati «non compare
+ * da un po'» non vuol dire niente, e un modello che legge quella riga la usa
+ * lo stesso: se la storia è corta glielo si dice, e la regola si spegne da
+ * sé invece di produrre scelte fondate sul nulla.
+ */
+function descriviMese(c: Contesto): string {
+  const righe = c.mese || [];
+  if (righe.length < 8)
+    return `- (storia troppo corta: solo ${righe.length} pasti registrati nell'ultimo mese, `
+         + `non basta per dire che cosa si ripete o che cosa manca — ignora questa sezione)`;
+
+  const chiave = (s: string) => s.toLowerCase().normalize('NFD')
+    .replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+
+  const visti = new Map<string, { nome: string; volte: number; ultimo: string }>();
+  for (const r of righe) {
+    const n = String(r.piatto || '').trim();
+    if (!n) continue;
+    const k = chiave(n);
+    const v = visti.get(k) || { nome: n, volte: 0, ultimo: '' };
+    v.volte++;
+    if (r.day > v.ultimo) v.ultimo = r.day;
+    visti.set(k, v);
+  }
+  const tutti = [...visti.values()];
+  const oggi = new Date().toISOString().slice(0, 10);
+  const giorniDa = (d: string) =>
+    Math.round((Date.parse(oggi) - Date.parse(d)) / 86400000);
+
+  const ripetuti = tutti.filter((v) => v.volte > 1).sort((a, b) => b.volte - a.volte).slice(0, 12);
+  const fermi = tutti.filter((v) => giorniDa(v.ultimo) >= 14)
+    .sort((a, b) => giorniDa(b.ultimo) - giorniDa(a.ultimo)).slice(0, 12);
+
+  return [
+    `- storia disponibile: ${righe.length} pasti nell'ultimo mese`,
+    ripetuti.length
+      ? `- già tornati: ${ripetuti.map((v) => `${v.nome} (${v.volte}×)`).join(' · ')}`
+      : `- nessun piatto è tornato più di una volta`,
+    fermi.length
+      ? `- non compaiono da almeno due settimane: ${fermi.map((v) => `${v.nome} (${giorniDa(v.ultimo)} giorni)`).join(' · ')}`
+      : `- niente che manchi da più di due settimane`,
+  ].join('\n');
+}
+
 // ------------------------------------------------------------
 //  IL METODO — questo è il cuore del generatore
 // ------------------------------------------------------------
@@ -357,6 +429,26 @@ function descriviRecenti(c: Contesto): string {
 //  in un posto: due copie si scollano alla prima modifica, ed è già
 //  successo con altre regole di questo file.
 // ------------------------------------------------------------
+/* La memoria fra le settimane, scritta UNA volta sola e interpolata dove
+   serve — come CONDIMENTI. ⚠️ Due copie si scollerebbero alla prima
+   modifica: è già successo in questo file. */
+const MEMORIA = `Nella sezione «L'ULTIMO MESE» c'è quello che è già passato in tavola.
+Usalo così, e in quest'ordine:
+
+- **quello che non compare da due settimane o più, preferiscilo** — a parità di tutto il
+  resto. È il modo di far tornare le cose cadute dal giro senza che nessuno se ne accorga.
+- **quello che è già tornato tre volte o più nel mese, evitalo**, a meno che non sia
+  l'avanzo previsto dal giorno prima: quello non è una ripetizione, è la catena.
+
+⚠️ QUESTA REGOLA VIENE PER ULTIMA. Non tocca le proteine, non tocca i divieti, non tocca
+la griglia delle frequenze e non tocca la fattibilità: se per ripescare un piatto
+dimenticato dovresti sforare un massimo o comprare qualcosa, lascia perdere e scegli
+quello che si può fare. È una preferenza fra pari, non un vincolo.
+
+⚠️ E SE LA STORIA È CORTA, IGNORALA. Quando la sezione dice che i pasti registrati sono
+pochi, quei conteggi non vogliono dire niente: due comparse su cinque giorni non sono una
+ripetizione. Meglio nessuna preferenza che una preferenza costruita sul nulla.`;
+
 const CONDIMENTI = `Un piatto non si cucina a secco, e le calorie del condimento sono
 calorie vere: un piano che le dimentica racconta una giornata più leggera di quella che
 è stata davvero.
@@ -406,6 +498,9 @@ Non sacrificare mai le proteine per stare sotto: semmai riduci i carboidrati.
 
 ## 2 bis. I CONDIMENTI E I GRASSI DI COTTURA
 ${CONDIMENTI}
+
+## 2 ter. LA MEMORIA FRA LE SETTIMANE
+${MEMORIA}
 
 ## 3. DEPERIBILI E SCADENZE
 Proponi per primi i freschi in scadenza e i deperibili già aperti.
@@ -719,6 +814,9 @@ Le scatolette e la roba secca possono aspettare la fine.
 
 ## 4 bis. I CONDIMENTI E I GRASSI DI COTTURA
 ${CONDIMENTI}
+
+## 4 quinquies. LA MEMORIA FRA LE SETTIMANE
+${MEMORIA}
 
 ## 4 ter. LE FREQUENZE DELLA SETTIMANA — la griglia della nutrizionista
 La griglia vera ti arriva più sotto, sotto "FREQUENZE DA RISPETTARE". Qui c'è COME si
@@ -1409,6 +1507,9 @@ ${descriviVoti(c)}
 
 ## MANGIATO NEGLI ULTIMI GIORNI (per la regola della varietà)
 ${descriviRecenti(c)}
+
+## L'ULTIMO MESE (memoria fra le settimane)
+${descriviMese(c)}
 
 ## FREQUENZE DA RISPETTARE — la griglia della nutrizionista
 Come si contano sta nella regola 4 ter, e senza quelle regole questa griglia produce
@@ -2267,6 +2368,9 @@ ${profili.length ? profili.map((p) => descriviProfilo(p, ioSlug)).join('\n\n') :
 
 ## MANGIATO NEGLI ULTIMI GIORNI (per non ripeterti)
 ${descriviRecenti(c)}
+
+## L'ULTIMO MESE (memoria fra le settimane)
+${descriviMese(c)}
 
 ## OBIETTIVI DEL GIORNO
 ${impostazioni.kcal_target ?? 2200} kcal · ${impostazioni.protein_target ?? 170} g di proteine

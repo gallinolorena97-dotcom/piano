@@ -715,6 +715,47 @@ vorrebbe dire aprire la dispensa mezza vuota senza capire perché.
 ⚠️ Il ripristino va **dopo** il ridisegno: prima la pagina ha ancora l'altezza vecchia e il
 browser non lascerebbe scorrere fin lì.
 
+### La memoria fra le settimane (20/08/2026) — ⚠️ RICHIEDE IL DEPLOY
+
+Quante volte un piatto è tornato nell'ultimo mese, e che cosa non compare da troppo. Si
+guarda dal menu, **«Nell'ultimo mese»**, e **il generatore legge la stessa cosa da sé**.
+⚠️ Nessun file SQL: si legge quello che c'è già.
+
+⚠️ **DUE FONTI, E NON SI SOMMANO.** `plan_meals` dice che cosa era in tavola ed è
+**completo** per i giorni che copre; `meals_log` dice che cosa è stato registrato ed è
+**sparso**. Un pasto verificato sta in tutti e due: sommarli lo conterebbe **due volte**.
+Quindi il piano comanda e il diario riempie solo i buchi — la stessa regola delle voci
+fisse (`fisseDelGiorno`), dove la registrazione vera **sostituisce** quella data per
+scontata invece di aggiungersi.
+
+⚠️ **LA MEMORIA DICHIARA FINO A DOVE ARRIVA.** Al 20/08/2026 il piano partiva dal 16 e il
+diario dall'11: dire «il merluzzo non compare da 24 giorni» guardando cinque giorni di dati
+sarebbe **un numero arrivato dal nulla**, che è la cosa che questa app non fa. La schermata
+scrive l'orizzonte in cima, dice quanti pasti ha davvero, e avverte quando sono pochi.
+⚠️ Sotto gli **8 pasti** la sezione del prompt dice al modello di **ignorarla**: due
+comparse su cinque giorni non sono una ripetizione, e *meglio nessuna preferenza che una
+preferenza costruita sul nulla*.
+
+⚠️ **«Non compare da un po'» vale SOLO per quello che è comparso almeno una volta**
+nell'orizzonte: di quello che non c'è mai stato non si può dire da quanto manca.
+
+⚠️ **Al modello si dà il CONTEGGIO, non i trenta giorni di righe.** Dargli l'elenco
+vorrebbe dire trenta giorni di token a ogni chiamata, per sette chiamate a settimana, per
+fargli fare a mente un conto che qui si fa in tre righe (`descriviMese()`).
+
+⚠️ **La regola viene per ULTIMA** (`MEMORIA`, interpolata nei due mestieri come
+`CONDIMENTI`): non tocca proteine, divieti, frequenze né fattibilità. Se per ripescare un
+piatto dimenticato si dovesse sforare un massimo o comprare qualcosa, si lascia perdere —
+è una preferenza fra pari, non un vincolo. E **l'avanzo previsto non conta come
+ripetizione**: quella è la catena, non una mancanza di fantasia.
+
+⚠️ **Niente punteggi e niente confronti**: è un registro come il diario. Il numero a destra
+è grigio e non colorato — *un conteggio in rosso o in verde diventa un voto*.
+
+I nomi si raggruppano con `stessoNome()` nel frontend: «Riso alla cantonese» e «riso
+cantonese» sono lo stesso piatto, e contarli come due vorrebbe dire non accorgersi di
+averlo fatto due volte.
+
 ### ⚠️ DA PROVARE COL TOCCO — nessuno l'ha ancora fatto (20/08/2026)
 
 Rilettura onesta di tutto quello che è stato dichiarato «collaudato» negli ultimi giri,
@@ -1147,7 +1188,12 @@ col campo «che voglia hai?».
 
 **Aggiornato il 20/08/2026.**
 
-✅ **IL DEPLOY DELLA FUNCTION È IN PARI.** Fatto dall'utente il **20/08/2026**, subito dopo
+⚠️ **SERVE UN DEPLOY** (aperto il 20/08/2026, la sera): la **memoria fra le settimane**
+tocca il `.ts` — la lettura dell'ultimo mese, `descriviMese()` e la costante `MEMORIA` nei
+due mestieri. Finché non è fatto, l'app mostra la pagina «Nell'ultimo mese» ma **il
+generatore non la usa**: genera esattamente come prima, senza errori.
+
+✅ Il deploy **precedente** era in pari. Fatto dall'utente il **20/08/2026**, subito dopo
 il push della barra in basso. Online c'è tutto quello arretrato dal 18/08 (menu, costi,
 valori per 100 g) **più** le due categorie nuove dello split, `formaggi` e
 `latticini freschi`, nell'elenco da cui il modello prende `categoria_principale`.
