@@ -978,7 +978,22 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
    mentre l'avviso chiede di guardare il piano. La riga resta larga quanto
    l'avviso, quindi il bersaglio orizzontale è tutto — ed è quello che conta
    con un pollice. */
-.avviso-lista .btn-testo{min-height:36px;font-size:13.5px}
+/* ⚠️ UNA AZIONE PER RIGA, e non è estetica: è il bersaglio.
+   `.btn-testo` è `inline-flex`, quindi tre bottoni di fila si mettevano
+   TUTTI SULLA STESSA RIGA, senza spazio in mezzo, e si leggevano come una
+   frase unica: «Patatine — non ce l'hai in dispensa è una cosa che ho: te
+   la indico io è un contorno libero: non contarlo». Toccando le parole
+   giuste si apriva l'azione della riga accanto — verificato con un tocco
+   vero il 20/08/2026: mirando alle Patatine si è aperto il pannello delle
+   Lenticchie. Il gestore era a posto: era il bersaglio a non esistere.
+   ⚠️ `display:flex` e non `block`: così il bottone prende tutta la
+   larghezza dell'avviso, e col pollice il bersaglio orizzontale è tutto.
+   ⚠️ Sul `li` NON si mette flex: gli toglierebbe il pallino dell'elenco,
+   che è quello che tiene insieme la riga e le sue azioni. */
+.avviso-lista .btn-testo{display:flex;width:100%;min-height:36px;font-size:13.5px}
+/* le azioni stanno sotto la loro riga, rientrate: si vede che sono sue */
+.avviso-lista .btn-testo + .btn-testo{padding-left:14px;min-height:40px}
+.avviso-lista li{margin-bottom:9px}
 
 /* ------------------------------------------------------------
    8-quinquies · V5 · LA VERIFICA DEL GIORNO (Blocco 3)
@@ -4594,7 +4609,16 @@ function avvisoScorteHtml(){
            né un nome da appaiare né qualcosa da usare al suo posto. «Non
            contarlo più» è una rinuncia, e va proposta per ultima — se c'è
            una risposta vera, la rinuncia non deve nemmeno comparire. */
-        const rinuncia = g.tipo === 'assente' && !alt.length;
+        /* ⚠️ DUE USCITE DIVERSE, e non vanno confuse.
+           «Mettilo in lista spesa» non toglie niente: la riga cambia posto,
+           esce dall'avviso perché adesso è in Spesa, e la ritrovi lì con la
+           data del pasto che l'aspetta.
+           «Non seguire più» invece è una rinuncia definitiva su quel nome —
+           brodo, sale, lievito: cose che ci sono sempre e che non ha senso
+           controllare. Chiamarle con lo stesso tono le renderebbe
+           intercambiabili, e si finirebbe per smettere di seguire una cosa
+           che invece bastava comprare. */
+        const rinuncia = g.tipo === 'assente';
         /* ⚠️ «È QUESTA COSA QUI»: la scelta a mano, sempre disponibile.
            La proposta automatica è stretta apposta e su «Patatine fatte in
            friggitrice ad aria» non può indovinare «Patate da friggere» —
@@ -4618,8 +4642,12 @@ function avvisoScorteHtml(){
             // ⚠️ Il numero non informava («hai 8 cose simili»): non dice se
             // sono utili né quali sono. Il nome della più abbondante sì.
             : `hai ${esc(alt[0].name)} e altro: ne uso uno?`}</button>` : ''}${scegli ? `
-          <button class="btn-testo sost" data-scegli="${esc(g.nome)}">è una cosa che ho: te la indico io</button>` : ''}${rinuncia ? `
-          <button class="btn-testo" data-contorno="${esc(g.nome)}">è un contorno libero: non contarlo</button>` : ''}</li>`;
+          <button class="btn-testo sost" data-scegli="${esc(g.nome)}">è una cosa che ho: te la indico io</button>` : ''}${inListaSpesa(g.nome) ? '' : `
+          <button class="btn-testo" data-in-spesa="${esc(g.nome)}"
+                  data-in-spesa-gg="${esc(g.primo?.day || '')}"
+                  data-in-spesa-qta="${esc(g.tipo === 'poco' ? (quantoManca(g.nome) || '') : (g.serve || ''))}"
+            >mettilo in lista spesa${g.primo ? ` — serve ${esc(quandoRelativo(g.primo.day))}` : ''}</button>`}${rinuncia ? `
+          <button class="btn-testo" data-contorno="${esc(g.nome)}">non seguire più questo ingrediente</button>` : ''}</li>`;
       }).join('')}
       ${guai.length > 6 ? `<li>e altre ${guai.length - 6}</li>` : ''}
     </ul>
@@ -4904,9 +4932,38 @@ $('#planBody').addEventListener('click', async (ev) => {
     return;
   }
 
-  /* «È un contorno libero»: da qui in poi quel nome non entra più nel
-     controllo scorte. ⚠️ Resta scritto nel pasto e chi cucina lo cucina:
-     si smette di CONTARLO, non di farlo. */
+  /* «Mettilo in lista spesa»: la riga non sparisce, cambia posto.
+     ⚠️ Esce dall'avviso da sola, senza che nessuno la nasconda: da quel
+     momento `inListaSpesa()` la trova, e l'avviso non ripete una cosa che
+     hai già deciso. È il contrario della rinuncia qui sotto. */
+  const inSpesa = ev.target.closest('[data-in-spesa]');
+  if (inSpesa){
+    const nome = inSpesa.dataset.inSpesa;
+    const giorno = inSpesa.dataset.inSpesaGg || null;
+    const qta = inSpesa.dataset.inSpesaQta || null;
+    inSpesa.disabled = true;
+    (async () => {
+      try{
+        await aggiungiAllaSpesa([{ nome, giorno, qta }], true);
+        const riga = S.spesa.find(v => stessoNome(v.name, nome));
+        renderPlan();
+        toast(`«${nome}» in lista spesa${giorno ? `, per ${quandoRelativo(giorno)}` : ''}.`,
+          riga ? async () => {
+            try{
+              await sb.from('shopping_list').delete().eq('id', riga.id);
+              S.spesa = S.spesa.filter(v => v.id !== riga.id);
+              renderSpesa(); renderPlan();
+              toast('Tolto dalla lista.');
+            }catch(e){ esitoErrore(e); }
+          } : null);
+      }catch(e){ inSpesa.disabled = false; esitoErrore(e); }
+    })();
+    return;
+  }
+
+  /* «Non seguire più questo ingrediente»: da qui in poi quel nome non entra
+     più né nel controllo scorte né nella spesa. ⚠️ Resta scritto nel pasto
+     e chi cucina lo cucina: si smette di CONTARLO, non di farlo. */
   const contorno = ev.target.closest('[data-contorno]');
   if (contorno){
     const nome = contorno.dataset.contorno;
@@ -4916,11 +4973,11 @@ $('#planBody').addEventListener('click', async (ev) => {
       try{
         await segnaContornoLibero(nome);
         renderPlan();
-        toast(`«${nome}»: non lo conto più. Resta scritto nel pasto.`, async () => {
+        toast(`«${nome}»: non lo seguo più. Resta scritto nel pasto.`, async () => {
           try{
             await scriviJson(CHIAVE_CONTORNI, prima ? JSON.parse(prima) : []);
             renderPlan();
-            toast('Torno a contarlo.');
+            toast('Torno a seguirlo.');
           }catch(e){ esitoErrore(e); }
         });
       }catch(e){ contorno.disabled = false; esitoErrore(e); }
@@ -7181,19 +7238,22 @@ function renderAlias(){
   </div>
 
   <div class="panel">
-    <div class="q-label" style="margin-top:0">I contorni che non conto</div>
-    <p class="hint" style="margin-top:0">Nomi che nel piano sono una descrizione e non una
-      voce di dispensa — «patatine fatte in friggitrice ad aria», «verdure di stagione».
-      Restano scritti nei pasti e si cucinano: semplicemente non li conto fra le scorte,
-      così l'avviso non li segnala per sempre.</p>
+    <div class="q-label" style="margin-top:0">Gli ingredienti che non seguo</div>
+    <!-- ⚠️ Questo elenco è metà del senso della cosa: escludere qualcosa
+         deve restare VISIBILE. Un ingrediente che sparisce dai controlli
+         senza lasciare traccia diventa, dopo un mese, un buco che nessuno
+         sa di avere — e non c'è modo di accorgersene guardando l'app. -->
+    <p class="hint" style="margin-top:0">Brodo, sale, lievito: cose che ci sono sempre e che
+      non ha senso controllare. Restano scritte nei pasti e si cucinano — semplicemente non
+      le conto fra le scorte e non finiscono in lista spesa.</p>
     ${liberi.length ? liberi.map((n, i) => `<div class="alias-riga">
       <div class="alias-nomi">${esc(n)}</div>
-      <button class="btn small ghost" data-scorda-contorno="${i}">Torna a contarlo</button>
-    </div>`).join('') : `<p class="hint" style="margin:0">Nessuno. Si marcano dall'avviso in
-      cima al Piano, quando un nome non si riconosce e non somiglia a niente.</p>`}
+      <button class="btn small ghost" data-scorda-contorno="${i}">Riprendi a seguirlo</button>
+    </div>`).join('') : `<p class="hint" style="margin:0">Nessuno: seguo tutto quello che c'è
+      scritto nei pasti. Si escludono dall'avviso in cima al Piano.</p>`}
     <div class="form-row">
-      <input class="field" id="contornoNuovo" placeholder="un nome da non contare" style="flex:1">
-      <button class="btn ghost" id="contornoAggiungi">Non contarlo</button>
+      <input class="field" id="contornoNuovo" placeholder="un nome da non seguire" style="flex:1">
+      <button class="btn ghost" id="contornoAggiungi">Non seguirlo</button>
     </div>
   </div>
 
@@ -7340,18 +7400,18 @@ $('#menuAliasBox').addEventListener('click', async (ev) => {
   if (piuC){
     const n = $('#contornoNuovo').value.trim();
     if (!n){ toast('Scrivi il nome da non contare.'); return; }
-    if (contornoLibero(n)){ toast(`«${n}» non lo conto già.`); return; }
+    if (contornoLibero(n)){ toast(`«${n}» non lo seguo già.`); return; }
     const prima = S.settings[CHIAVE_CONTORNI] || '';
     piuC.disabled = true;
     try{
       await segnaContornoLibero(n);
       renderAlias();
       rifaiDoveContanoINomi();
-      toast(`«${n}» non lo conto più fra le scorte.`, async () => {
+      toast(`«${n}»: non lo seguo più.`, async () => {
         try{
           await scriviJson(CHIAVE_CONTORNI, prima ? JSON.parse(prima) : []);
           renderAlias(); rifaiDoveContanoINomi();
-          toast('Torno a contarlo.');
+          toast('Torno a seguirlo.');
         }catch(e){ esitoErrore(e); }
       });
     }catch(e){ piuC.disabled = false; esitoErrore(e); }
@@ -7367,7 +7427,7 @@ $('#menuAliasBox').addEventListener('click', async (ev) => {
       await scordaContornoLibero(i);
       renderAlias();
       rifaiDoveContanoINomi();
-      toast(`Torno a contare «${nome}» fra le scorte.`);
+      toast(`Torno a seguire «${nome}».`);
     }catch(e){ tornaC.disabled = false; esitoErrore(e); }
     return;
   }
