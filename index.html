@@ -1198,6 +1198,9 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 /* Il numero nuovo è l'unico che si legge a colpo d'occhio: è la ragione
    per cui questo pannello esiste. Menta, cioè la buona notizia. */
 .ric-num.nuovo{color:var(--menta-ink);font-weight:600}
+/* ⚠️ Pesca e non menta: «non basta» è l'unica cosa in questo pannello che
+   chiede qualcosa a te. Il resto sono buone notizie e restano attenuate. */
+.ric-num.manca{color:var(--pesca-ink);font-weight:600;line-height:1.35}
 .ric-riga .btn.small{margin-top:5px}
 
 /* I sostituti. ⚠️ Menta e non pesca: una sostituzione è il contrario di un
@@ -3481,7 +3484,7 @@ function apriSostitutiInRiga(riga, box){
   riga.parentElement.querySelectorAll('.sost-mini').forEach(x => x.remove());
   const nome = riga.querySelector('[data-ing-nome]').value.trim();
   const qta  = riga.querySelector('[data-ing-qta]').value.trim();
-  const lista = sostitutiPer(nome, qta);
+  const lista = sostitutiPer(nome, qta, true);   // qui si sceglie: tutti
   if (!lista.length){
     // ⚠️ Due silenzi diversi non si raccontano con la stessa frase: «non ho
     // niente» manda a comprare, «qui non si sostituisce» manda a cambiare
@@ -3497,8 +3500,12 @@ function apriSostitutiInRiga(riga, box){
   riga.insertAdjacentHTML('afterend', `
     <div class="sost-mini">
       <p class="hint" style="margin:0 0 6px">Al posto di «${esc(nome)}», stessa categoria:</p>
-      ${lista.map(v => `<button class="btn small ghost" data-sost-riga="${esc(v.name)}"
-        >${esc(v.name)} · ne hai ${esc(mostraQta(v.qty))}</button>`).join(' ')}
+      ${lista.map(v => {
+        const m = ammanco(qta, v);
+        return `<button class="btn small ghost" data-sost-riga="${esc(v.name)}"
+          >${esc(v.name)} · ne hai ${esc(mostraQta(v.qty))}${m
+            ? ` (ne mancano ${esc(scriviQta(m, leggiQta(qta).u))})` : ''}</button>`;
+      }).join(' ')}
       <button class="btn-testo" data-sost-riga-no>lascia stare</button>
     </div>`);
 }
@@ -4538,9 +4545,12 @@ $('#planBody').addEventListener('click', async (ev) => {
     box.querySelectorAll('button').forEach(b => b.disabled = true);
     (async () => {
       try{
-        const { quanti, prima, senzaNumeri } = await sostituisciIngrediente(vecchio, nuovo);
+        const { quanti, prima, senzaNumeri, daComprare, giorno, messoInSpesa } =
+          await sostituisciIngrediente(vecchio, nuovo);
         renderPlan();
         toast(`${nuovo} al posto di ${vecchio}, in ${quanti === 1 ? '1 pasto' : quanti + ' pasti'}.`
+          + (daComprare ? ` Non basta: ${daComprare} in lista spesa${giorno
+              ? `, per ${quandoRelativo(giorno)}` : ''}.` : '')
           + (senzaNumeri ? ' I numeri di quei pasti sono da riscrivere.' : ''), async () => {
             try{
               for (const p of prima){
@@ -4549,6 +4559,15 @@ $('#planBody').addEventListener('click', async (ev) => {
                   .update({ ingredienti:p.ingredienti, prot:p.prot, kcal:p.kcal })
                   .eq('day', p.r.day).eq('pasto', p.r.pasto);
                 Object.assign(p.r, { ingredienti:p.ingredienti, prot:p.prot, kcal:p.kcal });
+              }
+              /* ⚠️ Si toglie anche la riga di spesa che abbiamo messo noi:
+                 un annulla che lascia in giro la spesa di un cambio annullato
+                 fa comprare una cosa che non serve più a nessuno. Solo quella
+                 nostra: se c'era già, non l'abbiamo aggiunta e non si tocca. */
+              if (messoInSpesa){
+                await sb.from('shopping_list').delete().eq('id', messoInSpesa.id);
+                S.spesa = S.spesa.filter(v => v.id !== messoInSpesa.id);
+                renderSpesa();
               }
               renderPlan(); toast('Rimesso com’era.');
             }catch(e){ esitoErrore(e); }
@@ -6832,38 +6851,83 @@ $('#menuAliasBox').addEventListener('click', async (ev) => {
  * elenco con scritto quanto ce n'è: con il frigo davanti si giudica meglio
  * che con una regola, e qui sbagliare verso il silenzio costa di più.
  */
-function sostitutiPer(nome, serve){
+/**
+ * Quanto ne mancherebbe usando questa voce al posto di quella che serve.
+ *
+ * Torna `null` quando il conto non si può fare (unità diverse, un «?», una
+ * quantità non numerica) e `0` quando basta. ⚠️ È l'UNICO modo in cui l'app
+ * dice «non basta»: lo usano l'ordine dei candidati, la riga che lo scrive
+ * nel pannello e la lista della spesa. Tre conti diversi si scollerebbero, e
+ * il pannello finirebbe a dire «basta» su una cosa messa in fondo perché non
+ * bastava.
+ */
+function ammanco(serve, voce){
+  const q = serve ? leggiQta(serve) : null;
+  if (!q || !(q.n > 0)) return null;
+  const qty = String(voce.qty);
+  if (qty.includes('?')) return null;
+  const hai = leggiQta(qty);
+  if (!hai || hai.u !== q.u) return null;
+  return Math.max(0, q.n - hai.n);
+}
+
+/**
+ * I sostituti possibili: le voci di dispensa della stessa categoria.
+ *
+ * ⚠️ NON SI SCARTA PIÙ QUELLO CHE NON BASTA — cambiato il 20/08/2026 dopo
+ * un caso vero. Il piano chiedeva 450 g di merluzzo; in freezer c'erano tre
+ * pesci da 300, 100 e 50 g, e siccome nessuno da solo arrivava a 450 la
+ * regola li buttava via tutti e tre: «non ho niente da proporti», con il
+ * freezer pieno di pesce. Adesso restano in elenco **dicendo quanto ne
+ * manca**, e a decidere sei tu.
+ *
+ * ⚠️ Da lì è venuta fuori la cosa peggiore: la proposta funzionava solo dove
+ * l'app NON sapeva fare il conto. «Pulled chicken» era chiesto in
+ * «2 confezioni» — un'unità che non si confronta con niente — quindi non
+ * scartava nessuno e sembrava l'unico caso funzionante. Dove sapeva
+ * calcolare, buttava via la risposta.
+ */
+function sostitutiPer(nome, serve, tutti){
   const cat = categoriaProposta(nome);
   // ⚠️ Dove l'ingrediente è il piatto non si sostituisce: si cambia piatto,
   // e quello si fa dalla matita. Vedi CHIAVE_SOSTITUIBILI.
   if (!cat || !sostituibile(cat)) return [];
 
-  const q = serve ? leggiQta(serve) : null;
-  /* Quanto quella voce COPRE di quello che serve: 2 se ce n'è il doppio,
-     0.5 se ce n'è metà. ⚠️ null quando non si può sapere — quantità non
-     numerica, un «?», unità diverse — e non è un errore: sono le voci che
-     restano in elenco perché davanti al frigo si giudica meglio che con una
-     regola. Vanno però DOPO quelle che si sanno bastare. */
-  const copre = (v) => {
-    if (String(v.qty).includes('?')) return null;
-    const hai = leggiQta(v.qty);
-    if (!hai || !q || hai.u !== q.u || !(q.n > 0)) return null;
-    return hai.n / q.n;
+  /* L'ordine, in quattro gradini. ⚠️ A pari merito NON si ordina per nome:
+     l'alfabeto non è un criterio, e faceva sembrare la Mozzarella più adatta
+     della Scamorza a sostituire il Provolone. Chi non ha un numero
+     confrontabile sta in fondo e lo si dichiara, invece di fingere una
+     classifica che non esiste. */
+  const gradino = (v) => {
+    const m = ammanco(serve, v);
+    if (m === 0)   return 0;                          // basta di sicuro
+    if (m !== null) return 1;                          // non basta, e si sa di quanto
+    return leggiQta(v.qty) && !String(v.qty).includes('?') ? 2 : 3;  // quantità illeggibile
   };
 
-  return S.inv
-    .filter(v => {
-      if (v.categoria !== cat || stessoNome(v.name, nome)) return false;
-      const c = copre(v);
-      return c === null || c >= 1;      // si scarta solo ciò che si SA non bastare
-    })
-    .map(v => ({ v, c: copre(v) }))
-    // ⚠️ MASSIMO TRE, ed è la parte importante quanto l'ordine: dodici
-    // bottoni non sono una proposta, sono un elenco da leggere. Prima quelle
-    // che bastano di sicuro, e fra quelle prima la più abbondante.
-    .sort((a, b) => (b.c ?? -1) - (a.c ?? -1))
-    .slice(0, 3)
-    .map(x => x.v);
+  const punti = S.inv
+    .filter(v => v.categoria === cat && !stessoNome(v.name, nome))
+    .map(v => ({ v, g:gradino(v), m:ammanco(serve, v) }))
+    .sort((a, b) => a.g - b.g || (a.m ?? 0) - (b.m ?? 0));
+
+  /* ⚠️ Doppioni FRA i candidati: «Fesa di tacchino» e «Fesa tacchino» sono
+     due righe di dispensa ma una cosa sola, e proporle tutte e due sprecava
+     un posto dei tre. Il controllo c'era già quando si cercano i nomi
+     somiglianti e mancava qui. Si tiene la prima dopo l'ordinamento, cioè la
+     più utile. */
+  const visti = new Set();
+  const unici = punti.filter(x => {
+    const k = chiaveAlias(x.v.name);
+    if (visti.has(k)) return false;
+    visti.add(k);
+    return true;
+  }).map(x => x.v);
+
+  /* ⚠️ IL TETTO DI TRE VALE NELL'AVVISO, NON NEL PANNELLO. Il muro da
+     togliere era la riga dell'avviso; il pannello è il posto in cui stai
+     SCEGLIENDO, e lì nascondere metà dei formaggi taglia fuori proprio
+     quello giusto senza dirtelo. */
+  return tutti ? unici : unici.slice(0, 3);
 }
 
 /**
@@ -6932,7 +6996,38 @@ async function sostituisciIngrediente(vecchio, nuovo){
     if (error) throw error;
     Object.assign(r, campi);
   }
-  return { quanti:pasti.length, prima, senzaNumeri };
+
+  /* ⚠️ SE QUELLO CHE HAI SCELTO NON BASTA, IL PASTO LO PRENDE LO STESSO E LA
+     DIFFERENZA VA IN LISTA SPESA. È la seconda metà della decisione di non
+     scartare più i candidati insufficienti: lasciarli scegliere senza poi
+     dire niente farebbe nascere il pasto zoppo in silenzio — cioè il difetto
+     peggiore di tutti, uno che non si vede finché non si è ai fornelli.
+
+     Il conto lo fa `quantoManca()`, lo stesso che usa la spesa in tutti gli
+     altri punti: somma il fabbisogno dei pasti futuri e ci toglie quello che
+     c'è. ⚠️ Si legge DOPO la scrittura, quando quei pasti nominano già il
+     nome nuovo — e torna `null` quando il conto non è sicuro, che qui vuol
+     dire tacere invece di mettere in lista una quantità inventata.
+
+     ⚠️ La data è quella del PRIMO pasto che lo aspetta, come ovunque: è
+     quella che decide quando conviene averlo in casa. */
+  const futuri = pastiConIngrediente(nuovo);
+  const daComprare = quantoManca(nuovo, futuri);
+  const giorno = futuri.map(r => r.day).sort()[0] || null;
+  // ⚠️ Se era già in lista non lo si tocca: toglierlo con l'annulla vorrebbe
+  // dire cancellare una riga che c'era prima e che non abbiamo messo noi.
+  const eraInLista = S.spesa.some(v => stessoNome(v.name, nuovo));
+  let messoInSpesa = null;
+
+  if (daComprare && !eraInLista){
+    try{
+      await aggiungiAllaSpesa([{ nome:nuovo, giorno, qta:daComprare }], true);
+      messoInSpesa = S.spesa.find(v => stessoNome(v.name, nuovo)) || null;
+    }catch{ /* accessorio: il cambio è fatto, la lista si può sempre riempire a mano */ }
+  }
+
+  return { quanti:pasti.length, prima, senzaNumeri,
+           daComprare: messoInSpesa ? daComprare : null, giorno, messoInSpesa };
 }
 
 /** Il pannello con le alternative, dentro l'avviso delle scorte. */
@@ -6944,7 +7039,8 @@ const valoriNoti = (nome) => {
 
 function apriSostituti(nome, serve, dentro){
   dentro.querySelector('.sost-box')?.remove();
-  const lista = sostitutiPer(nome, serve);
+  // qui si sceglie: si vedono tutti, non i primi tre
+  const lista = sostitutiPer(nome, serve, true);
   const quanti = pastiConIngrediente(nome).length;
   if (!lista.length) return;
 
@@ -6973,9 +7069,17 @@ function apriSostituti(nome, serve, dentro){
           const i = (r.ingredienti || []).find(x => stessoNome(String(x.nome || ''), nome));
           return numeriDopoIlCambio(r, nome, v.name, i?.qta).sicuro;
         });
+        /* ⚠️ Se non basta lo si scrive QUI, sulla riga, e si dice cosa
+           succede scegliendolo lo stesso: il pasto lo prende e la differenza
+           va in lista spesa. Un candidato che non basta e non lo dice
+           farebbe nascere il pasto zoppo in silenzio. */
+        const m = ammanco(serve, v);
         return `<div class="ric-riga">
           <div class="item-name">${esc(v.name)}</div>
-          <div class="ric-num">ne hai ${esc(mostraQta(v.qty))}</div>
+          <div class="ric-num">ne hai ${esc(mostraQta(v.qty))}${m
+            ? ` — ne servono ${esc(serve)}` : ''}</div>
+          ${m ? `<div class="ric-num manca">ne mancano ${esc(scriviQta(m, leggiQta(serve).u))}:
+            se lo scegli il pasto lo prende lo stesso e la differenza va in lista spesa</div>` : ''}
           ${baseIgnota ? '' : `<div class="ric-num${sicuri ? ' nuovo' : ''}">${sicuri
             ? 'i numeri si aggiustano da soli'
             : `di «${esc(v.name)}» non so i valori per 100 g: i numeri di quei pasti restano vuoti e il totale si dirà parziale`}</div>`}
