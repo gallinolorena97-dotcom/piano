@@ -913,6 +913,31 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 /* E il gemello all'incontrario: le calorie di Lorena non hanno senso in un
    pasto che mangia solo Ciprian. */
 .mano-box.solo-ciprian [data-numeri-lorena]{display:none}
+/* ------------------------------------------------------------
+   I NUMERI, IN FONDO AL PANNELLO (20/08/2026)
+
+   Erano due campi stretti schiacciati in fondo, con il nome dentro come
+   segnaposto — che sparisce appena scrivi, proprio quando serve sapere
+   quale dei due stai riempiendo. Adesso hanno un'etichetta fuori che
+   resta, l'unità a fianco, e un campo alto abbastanza da centrarlo col
+   pollice. ⚠️ Ciprian e Lorena restano due blocchi separati: sono due
+   persone, e i due numeri non vanno letti come una cifra sola.
+   ------------------------------------------------------------ */
+.mano-numeri{margin-top:16px}
+.num-campi{display:flex;gap:10px}
+.num-campo{flex:1;position:relative;display:block}
+.num-campo .num-eti{
+  display:block;font-size:12.5px;font-weight:600;color:var(--muted);margin-bottom:5px;
+}
+/* ⚠️ 48 px: sopra i 44 di bersaglio, e con lo spazio a destra per l'unità,
+   che altrimenti finirebbe sopra le cifre. */
+.num-campo .field{min-height:48px;padding-right:46px;font-variant-numeric:tabular-nums}
+.num-campo .num-unita{
+  position:absolute;right:14px;bottom:14px;
+  font-size:13px;font-weight:600;color:var(--muted);pointer-events:none;
+}
+.num-vecchi{margin-top:12px;font-size:13.5px;line-height:1.4}
+
 .mano-riga{display:flex;gap:7px;align-items:center;margin-top:6px}
 .mano-riga .field{flex:1;min-width:0;margin-top:0}
 .mano-riga .field[data-ing-qta]{flex:0 0 92px}
@@ -3270,13 +3295,21 @@ function apriModificaPasto(iso, quale, dentro){
     <div class="mano-ing">${ing.map(rigaIngrediente).join('')}</div>
     <button class="btn-testo" data-piu>+ aggiungi un ingrediente</button>
 
-    <div data-numeri>
-      <div class="q-label">Per ${esc(nomeDiChi('ciprian'))} <span>— facoltative</span></div>
-      <div class="form-row" style="margin-top:0">
-        <input class="field" data-prot type="number" inputmode="numeric"
-               placeholder="proteine g" value="${r?.prot ?? ''}">
-        <input class="field" data-kcal type="number" inputmode="numeric"
-               placeholder="kcal" value="${r?.kcal ?? ''}">
+    <div class="mano-numeri" data-numeri>
+      <div class="q-label" style="margin-top:0">Per ${esc(nomeDiChi('ciprian'))} <span>— facoltative</span></div>
+      <div class="num-campi">
+        <label class="num-campo">
+          <span class="num-eti">Proteine</span>
+          <input class="field" data-prot type="number" inputmode="numeric"
+                 placeholder="—" value="${r?.prot ?? ''}">
+          <span class="num-unita">g</span>
+        </label>
+        <label class="num-campo">
+          <span class="num-eti">Calorie</span>
+          <input class="field" data-kcal type="number" inputmode="numeric"
+                 placeholder="—" value="${r?.kcal ?? ''}">
+          <span class="num-unita">kcal</span>
+        </label>
       </div>
       <p class="hint">Se le lasci vuote non invento niente: il totale del giorno
         si dichiara <b>parziale</b>.</p>
@@ -3285,13 +3318,22 @@ function apriModificaPasto(iso, quale, dentro){
     <!-- ⚠️ FUORI da [data-numeri], ed è il punto: quel blocco sparisce nei
          pasti di sola Lorena perché contiene le proteine, che sono di
          Ciprian. Le sue calorie invece devono restare visibili proprio lì. -->
-    <div data-numeri-lorena>
-      <div class="q-label">Per ${esc(nomeDiChi('lorena'))} <span>— facoltative</span></div>
-      <div class="form-row" style="margin-top:0">
-        <input class="field" data-kcal-lorena type="number" inputmode="numeric"
-               placeholder="kcal" value="${r?.kcal_lorena ?? ''}">
+    <div class="mano-numeri" data-numeri-lorena>
+      <div class="q-label" style="margin-top:0">Per ${esc(nomeDiChi('lorena'))} <span>— facoltative</span></div>
+      <div class="num-campi">
+        <label class="num-campo">
+          <span class="num-eti">Calorie</span>
+          <input class="field" data-kcal-lorena type="number" inputmode="numeric"
+                 placeholder="—" value="${r?.kcal_lorena ?? ''}">
+          <span class="num-unita">kcal</span>
+        </label>
       </div>
     </div>
+
+    <!-- ⚠️ Il segno che i numeri non sono più aggiornati. Sta FUORI dai due
+         blocchi perché riguarda tutti e due: se cambi gli ingredienti,
+         cambiano insieme. Si riempie da segnaNumeriVecchi(). -->
+    <p class="avviso attenzione num-vecchi" data-num-vecchi hidden></p>
 
     <div class="q-label">Tocco dolce e nota <span>— facoltativi</span></div>
     <input class="field" data-dolce autocomplete="off"
@@ -3306,6 +3348,20 @@ function apriModificaPasto(iso, quale, dentro){
   dentro.appendChild(box);
   box.querySelector('[data-piatto]').focus();
 
+  /* La fotografia degli ingredienti com'erano all'apertura: è il metro con
+     cui si capisce se i numeri sono ancora quelli giusti. */
+  box.dataset.ingFoto = JSON.stringify(ingredientiDelBox(box));
+
+  box.addEventListener('input', (ev) => {
+    // ⚠️ I numeri riscritti a mano comandano: da quel momento valgono per
+    // gli ingredienti che ci sono adesso, e il segno sparisce.
+    if (ev.target.closest('[data-prot],[data-kcal],[data-kcal-lorena]')){
+      numeriRiscritti(box);
+      return;
+    }
+    if (ev.target.closest('[data-ing-nome],[data-ing-qta]')) aggiornaNumeriPannello(box);
+  });
+
   box.addEventListener('click', (ev) => {
     const chi = ev.target.closest('.chips[data-campo="chi"] button');
     if (chi){
@@ -3318,10 +3374,10 @@ function apriModificaPasto(iso, quale, dentro){
     }
     if (ev.target.closest('[data-piu]')){
       box.querySelector('.mano-ing').insertAdjacentHTML('beforeend', rigaIngrediente({ nome:'', qta:'' }));
-      return;
+      return;   // una riga vuota non cambia ancora niente: si aspetta che la scrivi
     }
     const via = ev.target.closest('[data-togli-ing]');
-    if (via){ via.closest('.mano-riga').remove(); return; }
+    if (via){ via.closest('.mano-riga').remove(); aggiornaNumeriPannello(box); return; }
 
     // «Sostituisci»: lo stesso gesto dell'avviso, ma qui il piano non è
     // ancora scritto — si cambia il testo nel campo e si aggiustano i due
@@ -3504,6 +3560,10 @@ async function creaLaRicetta(box, iso, quale){
   box.dataset.sostituzioni = sost.length ? JSON.stringify(sost) : '';
 
   zona.innerHTML = zonaRicettaHtml({ ricetta_id: idRicetta });
+  // ⚠️ Il generatore ha appena riscritto ingredienti E numeri insieme: sono
+  // coerenti fra loro, e la fotografia va rifatta perché nessuno li dichiari
+  // vecchi un istante dopo essere stati scritti.
+  numeriRiscritti(box);
 
   // ⚠️ Anche qui i contorni liberi restano fuori dalla spesa: la lista arriva
   // dal modello, che non ne sa niente. Quello che scrivi TU a mano nella
@@ -3567,6 +3627,129 @@ function apriSostitutiInRiga(riga, box){
     </div>`);
 }
 
+/* ============================================================
+   I NUMERI INVECCHIANO QUANDO CAMBI GLI INGREDIENTI (20/08/2026)
+
+   Aggiungevi un ingrediente, ne toglievi uno, cambiavi una quantità — e
+   proteine e calorie restavano quelle di prima **senza dire niente**. Sono
+   il numero che poi finisce nel totale della giornata: un numero vecchio
+   che si presenta come attuale è la stessa bugia del totale metà pieno.
+
+   ⚠️ SI RICALCOLA SOLO LA DIFFERENZA, mai il piatto da zero. La stima del
+   piatto intero l'ha fatta qualcuno guardando il piatto; rifarla sommando
+   gli ingredienti darebbe un numero più basso e **dall'aria precisa**, che
+   è il modo peggiore di sbagliare. È la stessa regola dei sostituti.
+
+   ⚠️ E se anche un solo ingrediente cambiato non ha i valori per 100 g o
+   non è pesabile, NON si tocca niente e si mette il segno. Mezzo ricalcolo
+   sarebbe peggio di nessuno.
+   ============================================================ */
+
+/** «q.b.» e il campo vuoto valgono zero nei conti, come in tutta l'app:
+    un condimento non pesato non cambia i numeri e non deve invecchiarli. */
+const qbOVuoto = (t) => {
+  const s = String(t ?? '').trim();
+  return !s || /^q\.?\s*b\.?$/i.test(s);
+};
+
+/** Gli ingredienti ridotti a grammi, nome per nome. */
+function pesiIngredienti(lista){
+  const m = new Map();
+  for (const i of (lista || [])){
+    const nome = String(i.nome || '').trim();
+    if (!nome) continue;
+    const k = chiaveAlias(nome) || senzaAccenti(nome);
+    const p = m.get(k) || { nome, g:0, pesabile:true };
+    if (qbOVuoto(i.qta)){ /* vale zero */ }
+    else {
+      const g = grammiDi(i.qta);
+      if (g === null) p.pesabile = false; else p.g += g;
+    }
+    m.set(k, p);
+  }
+  return m;
+}
+
+/**
+ * Di quanto cambiano proteine e calorie passando da una lista all'altra.
+ * `null` quando il conto non si può fare — ed è la risposta onesta, non un
+ * errore: vuol dire «i numeri di prima restano, e lo dico».
+ */
+function deltaIngredienti(prima, dopo){
+  const A = pesiIngredienti(prima), B = pesiIngredienti(dopo);
+  let dProt = 0, dKcal = 0;
+  for (const k of new Set([...A.keys(), ...B.keys()])){
+    const a = A.get(k), b = B.get(k);
+    const ga = a ? a.g : 0, gb = b ? b.g : 0;
+    if (ga === gb) continue;                                  // non è cambiato niente
+    if ((a && !a.pesabile) || (b && !b.pesabile)) return null; // «2 fette», «~1 kg»
+    const v = ricordoDi((b || a).nome);
+    if (!v || v.p == null || v.k == null) return null;         // valori per 100 g ignoti
+    dProt += (gb - ga) * v.p / 100;
+    dKcal += (gb - ga) * v.k / 100;
+  }
+  return { prot: Math.round(dProt), kcal: Math.round(dKcal) };
+}
+
+/** Gli ingredienti scritti adesso nel pannello. */
+const ingredientiDelBox = (box) => [...box.querySelectorAll('.mano-riga')].map(riga => ({
+  nome: riga.querySelector('[data-ing-nome]').value.trim(),
+  qta:  riga.querySelector('[data-ing-qta]').value.trim(),
+})).filter(i => i.nome);
+
+/**
+ * Gli ingredienti sono cambiati: aggiusta i numeri se si può, o dichiara
+ * che non sono più aggiornati.
+ *
+ * ⚠️ La fotografia si aggiorna SOLO quando i numeri tornano validi. Se
+ * resta il segno, la fotografia resta quella di prima: così una seconda
+ * modifica si somma alla prima invece di ripartire da capo, e basta che
+ * l'ultima sia calcolabile per rimettere a posto tutto.
+ */
+function aggiornaNumeriPannello(box){
+  const foto = JSON.parse(box.dataset.ingFoto || '[]');
+  const ora = ingredientiDelBox(box);
+  const segno = box.querySelector('[data-num-vecchi]');
+  const cp = box.querySelector('[data-prot]');
+  const ck = box.querySelector('[data-kcal]');
+  const cl = box.querySelector('[data-kcal-lorena]');
+  const vuoti = !cp?.value && !ck?.value && !cl?.value;
+
+  // niente numeri da invecchiare: non c'è niente da dire
+  if (vuoti){ box.dataset.ingFoto = JSON.stringify(ora); segno.hidden = true; return; }
+
+  const d = deltaIngredienti(foto, ora);
+
+  if (d && !d.prot && !d.kcal){ segno.hidden = true; return; }   // cambio senza peso
+
+  if (d){
+    /* ⚠️ Le proteine sono di Ciprian e restano sue; le calorie si spostano
+       per tutti e due, perché gli ingredienti del pannello sono già scritti
+       per persona (una porzione sola) — è la convenzione dell'app. */
+    if (cp?.value) cp.value = Math.max(0, Math.round(Number(cp.value) + d.prot));
+    if (ck?.value) ck.value = Math.max(0, Math.round(Number(ck.value) + d.kcal));
+    if (cl?.value) cl.value = Math.max(0, Math.round(Number(cl.value) + d.kcal));
+    box.dataset.ingFoto = JSON.stringify(ora);
+    segno.hidden = false;
+    segno.className = 'avviso info num-vecchi';
+    segno.textContent = `Numeri aggiornati con la differenza: ${d.prot >= 0 ? '+' : ''}${d.prot} g `
+                      + `proteine, ${d.kcal >= 0 ? '+' : ''}${d.kcal} kcal.`;
+    return;
+  }
+
+  segno.hidden = false;
+  segno.className = 'avviso attenzione num-vecchi';
+  segno.textContent = 'Numeri di prima della modifica: non so i valori per 100 g di quello '
+                    + 'che hai cambiato, e non ricalcolo il piatto da zero. Riscrivili tu, o lasciali.';
+}
+
+/** I numeri li hai scritti tu: da adesso valgono per QUESTI ingredienti. */
+function numeriRiscritti(box){
+  box.dataset.ingFoto = JSON.stringify(ingredientiDelBox(box));
+  const segno = box.querySelector('[data-num-vecchi]');
+  if (segno) segno.hidden = true;
+}
+
 /**
  * Applica il sostituto nella riga e aggiusta i due numeri del pannello.
  *
@@ -3585,6 +3768,10 @@ function applicaSostitutoInRiga(riga, box, nuovo){
 
   campoNome.value = nuovo;
   riga.parentElement.querySelectorAll('.sost-mini').forEach(x => x.remove());
+  /* ⚠️ La sostituzione aggiusta i numeri da sé, qui sotto: la fotografia va
+     rifatta o il controllo generale li dichiarerebbe vecchi un attimo dopo,
+     per una modifica di cui ha già tenuto conto. */
+  numeriRiscritti(box);
 
   if (!cp || !ck){ toast(`${nuovo} al posto di ${vecchio}.`); return; }
   if (n.sicuro){
