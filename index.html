@@ -134,6 +134,20 @@
   --nav-alt:0px;
   /* quanto della finestra si mangia la tastiera: 0 quando è chiusa */
   --tastiera:0px;
+  /* l'altezza della striscia dei giorni, misurata a runtime.
+     ⚠️ Serve SOLO a `scroll-margin-top`: non entra in nessuna delle
+     posizioni appiccicose, che restano quelle di prima. */
+  --striscia-alt:0px;
+}
+
+/* ⚠️ DOVE SI FERMA UNA COSA A CUI SALTIAMO. Senza questo, `scrollIntoView`
+   porta la riga esattamente sotto il bordo alto della finestra — cioè
+   dietro la testata, le tab e la striscia dei giorni — e si arriva su una
+   riga coperta. Con `scroll-margin-top` il browser si ferma più in basso da
+   solo, ovunque venga chiamato lo scorrimento, e non c'è nessun conto da
+   rifare in JavaScript in dieci punti diversi. */
+.pasto, .mano-riga, .sost-box, .day, .item, .rec-item, .dg-giorno{
+  scroll-margin-top:calc(var(--h-alt) + var(--nav-alt) + var(--striscia-alt) + 16px);
 }
 
 @media (prefers-reduced-motion: reduce){
@@ -708,6 +722,20 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
   scrollbar-width:none;
 }
 .settimana::-webkit-scrollbar{display:none}
+/* ⚠️ LA FASCIA OPACA DIETRO LA STRISCIA. La striscia è una pillola con dei
+   margini ai lati: il contenuto che scorre le passava dietro e riappariva
+   NEGLI SPAZI di fianco e sopra, per cui «Pasta sfoglia» si leggeva mozzato
+   a metà. Non era un difetto di posizione — era che dietro non c'era niente.
+   Questa fascia è larga quanto lo schermo (i -50vw) e del colore della
+   pagina: quello che scorre sotto sparisce invece di sbucare a pezzi.
+   ⚠️ `z-index:-1` la tiene dietro alla pillola ma davanti al contenuto,
+   perché `.settimana` ha già un suo z-index e fa da contenitore. */
+.settimana::before{
+  content:'';position:absolute;z-index:-1;
+  top:-10px;bottom:-8px;left:-50vw;right:-50vw;
+  background:var(--bg);
+}
+.settimana{position:sticky}   /* serve a ::before: si posiziona su di lei */
 /* I 7 giorni devono starci tutti sullo schermo di un telefono, senza
    scorrere: si allargano se c'e' posto, ma non scendono sotto i 42px.
    Con piu' di 7 giorni (piano lungo) la striscia scorre. */
@@ -5060,7 +5088,11 @@ function portaAllIngrediente(pasto, nome){
     stessoNome(r.querySelector('[data-ing-nome]')?.value || '', nome));
   if (!riga) return false;
 
-  riga.scrollIntoView({ behavior:'smooth', block:'center' });
+  /* ⚠️ `nearest` e non `center`: con `center` la riga finisce a metà
+     schermo anche quando era già visibile, e la pagina salta sotto le dita
+     per niente. Con `nearest` si muove solo se serve, e `scroll-margin-top`
+     la tiene comunque sotto la striscia dei giorni. */
+  riga.scrollIntoView({ behavior:'smooth', block:'nearest' });
   riga.classList.add('evidenzia');
   // ⚠️ Si spegne da sola: un'evidenziazione che resta smette di indicare
   // qualcosa e diventa un colore di sfondo come un altro.
@@ -5310,7 +5342,7 @@ $('#planBody').addEventListener('click', async (ev) => {
        proprio quella che costa. Se non si trova la riga si dice, invece di
        lasciare il pannello aperto su niente e sembrare rotto. */
     if (!portaAllIngrediente(b.closest('.pasto'), vai.dataset.vaiIng))
-      b.closest('.pasto')?.scrollIntoView({ behavior:'smooth', block:'center' });
+      b.closest('.pasto')?.scrollIntoView({ behavior:'smooth', block:'nearest' });
     return;
   }
 
@@ -10137,6 +10169,15 @@ function misuraTestata(){
   // quindi le intestazioni appiccicose si fermano subito sotto la testata.
   const navInAlto = getComputedStyle(n).position === 'sticky';
   document.documentElement.style.setProperty('--nav-alt', navInAlto ? n.offsetHeight + 'px' : '0px');
+
+  /* ⚠️ La striscia dei giorni si misura ma NON entra in nessuna posizione
+     appiccicota: serve solo a `scroll-margin-top`, cioè a decidere dove si
+     ferma uno scorrimento. Le intestazioni di Dispensa e Piano restano
+     esattamente dove sono sempre state — è la cosa che questa funzione non
+     deve rompere. */
+  const s = document.querySelector('#pnStriscia');
+  const alta = (s && !s.closest('[hidden]') && s.offsetHeight) ? s.offsetHeight + 8 : 0;
+  document.documentElement.style.setProperty('--striscia-alt', alta + 'px');
 }
 
 /* ============================================================
