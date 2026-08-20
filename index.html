@@ -990,7 +990,12 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
    larghezza dell'avviso, e col pollice il bersaglio orizzontale è tutto.
    ⚠️ Sul `li` NON si mette flex: gli toglierebbe il pallino dell'elenco,
    che è quello che tiene insieme la riga e le sue azioni. */
-.avviso-lista .btn-testo{display:flex;width:100%;min-height:36px;font-size:13.5px}
+/* ⚠️ `justify-content:flex-start` va scritto: un <button> in flex centra il
+   contenuto da solo, e l'elenco è finito con le voci in mezzo alla riga,
+   lontane dal loro pallino. */
+.avviso-lista .btn-testo{
+  display:flex;justify-content:flex-start;width:100%;min-height:36px;font-size:13.5px;
+}
 /* le azioni stanno sotto la loro riga, rientrate: si vede che sono sue */
 .avviso-lista .btn-testo + .btn-testo{padding-left:14px;min-height:40px}
 .avviso-lista li{margin-bottom:9px}
