@@ -1077,6 +1077,50 @@ farebbe fallire il salvataggio su un database dove il file SQL non è stato eseg
 proteine uno se le ricorda, le kcal no. Vale su `totaleGiorno()`, `totaleFinora()` e
 `fisseDelGiorno()`. **Un buco che non si dichiara è peggio del buco.**
 
+#### ⛔ UNA RICETTA NASCE DAL NOME E DALLA DISPENSA, MAI DAL MODULO (22/08/2026)
+
+⚠️ **Regola secca, senza eccezioni, decisa dall'utente.** `creaLaRicetta()` manda
+`ingredienti: []`: gli ingredienti che stanno nel modulo in quel momento **non partono**.
+
+Il modulo si apre già pieno col pasto che c'è nel piano. Prima quelle righe partivano, e il
+prompt le riceve come «ingredienti già scritti a mano, **TIENILI TUTTI**»: il piatto nuovo
+nasceva costruito attorno agli ingredienti del vecchio e finiva **nel ricettario così**.
+
+⚠️ **Una ricetta contaminata resta lì per sempre e si ripropone a ogni piatto con quel nome**
+— il ramo «ce l'ho già, la collego» la ricopia fedelmente, per disegno. È un guasto che si
+moltiplica da solo, e per questo la regola non prova a indovinare quali righe fossero «tue».
+
+Successo davvero, due volte in una mattina: **«Cannelloni al forno»** salvata con zucchine,
+carote, patate, stracchino e tonno (la cena che sostituiva) e **«Cannelloni besciamella e
+tritata»** salvata con pane, prosciutto crudo e mozzarella (il pranzo).
+
+⚠️ **Il prezzo, dichiarato nel messaggio**: se avevi scritto tu degli ingredienti, il
+generatore non li vede. Restano scritti nel modulo, non si perde niente.
+
+#### Il ricettario mostra cosa contiene, e si può riscrivere (22/08/2026)
+
+⚠️ **UN DATO CHE L'APP SCRIVE E NON FA MAI VEDERE NON SI PUÒ CORREGGERE.** La tab Ricette
+mostrava solo nome e voti mentre nel database c'erano ingredienti, numeri, tempo e
+procedimento: è *per questo* che una ricetta nata sporca ha potuto riproporsi per ore senza
+che ci fosse un modo di accorgersene. È il gemello della regola sul dato scritto e mai
+riletto — là si perdeva, qui resta e comanda, e nessuno lo sa.
+
+`contenutoRicettaHtml()` lo mostra in un `<details>` **chiuso**: il ricettario si scorre per
+cercare un nome e si apre per controllare, e venticinque schede aperte sarebbero un muro.
+⚠️ **Una ricetta vuota lo dichiara** («solo il nome»): è il vecchio ricettario, non un guasto,
+ma va distinta da una piena.
+
+**«Riscrivila con il generatore»** su ogni riga. ⚠️ Parte dal **solo nome**, come sopra.
+⚠️ Costa **una generazione** e il bottone lo scrive; mai automatico. ⚠️ **Tocca solo la
+ricetta, mai i pasti già scritti**: cambiare il ricettario non deve riscriverti il piano alle
+spalle. ⚠️ L'annulla rimette ogni campo com'era — anche una ricetta sbagliata è roba tua
+finché non decidi tu.
+
+⚠️ **E l'annulla della cancellazione rimette la riga INTERA.** Reinseriva `{id, name}` e
+ingredienti, numeri, tempo e procedimento sparivano per sempre: *un annulla che restituisce
+una cosa diversa da quella tolta non è un annulla* — la stessa regola già imparata sulla
+lista della spesa, e ricomparsa qui.
+
 #### ⚠️ Il modulo si sostituisce SEMPRE, anche col vuoto (22/08/2026)
 
 Sembrava che il ramo «la ricetta c'è già, la collego» non sostituisse niente: restavano
