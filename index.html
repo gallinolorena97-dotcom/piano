@@ -1197,6 +1197,18 @@ body.no-kcal-lorena [data-numeri-lorena]{display:none}
 .rec-item{padding:13px 16px}
 .rec-item + .rec-item{border-top:1px solid var(--bg)}
 .rec-testa{display:flex;align-items:center;gap:10px}
+/* Cosa c'è dentro una ricetta. ⚠️ Chiuso di default: il ricettario si scorre
+   per cercare un nome e si apre per controllare. Riusa `.proc`, cioè lo
+   stesso apri-e-chiudi del procedimento nel calendario: una forma sola. */
+.rec-dentro{margin-top:8px}
+.rec-num{font-variant-numeric:tabular-nums;color:var(--viola-testo)}
+.rec-ing{margin:8px 0 0;padding-left:18px;font-size:14.5px;line-height:1.6}
+.rec-qta{color:var(--muted);font-variant-numeric:tabular-nums}
+.rec-passi{margin:10px 0 0;padding-left:20px;font-size:14.5px;line-height:1.55}
+.rec-passi li{margin-bottom:5px}
+.rec-azioni{margin-top:10px}
+.rec-costo{color:var(--muted);font-size:12.5px;margin-left:6px}
+.rec-vuota{margin-top:6px}
 .rec-testa .item-name{font-size:15.5px;font-weight:500}
 .voto-riga{display:flex;align-items:center;gap:10px;margin-top:8px}
 .voto-riga.mio .voto-chi{color:var(--viola-testo);font-weight:700}
@@ -3700,30 +3712,29 @@ async function creaLaRicetta(box, iso, quale){
     qta:  riga.querySelector('[data-ing-qta]').value.trim(),
   })).filter(i => i.nome);
 
-  /* ⚠️ GLI INGREDIENTI DEL PIATTO CHE STAI SOSTITUENDO NON SONO «SCRITTI DA TE».
-     Il modulo si apre già pieno col pasto che c'è nel piano. Se scrivi sopra un
-     nome nuovo e premi «Crea la ricetta», quelle righe partivano lo stesso —
-     e il generatore le riceve come «ingredienti già scritti a mano, TIENILI
-     TUTTI». Risultato: il piatto nuovo nasceva costruito attorno agli
-     ingredienti del vecchio, e la ricetta finiva nel ricettario così.
-     Da quel momento in poi il ramo «ce l'ho già» la ricopiava fedelmente, e
-     sembrava che la sostituzione non partisse: partiva, ma copiava una
-     ricetta nata sporca.
+  /* ⚠️ UNA RICETTA NASCE DAL NOME DEL PIATTO E DALLA DISPENSA, MAI DAGLI
+     INGREDIENTI CHE STANNO NEL MODULO IN QUEL MOMENTO.
 
-     ⚠️ La distinzione è: **le hai toccate tu, o sono quelle di prima?** Se il
-     nome del piatto è cambiato E le righe sono ancora identiche a quelle nel
-     piano, non le hai scritte tu: appartengono al piatto che stai buttando, e
-     non si mandano. Se ne hai cambiata anche una, comandi tu e partono tutte.
-     ⚠️ Stesso nome di piatto = stai rigenerando quello: lì gli ingredienti
-     restano tuoi e si mandano sempre. */
+     Il modulo si apre già pieno col pasto che c'è nel piano. Prima quelle
+     righe partivano insieme alla richiesta, e il prompt le riceve come
+     «ingredienti già scritti a mano, TIENILI TUTTI»: il piatto nuovo nasceva
+     costruito attorno agli ingredienti del vecchio, e finiva **nel ricettario
+     così**. Da lì in poi il ramo «ce l'ho già» la ricopiava fedelmente, e
+     sembrava che la sostituzione non partisse: partiva, ma copiava una ricetta
+     nata sporca. È successo davvero il 22/08/2026 con «Cannelloni al forno»,
+     salvata con zucchine, carote, patate, stracchino e tonno — cioè la cena
+     che stava sostituendo.
+
+     ⚠️ **Una ricetta contaminata resta lì per sempre**, e si ripropone a ogni
+     piatto con quel nome: è un guasto che si moltiplica da solo. Per questo la
+     regola è secca e non ha eccezioni — decisione dell'utente del 22/08/2026 —
+     invece di provare a indovinare quali righe fossero «tue».
+
+     ⚠️ Il prezzo, dichiarato: se avevi scritto tu degli ingredienti nel modulo,
+     il generatore non li vede. Il messaggio finale lo dice, e restano scritti
+     nel modulo: non si perde niente, si aggiungono a mano. */
   const rPiano = pastiDi(iso).find(x => x.pasto === quale) || null;
-  const impronta = (righe) => (Array.isArray(righe) ? righe : [])
-    .filter(i => i && String(i.nome || '').trim())
-    .map(i => `${String(i.nome).trim()}|${String(i.qta ?? '').trim()}`).join('§');
-  const nonToccati  = !!scritti.length && impronta(rPiano?.ingredienti) === impronta(scritti);
-  const altroPiatto = !!String(rPiano?.piatto || '').trim() && !stessoNome(rPiano.piatto, nome);
-  const ereditati   = altroPiatto && nonToccati;
-  const daMandare   = ereditati ? [] : scritti;
+  const ereditati = scritti.length > 0;
 
   // La ricetta che c'è già: se è piena la mando al generatore perché la
   // riusi invece di riscriverla a modo suo. Qualcuno l'aveva approvata.
@@ -3745,7 +3756,7 @@ async function creaLaRicetta(box, iso, quale){
     await flussoNdjson({
       modo:'ricetta',
       nome, chi, pasto:quale,
-      ingredienti: daMandare,
+      ingredienti: [],
       ricetta: gia,
     }, (ev) => {
       if (ev.errore) problema = ev.errore;
@@ -3930,7 +3941,7 @@ async function creaLaRicetta(box, iso, quale){
     : '';
   // ⚠️ Ignorare degli ingredienti è una decisione, e le decisioni si dicono.
   const codaEreditati = ereditati
-    ? ` Gli ingredienti erano ancora quelli di «${rPiano.piatto}»: li ho lasciati fuori, se ne servono si aggiungono a mano.`
+    ? ` La ricetta l'ho scritta dal nome del piatto e dalla dispensa: gli ingredienti che erano già nel modulo non li ho usati.`
     : '';
 
   const testoFine = guaioRicettario
@@ -8968,6 +8979,53 @@ const votanti = () => S.profili.length
   ? S.profili.map(p => ({ slug:p.slug, nome:p.nome }))
   : [{ slug:'lorena', nome:'Voto' }];
 
+/**
+ * Cosa c'è DENTRO una ricetta, nella tab Ricette.
+ *
+ * ⚠️ Prima si vedevano solo il nome e i voti, mentre nel database c'erano
+ * ingredienti, numeri, tempo e procedimento. Il 22/08/2026 una ricetta è nata
+ * sporca — «Cannelloni al forno» salvata con zucchine, carote, patate e tonno,
+ * cioè gli ingredienti della cena che sostituiva — ed è rimasta lì a
+ * riproporsi per ore **senza che ci fosse un modo di accorgersene**: la
+ * schermata che avrebbe dovuto mostrarlo non mostrava niente.
+ *
+ * ⚠️ **Un dato che l'app scrive e non fa mai vedere non si può correggere.**
+ * È il gemello della regola sul dato scritto e mai riletto: là si perdeva,
+ * qui resta e comanda, e nessuno lo sa.
+ *
+ * ⚠️ È CHIUSO (`<details>`): il ricettario si scorre per cercare un nome, e si
+ * apre per controllare. Venticinque schede aperte sarebbero un muro — la
+ * stessa scelta già fatta per il procedimento nel calendario.
+ */
+function contenutoRicettaHtml(r){
+  const ing = Array.isArray(r.ingredienti) ? r.ingredienti.filter(i => i && i.nome) : [];
+  const passi = passiPuliti(r.procedimento);
+  const numeri = [
+    r.prot != null ? `${r.prot} g proteine` : null,
+    r.kcal != null ? `${r.kcal} kcal` : null,
+    r.tempo != null ? `${r.tempo} min` : null,
+  ].filter(Boolean);
+
+  // ⚠️ Una ricetta vuota lo DICE. È il vecchio ricettario, che conosceva solo
+  // i nomi: non è un guasto, ma va distinta da una piena.
+  if (!ing.length && !passi.length && !numeri.length)
+    return `<p class="hint rec-vuota">Solo il nome: dentro non c'è ancora niente.
+      Si riempie da «Crea la ricetta» su un pasto, oppure qui con «Riscrivi».
+      <button class="btn-testo" data-act="rigenera">Riscrivi con il generatore</button></p>`;
+
+  return `<details class="proc rec-dentro">
+    <summary>Cosa c'è dentro${numeri.length ? ` — <span class="rec-num">${esc(numeri.join(' · '))}</span> per una persona` : ''}</summary>
+    ${ing.length ? `<ul class="rec-ing">${ing.map(i =>
+      `<li>${esc(i.nome)}${i.qta ? ` <span class="rec-qta">${esc(mostraQta(String(i.qta)))}</span>` : ''}</li>`).join('')}</ul>`
+      : `<p class="hint">Nessun ingrediente scritto.</p>`}
+    ${passi.length ? `<ol class="rec-passi">${passi.map(p => `<li>${esc(p)}</li>`).join('')}</ol>` : ''}
+    <p class="hint rec-azioni">Se non è la ricetta giusta:
+      <button class="btn-testo" data-act="rigenera">Riscrivila con il generatore</button>
+      <span class="rec-costo">costa una generazione</span>
+    </p>
+  </details>`;
+}
+
 function renderRec(){
   const box = $('#recBody');
   if (!S.rec.length){
@@ -8986,6 +9044,7 @@ function renderRec(){
         <div class="item-name">${esc(r.name)}</div>
         <button class="icon-btn" data-act="del" aria-label="Elimina ${esc(r.name)}">${ico("chiudi",17)}</button>
       </div>
+      ${contenutoRicettaHtml(r)}
       ${chi.map(c => `<div class="voto-riga ${c.slug === S.io ? 'mio' : ''}">
         <span class="voto-chi">${esc(c.nome)}</span>
         <div class="pref">
@@ -9049,9 +9108,18 @@ $('#recBody').addEventListener('click', async (ev) => {
       S.rec = S.rec.filter(x => x.id !== rec.id);
       delete S.voti[rec.id];
       renderRec();
+      // ⚠️ L'ANNULLA RIMETTE LA RICETTA INTERA, non il solo nome. Prima
+      // reinseriva `{id, name}` e ingredienti, numeri, tempo e procedimento
+      // sparivano per sempre: un annulla che restituisce una cosa diversa da
+      // quella tolta non è un annulla — la stessa regola già imparata sulla
+      // lista della spesa. `undefined` non si manda, così un database senza
+      // le colonne facoltative continua a funzionare.
+      const intera = { id:rec.id, name:rec.name };
+      for (const c of ['ingredienti','prot','kcal','tempo','procedimento','pref'])
+        if (rec[c] !== undefined && rec[c] !== null) intera[c] = rec[c];
       toast(`Eliminata: ${rec.name}`, async () => {
         const { data, error } = await sb.from('recipes')
-          .insert({ id:rec.id, name:rec.name }).select().single();
+          .insert(intera).select().single();
         if (error) { esitoErrore(error); return; }
         S.rec.push(data);
         S.rec.sort((a,b) => a.name.localeCompare(b.name,'it'));
@@ -9065,6 +9133,66 @@ $('#recBody').addEventListener('click', async (ev) => {
         renderRec(); toast('Ripristinata, voti compresi.');
       });
     }catch(e){ esitoErrore(e); }
+    return;
+  }
+
+  /* «Riscrivila con il generatore» — la via d'uscita da una ricetta nata
+     sporca, senza doverla cancellare e rifare da un pasto.
+
+     ⚠️ Parte SOLO dal nome e dalla dispensa, come «Crea la ricetta»: mandarle
+     il contenuto vecchio vorrebbe dire chiederle di riusare proprio la cosa
+     che stiamo buttando.
+     ⚠️ Costa **una generazione**, e il bottone lo scrive. Mai automatico.
+     ⚠️ Tocca solo la ricetta: i pasti già scritti nel calendario restano come
+     sono. Cambiare il ricettario non deve riscriverti il piano alle spalle. */
+  if (ev.target.closest('[data-act="rigenera"]')){
+    const prima = { ingredienti:rec.ingredienti, prot:rec.prot, kcal:rec.kcal,
+                    tempo:rec.tempo, procedimento:rec.procedimento };
+    const dett = row.querySelector('details');
+    const segna = (t) => { const s = row.querySelector('summary'); if (s) s.textContent = t; };
+    segna('Sto riscrivendo la ricetta…');
+    if (dett) dett.open = true;
+
+    let dati = null, problema = null;
+    try{
+      await flussoNdjson({ modo:'ricetta', nome:rec.name, chi:'entrambi',
+                           pasto:'cena', ingredienti:[], ricetta:null }, (e2) => {
+        if (e2.errore) problema = e2.errore;
+        if (e2.tipo === 'ricetta') dati = e2.ricetta;
+      });
+    }catch(e){
+      problema = guastoDiRete(String(e?.message || ''))
+        ? 'Il generatore stava riscrivendo la ricetta e il collegamento si è interrotto. Riprova.'
+        : (e?.message || '');
+    }
+    if (!dati){
+      renderRec();
+      toast(problema || 'Il generatore non ha riscritto la ricetta. Riprova.', null, 'errore');
+      return;
+    }
+
+    const nuovo = {
+      ingredienti: Array.isArray(dati.ricetta_ingredienti) ? dati.ricetta_ingredienti : [],
+      prot: numeroONull(dati.ricetta_prot),
+      kcal: numeroONull(dati.ricetta_kcal),
+      tempo: numeroONull(dati.tempo),
+    };
+    const passi = passiPuliti(dati.procedimento);
+    if (passi.length) nuovo.procedimento = passi;
+
+    try{
+      const { error } = await sb.from('recipes').update(nuovo).eq('id', rec.id);
+      if (error) throw error;
+      Object.assign(rec, nuovo);
+      renderRec();
+      // ⚠️ L'annulla rimette esattamente quello che c'era, campo per campo:
+      // anche una ricetta sbagliata è roba tua finché non decidi tu.
+      toast(`Riscritta: ${rec.name}. Aprila e controlla.`, async () => {
+        const { error: e3 } = await sb.from('recipes').update(prima).eq('id', rec.id);
+        if (e3) { esitoErrore(e3); return; }
+        Object.assign(rec, prima); renderRec(); toast('Rimessa com’era.');
+      });
+    }catch(e){ renderRec(); esitoErrore(e); }
     return;
   }
 
