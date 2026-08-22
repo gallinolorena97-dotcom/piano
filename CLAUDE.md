@@ -862,16 +862,53 @@ l'impossibilità vera, e va scritta in una riga in `perche`. Perché funzioni,
 
 **Aggiornato il 22/08/2026.**
 
-⚠️ **SERVE UN DEPLOY**, e ora sono **due cose insieme** — è il motivo per cui le modifiche
-alla function si raggruppano:
+✅ **Il deploy è in pari**, fatto dall'utente il 22/08/2026 con Verify JWT spento: contiene
+la memoria fra le settimane, il **silenzio di undici secondi** del modo `ricetta` e la
+correzione della colonna qui sotto. **Verificato leggendo la sorgente online**: la select
+sbagliata non c'è più.
 
-1. aperto il 20/08 la sera: la **memoria fra le settimane** tocca il `.ts` — la lettura
-   dell'ultimo mese, `descriviMese()` e la costante `MEMORIA` nei due mestieri. Finché non
-   è fatto, l'app mostra la pagina «Nell'ultimo mese» ma **il generatore non la usa**:
-   genera esattamente come prima, senza errori;
-2. aperto il 22/08: il **silenzio di undici secondi** del modo `ricetta` (qui sotto).
-   Finché non è fatto, «Crea la ricetta» continua a cadere sul telefono — i messaggi
-   dell'app sono già corretti e dicono cosa è successo, ma la causa resta.
+**«Crea la ricetta» è verificata per misura**: chiamando la funzione dal terminale, il primo
+pezzo di risposta arriva dopo **1,2 secondi** invece di 11, poi un battito ogni 10 secondi, la
+ricetta completa a 20,6 s. ⚠️ **Resta da provare col tocco dal telefono**, e finché l'utente
+non l'ha fatto il guasto **resta aperto**.
+
+#### ⚠️ LA COLONNA CHIESTA E MAI USATA — il guasto che nessun collaudo poteva vedere
+
+La memoria fra le settimane chiedeva `plan_meals.proteina_principale`, **una colonna che non
+esiste**: sta su `meals_log` e si chiama `proteina`, mentre su `plan_meals` c'è
+`categoria_principale`. Bastava quel nome di troppo perché il database rispondesse **400**, e
+da lì in poi tutto taceva.
+
+⚠️ **Ed era in DUE posti, non in uno** — trovato il secondo solo perché si è cercato il primo:
+
+- nella **Edge Function** (`descriviMese()`): il `catch` ingoiava l'errore, `mese` restava
+  vuoto, e il generatore leggeva «0 pasti, ignora questa sezione». Generava come se la memoria
+  non esistesse;
+- nel **frontend** (`caricaStorico()`): `p.data` diventava `null` e `piano` restava **vuoto**,
+  quindi la pagina «Nell'ultimo mese» mostrava **solo il diario** — cioè la fonte *sparsa* —
+  proprio mentre la regola dice che il piano comanda e il diario riempie i buchi.
+
+⚠️ **In nessuno dei due c'era un errore da nessuna parte**: né nei log, né nell'app, né nel
+risultato. Un mese vuoto e un mese senza niente da dire si scrivono nello stesso modo.
+
+⚠️ **E quella colonna non serviva a niente**: né `descriviMese()` né `memoriaDelMese()` la
+leggono. Era solo un nome in più nella richiesta.
+
+⚠️ **LA REGOLA, e vale per ogni lettura dal database: si chiedono SOLO le colonne che si
+usano.** Una colonna chiesta e mai usata non è innocua — è un modo di rompersi che nessun
+collaudo del *risultato* può far vedere, perché il risultato è indistinguibile da «non c'era
+niente da dire». ⚠️ È il gemello all'incontrario della regola del 19/08 (`select('*')` sulla
+dispensa, «un dato scritto e mai riletto è un dato perso»): là il rischio era chiedere troppo
+poco, qui è **chiedere qualcosa che non c'è**.
+
+⚠️ **E `caricaStorico()` adesso non tace più**: se una delle due letture fallisce, l'errore
+viene sollevato e la schermata lo mostra, invece di disegnare un mese a metà.
+
+⚠️ **Da sapere per il collaudo**: al 22/08/2026 la memoria vede **10 pasti** (16-21 agosto),
+sopra la soglia di 8 — quindi è viva — ma **non ha ancora niente da dire**: nessun piatto si
+ripete e niente è fermo da due settimane. Diventa utile quando lo storico si allunga. Per
+questo **guardare il piano generato non dice se funziona**: il controllo vero è rifare la
+query dal terminale e vedere se torna 400 o un numero.
 
 ✅ Il deploy **precedente** era in pari. Fatto dall'utente il **20/08/2026**, subito dopo
 il push della barra in basso. Online c'è tutto quello arretrato dal 18/08 (menu, costi,

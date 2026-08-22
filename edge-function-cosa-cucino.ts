@@ -275,7 +275,17 @@ async function leggiContesto(): Promise<Contesto> {
     da.setDate(da.getDate() - 30);
     mese = await leggi(
       'plan_meals',
-      `day,piatto,proteina_principale&modo=eq.casa&day=gte.${da.toISOString().slice(0, 10)}`
+      // ⚠️ SI CHIEDONO SOLO LE COLONNE CHE SI USANO, e `descriviMese()` usa
+      // solo `day` e `piatto`. Qui c'era anche `proteina_principale`, che su
+      // `plan_meals` NON ESISTE — quella colonna sta su `meals_log` e si chiama
+      // `proteina`, mentre su `plan_meals` c'è `categoria_principale`. Bastava
+      // quel nome di troppo perché PostgREST rispondesse 400, il `catch` qui
+      // sotto ingoiasse l'errore e la memoria restasse **vuota per sempre**,
+      // senza che niente lo dicesse: il generatore leggeva «0 pasti, ignora
+      // questa sezione» e generava come se la memoria non esistesse.
+      // ⚠️ Una colonna chiesta e non usata non è innocua: è un modo di rompersi
+      // che nessun collaudo del risultato può far vedere.
+      `day,piatto&modo=eq.casa&day=gte.${da.toISOString().slice(0, 10)}`
         + `&day=lt.${oggiUTC}&order=day.desc`,
     );
   } catch { /* niente storico: si genera come prima */ }

@@ -4486,10 +4486,21 @@ async function caricaStorico(){
   if (storicoLetto) return storicoLetto;
   const dal = addGiorni(oggiISO(), -GIORNI_MEMORIA);
   const [p, d] = await Promise.all([
-    sb.from('plan_meals').select('day,pasto,piatto,modo,proteina_principale,categoria_principale')
+    // ⚠️ SOLO LE COLONNE CHE SI USANO — `memoriaDelMese()` legge day, modo,
+    // pasto e piatto, e basta. Qui c'era anche `proteina_principale`, che su
+    // `plan_meals` NON ESISTE (sta su `meals_log` e si chiama `proteina`).
+    // Bastava quel nome di troppo perché la lettura fallisse, `p.data` fosse
+    // `null` e `piano` restasse VUOTO: la pagina «Nell'ultimo mese» mostrava
+    // solo il diario, cioè la fonte sparsa, proprio mentre la regola dice che
+    // il piano comanda e il diario riempie i buchi. E nessun errore da
+    // nessuna parte. La stessa identica cosa era nella Edge Function.
+    sb.from('plan_meals').select('day,pasto,piatto,modo')
       .gte('day', dal).lt('day', oggiISO()),
-    sb.from('meals_log').select('day,pasto,piatto,proteina').gte('day', dal).lt('day', oggiISO()),
+    sb.from('meals_log').select('day,pasto,piatto').gte('day', dal).lt('day', oggiISO()),
   ]);
+  // ⚠️ Se una delle due letture fallisce NON si tace: uno storico a metà
+  // racconta un mese che non c'è stato, ed è esattamente il guasto di sopra.
+  if (p.error || d.error) throw (p.error || d.error);
   storicoLetto = { piano: p.data || [], diario: d.data || [], dal };
   return storicoLetto;
 }
