@@ -1076,6 +1076,42 @@ farebbe fallire il salvataggio su un database dove il file SQL non è stato eseg
 ⚠️ **«Parziale» basta che manchi UN numero solo**, non tutti e due (`||`, non `&&`): le
 proteine uno se le ricorda, le kcal no. Vale su `totaleGiorno()`, `totaleFinora()` e
 `fisseDelGiorno()`. **Un buco che non si dichiara è peggio del buco.**
+
+#### ⚠️ Il modulo si sostituisce SEMPRE, anche col vuoto (22/08/2026)
+
+Sembrava che il ramo «la ricetta c'è già, la collego» non sostituisse niente: restavano
+ingredienti, nota e numeri del piatto di prima. **Il ramo non c'entrava**: il punto 3 è
+condiviso da tutti e due, ma ogni campo era **condizionato** — gli ingredienti solo
+`if (righe.length)`, i numeri solo `if (p != null)`, e la nota solo `if (!campo.value)`.
+
+⚠️ **Quel `!value` non ha mai protetto niente di tuo**: il modulo si apre **già pieno** col
+pasto che stai sostituendo, quindi la condizione era sempre falsa e **la nota del piatto di
+ieri non veniva sostituita mai**. Restava sotto il nome nuovo, e sembrava la sua.
+
+⚠️ **Meglio vuoto che il piatto di ieri spacciato per quello di oggi.** Ora si scrive sempre,
+e se un campo arriva vuoto **si svuota e il messaggio lo dice** (`svuotati`). Svuotare è
+sicuro perché `SCHEMA_RICETTA` rende obbligatori `nota`, `dolce`, `pasto_ingredienti` e i tre
+numeri: il generatore li manda sempre, semmai vuoti. ⚠️ Se un domani uno di quei campi esce da
+`required`, questo punto comincia a svuotarlo davvero — e l'avviso è ciò che lo fa vedere.
+
+✅ **Provato per davvero**, non dedotto: aperto il pasto sull'app vera, premuto il bottone col
+gestore reale, e confrontati i campi prima e dopo. Ingredienti da 7 a 8 e con i nomi nuovi
+(Patate crude, Tonno in scatola, Parmigiano), proteine da 58 a 56, kcal da vuote a 815, nota
+sostituita.
+
+⚠️ **E la lezione sulla misura**: al primo tentativo avevo letto i campi **dopo 25 secondi** e
+concluso che il rimedio non funzionava. Non era vero: quella chiamata impiega **~55 secondi**,
+e stavo guardando prima della fine. ⚠️ **Prima di dire «non funziona», assicurarsi che sia
+finito**: una misura fatta troppo presto è indistinguibile da un guasto, e costa un giro intero.
+
+⚠️ **Il collaudo scrive in lista spesa** (`aggiungiAllaSpesa` in fondo a `creaLaRicetta`):
+nella prova del 22/08 ha aggiunto «Tonno in scatola (2 scatolette)», **rimossa subito**.
+Chi ricollauda lo sappia, e rilegga la lista invece di fidarsi.
+
+📌 **Trovato durante quella prova, non ancora sistemato**: il generatore ha messo la quantità
+**dentro il nome** in `manca` («Tonno in scatola (2 scatolette)»), contro la regola per cui il
+nome è la chiave e la quantità sta in `shopping_list.qta`. Quella riga non combacerebbe con
+niente. Vive nel prompt, quindi costa un deploy: **da raggruppare col prossimo.**
 #### 📌 Da fare col Blocco 4 — modifica a mano di un pasto (chiesto il 13/08/2026)
 
 Chiesto **tre volte** il 13/08/2026: è la cosa che l'utente vuole di più dopo i
