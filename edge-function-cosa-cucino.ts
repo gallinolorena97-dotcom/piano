@@ -1982,7 +1982,22 @@ limitati a dimensionare il pasto di oggi su chi mangia.`
   : '## QUESTA RICETTA NON ESISTE ANCORA\nScrivila tu, per una persona.'}`;
 
   return flussoNdjson(async (manda) => {
-    const battito = setInterval(() => manda({ tipo: 'battito' }), 10_000);
+    // ⚠️ QUESTA RIGA SUBITO, PRIMA DI TUTTO: è ciò che fa uscire dal server
+    // il primo byte. Senza, il filo restava aperto e MUTO finché non partiva
+    // il battito — misurato il 22/08/2026: la risposta non cominciava ad
+    // arrivare prima di 11 secondi, e undici secondi di silenzio assoluto su
+    // un telefono sono la finestra in cui Safari lascia cadere tutto. Poi
+    // l'app riceveva un guasto di rete e diceva «non raggiungo il database»,
+    // che mandava a controllare la cosa sbagliata.
+    // Gli altri due mestieri aprivano già così: qui non era mai stato messo.
+    manda({ tipo: 'stato', testo: 'Sto scrivendo la ricetta…' });
+
+    // ⚠️ Il battito va protetto come negli altri due mestieri: se il filo si
+    // è già rotto, `manda` scoppia — e scoppiando dentro un timer non lo
+    // prende il try qui sotto, che nel frattempo è in un'altra battuta.
+    const battito = setInterval(() => {
+      try { manda({ tipo: 'battito' }); } catch { /* il filo è già chiuso */ }
+    }, 10_000);
     try {
       const chiamata = await chiamaAnthropic(REGOLE_RICETTA, contesto, SCHEMA_RICETTA, MAX_TOKENS_RICETTA);
       if (!chiamata.ok) { manda({ errore: 'Il generatore non risponde. Riprova fra un minuto.' }); return; }

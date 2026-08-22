@@ -1072,6 +1072,80 @@ non era finito e non c'era da nessuna parte. **Lo chiude la staffetta** (vedi so
 l'utente ha deciso il 16/08/2026 che spostare la generazione sul server **è
 obbligatorio**, non facoltativo.
 
+#### ⚠️ Il terzo mestiere era rimasto muto — «Crea la ricetta» (22/08/2026)
+
+Sintomo: «Crea la ricetta» falliva **sempre**, dicendo *«Non riesco a raggiungere il
+database. Controlla la connessione e riprova.»* — mentre il resto dell'app scriveva
+benissimo. Cercato nei Logs di Supabase prima di toccare il codice, ed è servito.
+
+⚠️ **Il sospetto era che `modo:'ricetta'` non fosse deployato: NON era vero.** Verificato
+leggendo la sorgente davvero online (vedi «come si legge la versione deployata» qui sotto):
+2363 righe, cioè esattamente il commit `53a2fab`, con dentro `completaPiatto`,
+`REGOLE_RICETTA`, `SCHEMA_RICETTA`. E rifacendo la chiamata vera dal computer **la ricetta
+è arrivata intera in 20 secondi**. La function era sana.
+
+Quello che i Logs dicevano: chiamate presenti, **tutte 200**, **nessun errore registrato**
+— e la function scrive `console.error` su ogni strada storta, quindi il silenzio escludeva
+Anthropic, la chiave e il flusso rotto. Le durate erano identiche a quelle delle chiamate
+**riuscite** della stessa mattina (10,9 s contro 11,2 s): non si era fermata prima.
+
+⚠️ **IL NUMERO CHE HA RISOLTO: le intestazioni della risposta arrivavano dopo 11.039 ms.**
+Per undici secondi dal server non usciva **un byte**. Confrontati i tre mestieri:
+
+| mestiere | prima cosa che manda | battito protetto |
+|---|---|---|
+| proposte del giorno | subito, `{tipo:'stato'}` | sì |
+| genera la settimana | subito, `{tipo:'stato'}` | sì |
+| **crea la ricetta** | **niente per 10 secondi** | **no** |
+
+Il primo messaggio del modo ricetta era il **battito**, che parte a 10 secondi. Undici
+secondi di linea aperta e muta su un telefono sono esattamente la finestra in cui il filo
+cade — la stessa cosa già documentata qui sopra per «Genera la settimana». ⚠️ **La difesa
+era già stata costruita due volte e al terzo mestiere non era mai stata messa.**
+
+⚠️ **La regola che ne esce**: quando una difesa nasce da un guasto vero, si applica a
+**tutti** i posti che hanno la stessa forma, subito. Un mestiere aggiunto dopo eredita il
+codice ma non le cicatrici, e il difetto ricompare identico mesi dopo.
+
+⚠️ Corretto anche il **battito nudo**: se il filo è già rotto `manda` scoppia, e scoppiando
+dentro un `setInterval` **non lo prende il `try` che sta lì accanto** — è un'altra battuta.
+Gli altri due lo avvolgevano già, con scritto «il filo è già chiuso».
+
+**E i messaggi, che è la seconda metà del guaio** (nessun deploy, solo frontend):
+
+⚠️ **Una frase buona per tutto è una frase che manda a controllare la cosa sbagliata.**
+Nello stesso percorso **due punti diversi** finivano per dire la stessa identica frase — la
+risposta che non arriva, e la ricetta che non si riesce a salvare — e la frase parlava di
+una terza cosa ancora, il database, che funzionava benissimo. Ora:
+*«Il generatore stava scrivendo la ricetta e il collegamento si è interrotto»* · *«Il piatto
+è nel modulo qui sotto, ma non sono riuscito a scriverla nel ricettario…»*
+
+⚠️ **E i guai viaggiano DENTRO il messaggio finale, non in un toast loro.** I toast si
+sostituiscono: quello di fine copriva quello del guasto un istante dopo averlo mostrato, e
+«Ricetta pronta» su una ricetta non salvata **è una bugia**. Vale ovunque partano due toast
+di seguito.
+
+⚠️ **`guastoDiRete()` non contiene più la parola «connessione».** Bastava che un messaggio
+scritto da noi la contenesse per essere scambiato per un filo caduto e riscritto come «non
+raggiungo il database»: un messaggio utile mangiato e sostituito da uno fuorviante. Lì
+dentro **solo le frasi dei browser** — chi è davvero senza rete lo dice `navigator.onLine`.
+
+⚠️ Chiuso anche un buco della stessa famiglia: `aggiungiAllaSpesa()` in fondo a
+`creaLaRicetta` **non era protetta**, e siccome la funzione è chiamata senza che nessuno
+raccolga il guasto, se la lista della spesa falliva non compariva **niente** — né l'errore
+né il messaggio di fine. Sembrava un bottone che smetteva di funzionare a metà.
+
+#### Come si legge la versione DAVVERO deployata, invece di chiederlo
+
+Supabase → Edge Functions → cosa-cucino → **Code**: nella console della pagina,
+`monaco.editor.getModels()[0].getValue()` restituisce la sorgente online intera. Il numero
+di righe identifica il commit (`git show <commit>:edge-function-cosa-cucino.ts | wc -l`;
+Monaco ne conta una in più per il fine-file), e da lì si rilegge quella versione in locale.
+
+⚠️ Serve perché il deploy è manuale e la domanda «è stato fatto?» è quella che in questo
+progetto si è ripetuta di più. **Il pannello lo sa già: si guarda invece di chiedere.**
+
+
 ### ⚠️ Il tetto vero di Supabase: 150 secondi, e ci stavamo dentro per un pelo
 
 **Misurato col cronometro il 16/08/2026**, chiamando la funzione online:
@@ -1186,12 +1260,18 @@ col campo «che voglia hai?».
 
 #### ▶️ PROSSIMO PASSO
 
-**Aggiornato il 20/08/2026.**
+**Aggiornato il 22/08/2026.**
 
-⚠️ **SERVE UN DEPLOY** (aperto il 20/08/2026, la sera): la **memoria fra le settimane**
-tocca il `.ts` — la lettura dell'ultimo mese, `descriviMese()` e la costante `MEMORIA` nei
-due mestieri. Finché non è fatto, l'app mostra la pagina «Nell'ultimo mese» ma **il
-generatore non la usa**: genera esattamente come prima, senza errori.
+⚠️ **SERVE UN DEPLOY**, e ora sono **due cose insieme** — è il motivo per cui le modifiche
+alla function si raggruppano:
+
+1. aperto il 20/08 la sera: la **memoria fra le settimane** tocca il `.ts` — la lettura
+   dell'ultimo mese, `descriviMese()` e la costante `MEMORIA` nei due mestieri. Finché non
+   è fatto, l'app mostra la pagina «Nell'ultimo mese» ma **il generatore non la usa**:
+   genera esattamente come prima, senza errori;
+2. aperto il 22/08: il **silenzio di undici secondi** del modo `ricetta` (qui sotto).
+   Finché non è fatto, «Crea la ricetta» continua a cadere sul telefono — i messaggi
+   dell'app sono già corretti e dicono cosa è successo, ma la causa resta.
 
 ✅ Il deploy **precedente** era in pari. Fatto dall'utente il **20/08/2026**, subito dopo
 il push della barra in basso. Online c'è tutto quello arretrato dal 18/08 (menu, costi,

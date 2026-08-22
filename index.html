@@ -2275,8 +2275,15 @@ $('#toast').addEventListener('click', ev => {
  * grezza sull'iPhone durante «Genera la settimana», come se fosse un guasto
  * misterioso: era solo un guasto di rete non tradotto. Se salta fuori un
  * altro browser con parole sue, si aggiunge qui e la capiscono tutti. */
+/* ⚠️ QUI DENTRO SOLO LE FRASI DEI BROWSER, mai una parola italiana generica.
+   C'era anche «connessione», e bastava che un messaggio scritto da noi la
+   contenesse per essere scambiato per un filo caduto e riscritto come
+   «non raggiungo il database»: cioè un messaggio che diceva qualcosa di
+   utile veniva mangiato e sostituito da uno che manda a controllare la
+   cosa sbagliata. Chi è davvero senza rete lo dice già `navigator.onLine`
+   qui sotto, e non serve indovinarlo dalle parole. */
 const guastoDiRete = (m) => !navigator.onLine ||
-  /Failed to fetch|NetworkError|Load failed|network connection was lost|connessione/i.test(String(m || ''));
+  /Failed to fetch|NetworkError|Load failed|network connection was lost/i.test(String(m || ''));
 
 function spiegaErrore(e){
   const m = String(e?.message || e || '');
@@ -3723,9 +3730,18 @@ async function creaLaRicetta(box, iso, quale){
     });
   }catch(e){
     // ⚠️ Il messaggio della function è già in italiano e già chiaro («per
-    // oggi hai finito le generazioni»): non va riscritto. spiegaErrore()
-    // serve ai guasti veri — la rete caduta, una tabella che manca.
-    problema = guastoDiRete(String(e?.message || '')) ? spiegaErrore(e) : (e?.message || '');
+    // oggi hai finito le generazioni»): non va riscritto.
+    //
+    // ⚠️ E se il filo cade, SI DICE CHE È CADUTO IL FILO. Prima qui girava
+    // spiegaErrore(), che per un guasto di rete risponde «non riesco a
+    // raggiungere il database»: una frase buona per tutto, e per giunta
+    // falsa — il database si raggiunge benissimo, tanto che il piano è lì
+    // sullo schermo. Mandava a controllare la connessione, che funzionava.
+    // Quello che è successo davvero è che il generatore stava rispondendo
+    // e la risposta non è arrivata fino in fondo.
+    problema = guastoDiRete(String(e?.message || ''))
+      ? 'Il generatore stava scrivendo la ricetta e il collegamento si è interrotto prima che arrivasse. Riprova.'
+      : (e?.message || '');
   }
 
   box.querySelectorAll('button, input').forEach(x => x.disabled = false);
@@ -3738,6 +3754,7 @@ async function creaLaRicetta(box, iso, quale){
 
   // --- 2 · il ricettario, senza doppioni -------------------
   let idRicetta = trovata?.id || null;
+  let guaioRicettario = '';
   const contenuto = {
     ingredienti: Array.isArray(dati.ricetta_ingredienti) ? dati.ricetta_ingredienti : [],
     prot: numeroONull(dati.ricetta_prot),
@@ -3771,7 +3788,20 @@ async function creaLaRicetta(box, iso, quale){
   }catch(e){
     // ⚠️ Il ricettario è l'operazione accessoria: se fallisce lui, il
     // modulo si riempie lo stesso. Il lavoro fatto non si butta.
-    esitoErrore(e);
+    //
+    // ⚠️ E lo dice DI CHE COSA si sta parlando. Questo punto e quello qui
+    // sopra finivano per dire la stessa identica frase, pur essendo due
+    // guai opposti: là la ricetta non era arrivata, qui è arrivata e non si
+    // riesce a metterla via. Chi legge deve sapere quale dei due gli è
+    // capitato, perché la cosa da fare è diversa — riprovare, oppure
+    // guardare il database. spiegaErrore() resta perché è lui a dire quale
+    // file SQL eseguire quando manca una colonna.
+    //
+    // ⚠️ E il guaio viaggia nel messaggio finale invece che in un toast suo:
+    // qui sotto ne parte un altro, che lo coprirebbe un istante dopo — e
+    // «Ricetta pronta» su una ricetta che non è stata salvata è peggio del
+    // silenzio, perché è una bugia.
+    guaioRicettario = 'ma non sono riuscito a scriverla nel ricettario. ' + spiegaErrore(e);
   }
   // ⚠️ Nessun cuore. Scrivere la ricetta di un piatto non vuol dire che
   // quel piatto piace: se i ♥ si mettessero da soli smetterebbero di
@@ -3820,10 +3850,33 @@ async function creaLaRicetta(box, iso, quale){
   const manca = (Array.isArray(dati.manca) ? dati.manca.filter(Boolean) : [])
     .filter(n => !contornoLibero(String(n?.nome ?? n ?? '')));
   // il giorno c'è: la lista della spesa può dire per quando serve
-  if (manca.length) await aggiungiAllaSpesa(manca.map(n => ({ nome:n, giorno:iso })), true);
-  toast(eraPiena
-    ? `Collegata la ricetta «${trovata.name}» che avevi già.${manca.length ? ' Quello che manca è in lista spesa.' : ''}`
-    : `Ricetta pronta.${manca.length ? ' Quello che manca è in lista spesa.' : ''} Controlla e salva il pasto.`);
+  // ⚠️ Anche questa è accessoria e anche questa deve dare un esito: senza il
+  // riparo qui sotto, se la lista della spesa non si scriveva non compariva
+  // NIENTE — né l'errore né il messaggio di fine, perché creaLaRicetta viene
+  // chiamata senza nessuno che raccolga il guasto. Sembrava che il bottone
+  // avesse smesso di funzionare a metà.
+  // ⚠️ E la brutta notizia viaggia DENTRO il messaggio finale, non in un
+  // toast suo: i toast si sostituiscono, quindi quello di fine coprirebbe
+  // quello del guasto un istante dopo averlo mostrato — che è il modo più
+  // sicuro di far sparire proprio la cosa da leggere.
+  let codaSpesa = '';
+  if (manca.length){
+    try{
+      await aggiungiAllaSpesa(manca.map(n => ({ nome:n, giorno:iso })), true);
+      codaSpesa = ' Quello che manca è in lista spesa.';
+    }catch(e){
+      codaSpesa = ' Quello che manca però NON è finito in lista spesa: ' + spiegaErrore(e);
+    }
+  }
+  // ⚠️ Un messaggio solo, che dice com'è andata DAVVERO. Il modulo è pieno
+  // in tutti e tre i casi — quello è il lavoro vero e non si butta — ma
+  // «pronta» si scrive solo se è andato tutto a posto.
+  const testoFine = guaioRicettario
+    ? `Il piatto è nel modulo qui sotto, ${guaioRicettario}${codaSpesa}`
+    : (eraPiena
+        ? `Collegata la ricetta «${trovata.name}» che avevi già.${codaSpesa}`
+        : `Ricetta pronta.${codaSpesa} Controlla e salva il pasto.`);
+  toast(testoFine, null, guaioRicettario ? 'errore' : undefined);
 }
 
 /** Un intero utile, oppure niente. Lo zero del generatore vuol dire «non
