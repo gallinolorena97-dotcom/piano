@@ -872,6 +872,20 @@ pezzo di risposta arriva dopo **1,2 secondi** invece di 11, poi un battito ogni 
 ricetta completa a 20,6 s. ⚠️ **Resta da provare col tocco dal telefono**, e finché l'utente
 non l'ha fatto il guasto **resta aperto**.
 
+**La fusione di due voci di dispensa (Giro 2, Blocco 2) è verificata per misura**, il
+22/08/2026: **29 controlli su 29**, fatti girare su una **copia locale** dell'app in Chrome
+headless — pannello, somme, domande sui valori diversi, «Lascia stare», fusione vera e annulla.
+⚠️ **Il database vero non è stato toccato**: nella prova `sb.from` è sostituito da un finto che
+registra le chiamate e non parla con nessuno; le due voci «PROVA» stavano solo in memoria.
+⚠️ **Resta da provare col tocco**, ed è l'unica cosa che può fare l'utente.
+
+⚠️ **Come si rifà quella prova** (serve solo Chrome, niente Node): si costruisce una copia di
+`index.html` con lo script di prova infilato **prima** dell'ultimo `</script>`, e si lancia
+`chrome.exe --headless=new --enable-logging=stderr --virtual-time-budget=30000 --dump-dom
+file:///…copia.html`, leggendo le righe `PROVA:` dallo **stderr**. È lo stesso trucco per
+controllare che il file non abbia errori di sintassi, che qui non si possono provare in
+nessun altro modo.
+
 #### ⚠️ LA COLONNA CHIESTA E MAI USATA — il guasto che nessun collaudo poteva vedere
 
 La memoria fra le settimane chiedeva `plan_meals.proteina_principale`, **una colonna che non
@@ -935,8 +949,9 @@ costa una migrazione a chi la usa.
 #### ⛔ La coda dei giri, che NON si esegue da soli
 
 L'utente tiene la sua strada in `PROMPT-GIRO*.md` e la dà un giro alla volta. Fatti:
-**Giro 1** (protezione e rumore) · **Giro 2** (rinomina di una voce con alias automatico,
-fatta in anticipo) · **Giro 3** (gli attriti d'uso). Restano suoi, e **non vanno anticipati**:
+**Giro 1** (protezione e rumore) · **Giro 2** — Blocco 1 la barra in basso, Blocco 2 la rinomina
+con alias automatico (fatta in anticipo) **e la fusione quando il nome nuovo esiste già**
+(22/08/2026) · **Giro 3** (gli attriti d'uso). Restano suoi, e **non vanno anticipati**:
 riallineamento periodico della dispensa · lista della spesa per reparto · memoria fra le
 settimane · le scadenze in un campo loro.
 
@@ -1567,6 +1582,53 @@ quello che era già scritto. Resta togliibile dal menu.
 cui un'operazione accessoria che fallisce va gridata: qui il danno non è una comodità mancata,
 è il piano che si scolla dalla dispensa.
 
+⚠️ **Niente catene di alias, e nemmeno da correggere: `imparaAlias()` UNISCE i gruppi** invece
+di impilarli, quindi «A=B» e poi «B=C» lasciano un gruppo solo di tre nomi. Ma unire due gruppi
+tira dentro **anche nomi che non stai guardando**: `codaAlias()` li nomina nel messaggio («con
+lui anche X e Y»), perché un effetto che non si vede non si può correggere.
+
+#### La fusione di due voci: se il nome nuovo esiste già (Giro 2, 22/08/2026)
+
+Rinominando «Cheddar 250)» in «Cheddar» quando un «Cheddar» in dispensa c'è già, salvare e basta
+lascerebbe **due righe per la stessa cosa** — cioè il guasto descritto più sotto, creato apposta.
+`salvaVoceDispensa()` se ne accorge **prima di scrivere** (`doppioniDi()`, che confronta con
+`stessoNome()` come ogni confronto fra nomi di cibo) e apre il pannello di fusione.
+
+⚠️ **SI PROPONE, NON SI FA.** Una fusione cancella una riga: si mostra prima l'elenco delle
+righe in gioco con tutto quello che sanno di sé, che quantità risulta e che valori restano.
+⚠️ **L'annulla rimette la riga INTERA** — quantità, posizione, categoria e valori per 100 g —
+più i valori di quella modificata e il testo di prima degli alias. *Un annulla che restituisce
+una cosa diversa da quella tolta non è un annulla*: lezione già pagata sulla lista della spesa.
+
+⚠️ **La somma si fa solo quando è sicura** (`qtaFusa()`): «250 g» + «200 g» fa «450 g»; «~1 kg»
++ «100 g», unità diverse, o un «?», **non si sommano** — nel campo finiscono scritte tutte e due
+e il pannello dice che non le ha sommate. *Un numero verosimile è peggio di un campo da
+sistemare.* ⚠️ **Le code si tengono tutte**: la coda di una quantità sono le scadenze, e
+fondendo non devono sparire più di quanto spariscano scalando.
+
+⚠️ **Si chiede solo dove i valori sono DIVERSI** (`valoriInGioco()`): proteine, kcal, categoria
+e **posizione** (`cat`, che le due righe possono avere diversa — frigo e freezer non sono la
+stessa cosa). Dove uno solo ce l'ha, o dove sono uguali, non c'è niente da scegliere e la
+domanda non compare: *una domanda con una sola risposta è rumore.*
+
+⚠️ **Nell'elenco la riga che stai modificando tiene il NOME VECCHIO**: col nome nuovo le due
+righe si chiamerebbero uguale e non si capirebbe più da quale arriva quale numero — cioè si
+perderebbe l'unica cosa che il pannello serve a dire. I suoi valori invece sono quelli
+**scritti adesso nel modulo**, non quelli salvati (`letturaModulo()`, letta da tutti e due).
+
+⚠️ **Il pannello sta DENTRO `.inv-edit`, non accanto**: `closest()` sale e non guarda di fianco,
+e un fratello si perderebbe i tocchi in silenzio. I bottoni Salva/Annulla si **nascondono**
+(`data-e-azioni`), così «Lascia stare» li rimette senza rifare il modulo e quello che hai
+scritto negli altri campi resta dov'è. ⚠️ E «Lascia stare» **non salva**: non si crea il
+doppione che si stava evitando.
+
+⚠️ **Prima si aggiorna la riga che resta, poi si cancellano le altre.** Al contrario, se la
+cancellazione riuscisse e l'aggiornamento no, resterebbe una riga sola col nome vecchio e la
+roba dell'altra buttata via davvero.
+
+⚠️ **Fonde N righe, non due**: `doppioniDi()` le prende tutte. È la strada per curare i
+doppioni già in dispensa — si apre la matita su una, si scrive il nome dell'altra, si fonde.
+
 #### ⚠️ LE FREQUENZE NON SONO MAI STATE PROVATE (verificato il 20/08/2026)
 
 Il Blocco 3 della v8 è **scritto e online, ma non ha mai girato nemmeno una volta.**
@@ -1719,8 +1781,11 @@ giusto. Per *scalare* no: quale confezione apri non lo può sapere l'app, ed è 
 caso in cui la regola di casa dice di non indovinare — semmai si sceglie una riga e **si
 dichiara quale**, o si chiede.
 
-Da fare col **Giro 2**, insieme alla rinomina e alla fusione: lì la fusione delle due righe
-è la cura, questo è il motivo per cui serve.
+✅ **La cura c'è dal 22/08/2026** (Giro 2, Blocco 2): la fusione dalla matita. Si apre la matita
+su una delle due righe, si scrive il nome dell'altra, e l'app propone di fonderle invece di
+lasciare il doppione. ⚠️ **Ma non le va a cercare da sola**: i doppioni che sono già in dispensa
+restano lì finché non si passa di lì a mano. Il riallineamento periodico che li scoverebbe è
+Giro 3, e **resta dell'utente**.
 
 #### Un numero da solo: si chiede una volta
 

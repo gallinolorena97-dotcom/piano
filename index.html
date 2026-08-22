@@ -7327,6 +7327,20 @@ $('#invBody').addEventListener('click', async (ev) => {
         b.setAttribute('aria-pressed', String(b === u)));
       return;
     }
+    // gli stessi bottoni, ma nel pannello della fusione: quale valore
+    // tenere quando le due voci ne hanno due diversi
+    const f = ev.target.closest('[data-f-campo] button');
+    if (f){
+      [...f.parentElement.children].forEach(b =>
+        b.setAttribute('aria-pressed', String(b === f)));
+      return;
+    }
+    if (ev.target.closest('[data-f-no]')){ chiudiFusione(ed); return; }
+    if (ev.target.closest('[data-f-ok]')){
+      const it = S.inv.find(x => x.id === ed.dataset.per);
+      if (it) await confermaFusione(ed, it);
+      return;
+    }
     if (ev.target.closest('[data-e-no]')){ ed.remove(); return; }
     if (ev.target.closest('[data-e-ok]')){
       const it = S.inv.find(x => x.id === ed.dataset.per);
@@ -7442,7 +7456,10 @@ function apriEditorQty(cell, item){
       <p class="hint">Copiali dall'etichetta. Dove ci sono, il generatore li usa
         invece di stimare; dove non ci sono, stima come ha sempre fatto.</p>
 
-      <div class="form-row">
+      <!-- ⚠️ Marcata perché la fusione la NASCONDE invece di rifare il
+           modulo: «Lascia stare» la rimette e quello che hai scritto negli
+           altri campi è ancora lì. -->
+      <div class="form-row" data-e-azioni>
         <button class="btn" data-e-ok style="flex:1">Salva</button>
         <button class="btn ghost" data-e-no>Annulla</button>
       </div>
@@ -8859,16 +8876,16 @@ async function aggiornaInDispensa(id, campi){
   throw new Error('Non riesco ad aggiornare la voce.');
 }
 
-async function salvaVoceDispensa(box, item){
-  const vecchio = item.name;
+/**
+ * Quello che c'è scritto ADESSO nel modulo della matita.
+ *
+ * ⚠️ Sta in una funzione sua perché lo leggono in due — il salvataggio
+ * normale e la fusione — e due letture separate si scollerebbero al primo
+ * campo aggiunto: la fusione userebbe i valori vecchi della riga invece di
+ * quelli che hai appena scritto, senza che niente lo segnali.
+ */
+function letturaModulo(box, item){
   const nome = box.querySelector('[data-e-nome]').value.trim();
-  // ⚠️ Un nome vuoto non è una voce: sparirebbe dalla lista e non
-  // combacerebbe più con niente. Si dice e non si salva.
-  if (!nome){
-    toast('Il nome non può restare vuoto.');
-    box.querySelector('[data-e-nome]').focus();
-    return;
-  }
 
   /* L'unità di un numero nudo: quella che hai scelto adesso, o quella che
      l'app ricorda per questo nome. ⚠️ Si applica SOLO a un numero nudo, e
@@ -8878,13 +8895,354 @@ async function salvaVoceDispensa(box, item){
   const qtaScritta = box.querySelector('[data-e-qta]').value.trim() || '—';
   const qtaFinale = unita ? conUnita(qtaScritta, unita) : qtaScritta;
 
-  const campi = {
+  return { nome, unita, qtaScritta, qtaFinale, campi:{
     name: nome,
     qty: qtaFinale,
     prot_100g: nutriente(box.querySelector('[data-e-prot]').value),
     kcal_100g: nutriente(box.querySelector('[data-e-kcal]').value),
     categoria: box.querySelector('[data-e-categoria]').value || null,
+  }};
+}
+
+/* ============================================================
+   LA FUSIONE DI DUE VOCI DI DISPENSA (Giro 2, Blocco 2)
+
+   Rinominando «Cheddar 250)» in «Cheddar», se un «Cheddar» in dispensa
+   c'è già, salvare e basta lascerebbe DUE RIGHE PER LA STESSA COSA. E non
+   è un disordine estetico: `cercaInDispensa()` fa `find()`, cioè ne legge
+   UNA SOLA e non lo dice. Il controllo scorte sotto-conta, «Ho cucinato
+   questo» scala una riga e lascia l'altra ferma per sempre, e i valori per
+   100 g scritti sull'altra non li legge nessuno.
+   ⚠️ E quale sia «la prima» dipende dall'ordine alfabetico: una regola
+   incidentale è peggio di una regola sbagliata, perché quella almeno è
+   prevedibile.
+
+   ⚠️ SI PROPONE, NON SI FA. Una fusione cancella una riga: si mostra prima
+   che quantità risulta e che valori restano, si conferma, e resta
+   l'annulla — che rimette la riga INTERA, quantità, posizione, categoria e
+   valori per 100 g. Un annulla che restituisce una cosa diversa da quella
+   tolta non è un annulla: lezione già pagata sulla lista della spesa.
+
+   ⚠️ E SI SOMMA SOLO QUANDO LA SOMMA È SICURA, come dappertutto qui:
+   «300 g» + «200 g» fa «500 g»; «~1 kg» + «100 g» non fa niente, e allora
+   si scrivono tutte e due nel campo e si lascia correggere. Un numero
+   verosimile è peggio di un campo da sistemare.
+   ============================================================ */
+
+/** Le altre righe di dispensa che per l'app sono GIÀ questa cosa qui.
+    ⚠️ Il confronto è `stessoNome()`, l'unico dell'app: se cambiasse solo
+    qui, l'app fonderebbe secondo una regola e scalerebbe secondo un'altra. */
+const doppioniDi = (nome, esclusoId) =>
+  S.inv.filter(v => v.id !== esclusoId && stessoNome(v.name, nome));
+
+/**
+ * La quantità che risulta fondendo. Torna sempre qualcosa da mostrare, e
+ * dice se l'ha calcolata o se l'ha solo trascritta.
+ *
+ * ⚠️ Le code si tengono TUTTE. La coda di una quantità sono le scadenze
+ * («110 g · scad. 29/8»): scalando non devono sparire, e fondendo nemmeno.
+ * Due date diverse restano scritte tutte e due, e il pannello lo dice.
+ */
+function qtaFusa(voci){
+  const letti = voci.map(v => ({ testo:String(v.qty ?? '').trim(), q:leggiQta(v.qty) }));
+  const grezzo = letti.map(x => x.testo).filter(t => t && t !== '—').join(' + ');
+  // un «?» vuol dire «da verificare»: sommarci sopra darebbe un numero
+  // dall'aria precisa costruito su una cosa che nessuno ha verificato
+  if (letti.some(x => !x.q || x.testo.includes('?'))) return { testo:grezzo, sicuro:false };
+  const u = letti[0].q.u;
+  if (letti.some(x => x.q.u !== u)) return { testo:grezzo, sicuro:false };
+  const code = letti.map(x => x.q.coda).filter(c => c.trim());
+  return { testo: scriviQta(letti.reduce((s,x) => s + x.q.n, 0), u) + code.join(''),
+           sicuro:true, code:code.length };
+}
+
+/** I valori DIVERSI di un campo fra le voci che si fondono. Zero = non lo
+    sa nessuno, uno = non c'è niente da chiedere, più di uno = te lo chiedo. */
+function valoriInGioco(voci, campo){
+  const out = [];
+  voci.forEach(v => {
+    const x = v[campo];
+    if (x == null || x === '') return;
+    if (!out.some(o => o.v === x)) out.push({ v:x, da:v.name });
+  });
+  return out;
+}
+
+/** Una riga dell'elenco: tutto quello che quella voce sa di sé, così si
+    vede da dove arriva ogni numero della fusione. */
+const descriviVoce = (v) => [
+  mostraQta(v.qty),
+  CAT_LABEL[v.cat] ? CAT_LABEL[v.cat].toLowerCase() : null,
+  v.categoria || null,
+  v.prot_100g != null ? `${v.prot_100g} g prot/100` : null,
+  v.kcal_100g != null ? `${v.kcal_100g} kcal/100` : null,
+].filter(Boolean).join(' · ');
+
+/**
+ * Gli ALTRI nomi che questo appaiamento tira dentro.
+ *
+ * ⚠️ Appaiando due nomi che stanno già in due gruppi, i gruppi diventano
+ * uno: da lì in poi anche nomi che non stai guardando sono «la stessa
+ * cosa». Non è un guasto — è come deve funzionare, altrimenti «A=B» e
+ * «B=C» lascerebbero A e C estranei — ma è un effetto che non si vede, e
+ * quello che non si vede non si può correggere. Quindi si dice.
+ */
+function altriNomiAppaiati(a, b){
+  const { gruppi } = aliasIndice();
+  const ka = chiaveAlias(a), kb = chiaveAlias(b);
+  const nomi = [];
+  [a, b].forEach(x => {
+    const g = gruppi.find(gr => gr.some(n => chiaveAlias(n) === chiaveAlias(x)));
+    if (g) g.forEach(n => {
+      const k = chiaveAlias(n);
+      if (k !== ka && k !== kb && !nomi.some(m => chiaveAlias(m) === k)) nomi.push(n);
+    });
+  });
+  return nomi;
+}
+
+/** «…e con lui anche X e Y», o niente se non tira dentro nessuno. */
+function codaAlias(a, b){
+  const altri = altriNomiAppaiati(a, b);
+  if (!altri.length) return '';
+  const primi = altri.slice(0, 3).map(n => `«${n}»`).join(', ');
+  return altri.length > 3
+    ? ` Con lui anche ${primi} e altri ${altri.length - 3}.`
+    : ` Con lui anche ${primi}.`;
+}
+
+/**
+ * Il pannello della fusione, dentro il modulo della matita.
+ *
+ * ⚠️ DENTRO e non accanto: `closest()` sale, non guarda di fianco, e un
+ * pannello messo come fratello si perderebbe i tocchi in silenzio. E i
+ * bottoni Salva/Annulla si nascondono invece di sparire, così «Lascia
+ * stare» li rimette senza rifare il modulo — quello che hai scritto negli
+ * altri campi resta dov'è.
+ */
+function apriFusione(box, item, L, altre){
+  if (box.querySelector('[data-fusione]')) return;
+
+  // ⚠️ La voce che stai modificando entra coi valori SCRITTI ADESSO nel
+  // modulo, non con quelli salvati: se hai appena corretto le proteine, la
+  // fusione deve fondere quelle.
+  // ⚠️ Ma nell'elenco tiene il nome VECCHIO: col nome nuovo le due righe si
+  // chiamerebbero uguale, e non si capirebbe più da quale arriva quale
+  // numero — cioè si perderebbe l'unica cosa che il pannello serve a dire.
+  const mia = { ...item, qty:L.qtaFinale,
+                prot_100g:L.campi.prot_100g, kcal_100g:L.campi.kcal_100g,
+                categoria:L.campi.categoria };
+  const voci = [mia, ...altre];
+  const q = qtaFusa(voci);
+
+  /* ⚠️ Si CHIEDE solo dove i valori sono davvero diversi. Dove uno solo dei
+     due ce l'ha, o dove sono uguali, non c'è niente da scegliere: una
+     domanda a cui esiste una sola risposta è rumore, e a furia di rumore
+     non si guardano più nemmeno le domande vere. */
+  const chips = (campo, etichetta, mostra) => {
+    const lista = valoriInGioco(voci, campo);
+    if (lista.length < 2) return '';
+    // etichetta sopra e bottoni sotto a tutta larghezza: «cereali e
+    // carboidrati» in una colonna da 150 px finirebbe in tre puntini
+    return `<div style="margin-top:9px">
+      <span class="campo-eti">${etichetta} — quale tengo?</span>
+      <div class="chips mini" data-f-campo="${campo}">${
+        lista.map((o, i) => `<button data-v="${esc(String(o.v))}"${
+          i === 0 ? ' aria-pressed="true"' : ''}>${esc(mostra(o.v))}</button>`).join('')}</div>
+    </div>`;
   };
+
+  box.querySelector('[data-e-azioni]').hidden = true;
+  box.insertAdjacentHTML('beforeend', `
+    <div data-fusione data-f-ids="${esc(altre.map(v => v.id).join(','))}">
+      <div class="avviso info" style="margin-top:10px">
+        <b>«${esc(L.nome)}» in dispensa c'è già.</b>
+        <p style="margin:6px 0 0">Non ne faccio due righe: di due righe per la stessa cosa
+          l'app ne legge una sola, e l'altra resta lì ferma senza che niente lo dica.
+          ${altre.length > 1 ? `Qui sono ${voci.length} righe.` : 'Le posso fondere in una sola.'}</p>
+        <ul class="avviso-lista">${voci.map(v =>
+          `<li><b>${esc(v.name)}</b>${v === mia ? ' (quella che stai modificando)' : ''}
+             — ${esc(descriviVoce(v))}</li>`).join('')}</ul>
+      </div>
+
+      <div class="form-row" style="margin-top:8px">
+        <label class="campo">
+          <span class="campo-eti">Quantità che risulta</span>
+          <input class="field" data-f-qta value="${esc(q.testo)}" autocomplete="off">
+        </label>
+      </div>
+      <p class="hint" style="margin:4px 0 0">${q.sicuro
+        ? `Le ho sommate.${q.code ? ' Le note scritte nelle quantità (le scadenze) le ho tenute tutte: guarda che abbia senso.' : ''}`
+        : `Queste quantità non le so sommare, quindi <b>non le ho sommate</b>: le ho scritte tutte e due. Correggi tu.`}</p>
+
+      ${chips('prot_100g', 'Proteine per 100 g', v => `${v} g`)}
+      ${chips('kcal_100g', 'Calorie per 100 g', v => `${v}`)}
+      ${chips('categoria', "Che cos'è", v => v)}
+      ${chips('cat', 'Dove sta', v => CAT_LABEL[v] ? CAT_LABEL[v].toLowerCase() : v)}
+
+      <p class="hint">Resta <b>una riga sola</b>, che si chiama «${esc(L.nome)}»${
+        L.nome !== item.name ? `, e «${esc(item.name)}» le resta collegato` : ''}.
+        L'annulla rimette tutto com'era.</p>
+      <div class="form-row">
+        <button class="btn" data-f-ok style="flex:1">Fondi in una voce sola</button>
+        <button class="btn ghost" data-f-no>Lascia stare</button>
+      </div>
+    </div>`);
+}
+
+/** «Lascia stare»: niente fusione e niente salvataggio. Si torna al modulo
+    com'era, col nome nuovo ancora scritto: la scelta è tua, non chiusa. */
+function chiudiFusione(box){
+  box.querySelector('[data-fusione]')?.remove();
+  const azioni = box.querySelector('[data-e-azioni]');
+  if (azioni) azioni.hidden = false;
+}
+
+/**
+ * La fusione vera. Aggiorna la riga che resta e cancella le altre.
+ *
+ * ⚠️ L'ordine non è indifferente: prima si aggiorna quella che resta, poi
+ * si cancellano le altre. Al contrario, se la cancellazione riuscisse e
+ * l'aggiornamento no, resterebbe una riga sola col nome vecchio e la roba
+ * dell'altra buttata via davvero.
+ */
+async function confermaFusione(box, item){
+  const pannello = box.querySelector('[data-fusione]');
+  if (!pannello) return;
+  const L = letturaModulo(box, item);
+  const altre = (pannello.dataset.fIds || '').split(',').filter(Boolean)
+    .map(id => S.inv.find(v => v.id === id)).filter(Boolean);
+
+  // ⚠️ Un gesto che non produce niente non deve finire in silenzio: se
+  // quelle righe non ci sono più (le hai tolte dall'altro telefono), si
+  // dice, invece di fondere con il vuoto.
+  if (!altre.length){
+    chiudiFusione(box);
+    toast('Quelle righe non ci sono più: riprova a salvare.');
+    return;
+  }
+
+  // le stesse voci del pannello, così `scelta()` ricade sugli stessi valori
+  // che il pannello ha mostrato: due liste diverse si scollerebbero
+  const voci = [{ ...item, qty:L.qtaFinale, prot_100g:L.campi.prot_100g,
+                  kcal_100g:L.campi.kcal_100g, categoria:L.campi.categoria }, ...altre];
+  const scelta = (campo) => {
+    const b = pannello.querySelector(`[data-f-campo="${campo}"] button[aria-pressed="true"]`);
+    if (b) return b.dataset.v;
+    const lista = valoriInGioco(voci, campo);
+    return lista.length ? lista[0].v : null;
+  };
+  const numero = (campo) => { const v = scelta(campo); return v == null ? null : Number(v); };
+
+  const campi = {
+    name: L.nome,
+    // vuota resta «?»: da verificare è una risposta, un campo vuoto no
+    qty: pannello.querySelector('[data-f-qta]').value.trim() || '?',
+    prot_100g: numero('prot_100g'),
+    kcal_100g: numero('kcal_100g'),
+    categoria: scelta('categoria') || null,
+    cat: scelta('cat') || item.cat,
+  };
+
+  // ⚠️ La fotografia PRIMA di toccare qualsiasi cosa, e INTERA: nome,
+  // quantità, posizione, categoria e valori per 100 g. `updated_at` no:
+  // quelle righe sono state toccate adesso, ed è vero.
+  const foto = (v) => ({ id:v.id, name:v.name, qty:v.qty, cat:v.cat,
+    prot_100g: v.prot_100g ?? null, kcal_100g: v.kcal_100g ?? null,
+    categoria: v.categoria ?? null });
+  const primaMia = foto(item);
+  const primaAltre = altre.map(foto);
+  const aliasPrima = S.settings[CHIAVE_ALIAS] || '';
+
+  const vecchio = item.name;
+  const daAppaiare = L.nome !== vecchio && !stessoNome(vecchio, L.nome);
+  const coda = daAppaiare ? codaAlias(vecchio, L.nome) : '';
+
+  box.querySelectorAll('button, select, input').forEach(x => x.disabled = true);
+  try{
+    const mancanti = await aggiornaInDispensa(item.id, campi);
+    const scritti = { ...campi };
+    mancanti.forEach(c => delete scritti[c]);
+
+    const { error } = await sb.from('inventory_items').delete()
+      .in('id', primaAltre.map(v => v.id));
+    if (error) throw error;
+
+    Object.assign(item, scritti);
+    S.inv = S.inv.filter(v => !primaAltre.some(a => a.id === v.id));
+    S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
+
+    let aliasKo = false;
+    if (daAppaiare){
+      try { await imparaAlias(vecchio, L.nome); }
+      catch { aliasKo = true; }   // le righe sono fuse lo stesso: si dice, non si nasconde
+    }
+
+    restaDovEri(rifaiDoveContanoINomi);
+    portaInVista($(`#invBody .item[data-id="${item.id}"]`));
+
+    await ricordaNutrienti(L.nome, scritti.prot_100g ?? null, scritti.kcal_100g ?? null);
+    try { await ricordaUnita(L.nome, L.unita); } catch { /* pazienza */ }
+
+    const quante = primaAltre.length + 1;
+    let msg = `Fuse in una voce sola: «${L.nome}» — ${mostraQta(campi.qty)}.`;
+    if (daAppaiare) msg += aliasKo
+      ? ` Ma non sono riuscito a collegare «${vecchio}»: i pasti già scritti così potrebbero risultare mancanti.`
+      : ` «${vecchio}» resta collegato.${coda}`;
+    if (mancanti.length)
+      msg += ` Non ${mancanti.includes('categoria') ? 'la categoria' : 'i valori per 100 g'}: esegui ${
+        mancanti.includes('categoria') ? 'tabelle-categorie-v8.sql' : 'tabelle-nutrienti.sql'}.`;
+
+    toast(msg, async () => {
+      try{
+        await aggiornaInDispensa(item.id, { name:primaMia.name, qty:primaMia.qty,
+          cat:primaMia.cat, prot_100g:primaMia.prot_100g, kcal_100g:primaMia.kcal_100g,
+          categoria:primaMia.categoria });
+        Object.assign(item, primaMia);
+        for (const v of primaAltre){
+          const { riga } = await inserisciInDispensa(v);
+          S.inv.push(riga);
+        }
+        // ⚠️ Si rimette il TESTO di prima, non si toglie il gruppo: se
+        // l'appaiamento ne aveva uniti due, toglierlo separerebbe anche
+        // quello che era già appaiato prima.
+        if (daAppaiare && !aliasKo) await salvaAlias(aliasPrima ? JSON.parse(aliasPrima) : []);
+        S.inv.sort((a,b) => a.name.localeCompare(b.name,'it'));
+        restaDovEri(rifaiDoveContanoINomi);
+        toast(`Rimesso com'era: sono di nuovo ${quante} voci separate.`);
+      }catch(e){ esitoErrore(e); }
+    });
+  }catch(e){
+    box.querySelectorAll('button, select, input').forEach(x => x.disabled = false);
+    esitoErrore(e);
+  }
+}
+
+async function salvaVoceDispensa(box, item){
+  // il pannello della fusione è aperto: la domanda è quella, e Invio non
+  // deve scavalcarla salvando il doppione che stiamo evitando
+  if (box.querySelector('[data-fusione]')) return;
+
+  const vecchio = item.name;
+  const L = letturaModulo(box, item);
+  const nome = L.nome;
+  // ⚠️ Un nome vuoto non è una voce: sparirebbe dalla lista e non
+  // combacerebbe più con niente. Si dice e non si salva.
+  if (!nome){
+    toast('Il nome non può restare vuoto.');
+    box.querySelector('[data-e-nome]').focus();
+    return;
+  }
+
+  /* ⚠️ Prima di scrivere: se il nome nuovo è già di un'altra riga, salvare
+     creerebbe DUE righe per la stessa cosa — e l'app ne legge una sola,
+     senza dirlo. Non si sceglie da soli: si propone la fusione, si mostra
+     che cosa risulta, e si aspetta. */
+  const altre = nome !== vecchio ? doppioniDi(nome, item.id) : [];
+  if (altre.length){ apriFusione(box, item, L, altre); return; }
+
+  const campi = L.campi;
+  const qtaScritta = L.qtaScritta, qtaFinale = L.qtaFinale, unita = L.unita;
 
   /* ⚠️ RINOMINARE È UN'OPERAZIONE PERICOLOSA, ed è per questo che l'alias
      si scrive DA SOLO e senza chiedere. Il nome non è un'etichetta: è la
@@ -8898,8 +9256,14 @@ async function salvaVoceDispensa(box, item){
 
      ⚠️ Solo se i due nomi non combaciavano GIÀ: da «uova» a «Uova», o da
      «Patate» a «patate», `stessoNome()` li appaia da sé e un appaiamento in
-     più sarebbe solo una riga da leggere nel menu senza che serva a niente. */
+     più sarebbe solo una riga da leggere nel menu senza che serva a niente.
+
+     ⚠️ Niente catene: `imparaAlias()` UNISCE i gruppi invece di impilarli,
+     quindi «A=B» e poi «B=C» lasciano un gruppo solo di tre nomi. Ma unire
+     due gruppi tira dentro anche nomi che non stai guardando, e allora si
+     dice quali — `codaAlias()`. */
   const daAppaiare = nome !== vecchio && !stessoNome(vecchio, nome);
+  const coda = daAppaiare ? codaAlias(vecchio, nome) : '';
 
   box.querySelectorAll('button, select, input').forEach(x => x.disabled = true);
   try{
@@ -8949,7 +9313,7 @@ async function salvaVoceDispensa(box, item){
       toast(aliasKo
         ? `Adesso si chiama «${nome}», ma non sono riuscito a collegare «${vecchio}»: `
           + `i pasti già scritti così potrebbero risultare mancanti.`
-        : `Adesso si chiama «${nome}». «${vecchio}» resta collegato: il piano combacia.`);
+        : `Adesso si chiama «${nome}». «${vecchio}» resta collegato: il piano combacia.${coda}`);
       return;
     }
     // ⚠️ Se l'app ha completato il numero lo DICE: quello che si salva deve
