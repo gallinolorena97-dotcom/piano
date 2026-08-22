@@ -3812,25 +3812,50 @@ async function creaLaRicetta(box, iso, quale){
   campoPiatto.value = dati.piatto || nome;
   box.dataset.ricettaId = idRicetta || '';
 
-  const righe = Array.isArray(dati.pasto_ingredienti) ? dati.pasto_ingredienti : [];
-  if (righe.length){
-    box.querySelector('.mano-ing').innerHTML =
-      righe.map(i => rigaIngrediente({ nome:i.nome, qta:i.qta })).join('');
-  }
-  // le proteine sono di Ciprian: in un pasto di sola Lorena restano vuote
-  if (chi !== 'lorena'){
-    const p = numeroONull(dati.pasto_prot), k = numeroONull(dati.pasto_kcal);
-    if (p != null) box.querySelector('[data-prot]').value = p;
-    if (k != null) box.querySelector('[data-kcal]').value = k;
-  }
+  /* ⚠️ QUI SI SOSTITUISCE SEMPRE, ANCHE COL VUOTO — e vale su TUTTI E DUE
+     i rami, la ricetta creata nuova e quella collegata.
+
+     Prima ogni campo era condizionato: gli ingredienti solo `if (righe.length)`,
+     i numeri solo `if (p != null)`, e la nota solo se il campo era ANCORA VUOTO.
+     Quel `!value` non ha mai protetto niente di tuo: il modulo si apre già
+     pieno col pasto che stai sostituendo, quindi la condizione era sempre
+     falsa e **la nota del piatto di ieri non veniva mai sostituita**. Restava
+     lì sotto il nome nuovo, e sembrava la nota del piatto nuovo.
+
+     ⚠️ Meglio vuoto che il piatto di ieri spacciato per quello di oggi: se il
+     generatore non manda un campo, quel campo si SVUOTA e lo si dice, invece
+     di lasciare in piedi una cosa che non c'entra più niente.
+
+     ⚠️ Svuotare è sicuro proprio perché lo schema li rende obbligatori tutti
+     (`nota`, `dolce`, `pasto_ingredienti`, i tre numeri): il generatore li
+     manda sempre, semmai vuoti. Se un domani un campo esce da `required`,
+     questo posto comincia a svuotarlo davvero — e l'avviso qui sotto è ciò
+     che lo fa vedere invece di lasciarlo scoprire. */
+  const svuotati = [];
+
+  const righe = (Array.isArray(dati.pasto_ingredienti) ? dati.pasto_ingredienti : [])
+    .filter(i => i && String(i.nome || '').trim());
+  box.querySelector('.mano-ing').innerHTML = righe.length
+    ? righe.map(i => rigaIngrediente({ nome:i.nome, qta:i.qta })).join('')
+    : rigaIngrediente({ nome:'', qta:'' });
+  if (!righe.length) svuotati.push('gli ingredienti');
+
+  // le proteine sono di Ciprian: in un pasto di sola Lorena restano vuote,
+  // e «restano vuote» vuol dire vuote davvero, non con i numeri di prima
+  const p = chi !== 'lorena' ? numeroONull(dati.pasto_prot) : null;
+  const k = chi !== 'lorena' ? numeroONull(dati.pasto_kcal) : null;
+  box.querySelector('[data-prot]').value = p != null ? p : '';
+  box.querySelector('[data-kcal]').value = k != null ? k : '';
+  if (chi !== 'lorena' && p == null) svuotati.push('le proteine');
+  if (chi !== 'lorena' && k == null) svuotati.push('le kcal');
+
   // le calorie di Lorena, nei pasti che mangia lei
-  if (chi !== 'ciprian'){
-    const kl = numeroONull(dati.pasto_kcal_lorena);
-    if (kl != null) box.querySelector('[data-kcal-lorena]').value = kl;
-  }
-  if (dati.dolce) box.querySelector('[data-dolce]').value = dati.dolce;
-  if (dati.nota && !box.querySelector('[data-nota]').value)
-    box.querySelector('[data-nota]').value = dati.nota;
+  const kl = chi !== 'ciprian' ? numeroONull(dati.pasto_kcal_lorena) : null;
+  box.querySelector('[data-kcal-lorena]').value = kl != null ? kl : '';
+
+  box.querySelector('[data-dolce]').value = dati.dolce || '';
+  box.querySelector('[data-nota]').value  = dati.nota  || '';
+  if (!String(dati.nota || '').trim()) svuotati.push('la nota');
   // ⚠️ Procedimento e sostituzioni non hanno un campo nel modulo — sono
   // roba che si legge, non che si scrive a mano — quindi viaggiano a
   // parte fino al salvataggio del pasto.
@@ -3871,12 +3896,20 @@ async function creaLaRicetta(box, iso, quale){
   // ⚠️ Un messaggio solo, che dice com'è andata DAVVERO. Il modulo è pieno
   // in tutti e tre i casi — quello è il lavoro vero e non si butta — ma
   // «pronta» si scrive solo se è andato tutto a posto.
+  // ⚠️ Un campo svuotato SI DICE. Svuotare in silenzio sarebbe l'altra metà
+  // dello stesso difetto: prima restava il piatto di ieri senza dirlo, e un
+  // campo che si svuota da solo senza dirlo si nota altrettanto poco.
+  const elenco = (a) => a.length < 2 ? a[0] : a.slice(0, -1).join(', ') + ' e ' + a[a.length - 1];
+  const codaVuoti = svuotati.length
+    ? ` ⚠️ Il generatore non ha mandato ${elenco(svuotati)}: ${svuotati.length > 1 ? 'quei campi sono' : 'quel campo è'} vuoto, non è rimasto quello di prima.`
+    : '';
+
   const testoFine = guaioRicettario
-    ? `Il piatto è nel modulo qui sotto, ${guaioRicettario}${codaSpesa}`
+    ? `Il piatto è nel modulo qui sotto, ${guaioRicettario}${codaSpesa}${codaVuoti}`
     : (eraPiena
-        ? `Collegata la ricetta «${trovata.name}» che avevi già.${codaSpesa}`
-        : `Ricetta pronta.${codaSpesa} Controlla e salva il pasto.`);
-  toast(testoFine, null, guaioRicettario ? 'errore' : undefined);
+        ? `Collegata la ricetta «${trovata.name}» che avevi già.${codaSpesa}${codaVuoti} Controlla e salva il pasto.`
+        : `Ricetta pronta.${codaSpesa}${codaVuoti} Controlla e salva il pasto.`);
+  toast(testoFine, null, (guaioRicettario || svuotati.length) ? 'errore' : undefined);
 }
 
 /** Un intero utile, oppure niente. Lo zero del generatore vuol dire «non
