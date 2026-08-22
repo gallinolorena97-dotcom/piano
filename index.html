@@ -3700,6 +3700,31 @@ async function creaLaRicetta(box, iso, quale){
     qta:  riga.querySelector('[data-ing-qta]').value.trim(),
   })).filter(i => i.nome);
 
+  /* ⚠️ GLI INGREDIENTI DEL PIATTO CHE STAI SOSTITUENDO NON SONO «SCRITTI DA TE».
+     Il modulo si apre già pieno col pasto che c'è nel piano. Se scrivi sopra un
+     nome nuovo e premi «Crea la ricetta», quelle righe partivano lo stesso —
+     e il generatore le riceve come «ingredienti già scritti a mano, TIENILI
+     TUTTI». Risultato: il piatto nuovo nasceva costruito attorno agli
+     ingredienti del vecchio, e la ricetta finiva nel ricettario così.
+     Da quel momento in poi il ramo «ce l'ho già» la ricopiava fedelmente, e
+     sembrava che la sostituzione non partisse: partiva, ma copiava una
+     ricetta nata sporca.
+
+     ⚠️ La distinzione è: **le hai toccate tu, o sono quelle di prima?** Se il
+     nome del piatto è cambiato E le righe sono ancora identiche a quelle nel
+     piano, non le hai scritte tu: appartengono al piatto che stai buttando, e
+     non si mandano. Se ne hai cambiata anche una, comandi tu e partono tutte.
+     ⚠️ Stesso nome di piatto = stai rigenerando quello: lì gli ingredienti
+     restano tuoi e si mandano sempre. */
+  const rPiano = pastiDi(iso).find(x => x.pasto === quale) || null;
+  const impronta = (righe) => (Array.isArray(righe) ? righe : [])
+    .filter(i => i && String(i.nome || '').trim())
+    .map(i => `${String(i.nome).trim()}|${String(i.qta ?? '').trim()}`).join('§');
+  const nonToccati  = !!scritti.length && impronta(rPiano?.ingredienti) === impronta(scritti);
+  const altroPiatto = !!String(rPiano?.piatto || '').trim() && !stessoNome(rPiano.piatto, nome);
+  const ereditati   = altroPiatto && nonToccati;
+  const daMandare   = ereditati ? [] : scritti;
+
   // La ricetta che c'è già: se è piena la mando al generatore perché la
   // riusi invece di riscriverla a modo suo. Qualcuno l'aveva approvata.
   const trovata = ricettaPerNome(nome);
@@ -3720,7 +3745,7 @@ async function creaLaRicetta(box, iso, quale){
     await flussoNdjson({
       modo:'ricetta',
       nome, chi, pasto:quale,
-      ingredienti: scritti,
+      ingredienti: daMandare,
       ricetta: gia,
     }, (ev) => {
       if (ev.errore) problema = ev.errore;
@@ -3903,12 +3928,16 @@ async function creaLaRicetta(box, iso, quale){
   const codaVuoti = svuotati.length
     ? ` ⚠️ Il generatore non ha mandato ${elenco(svuotati)}: ${svuotati.length > 1 ? 'quei campi sono' : 'quel campo è'} vuoto, non è rimasto quello di prima.`
     : '';
+  // ⚠️ Ignorare degli ingredienti è una decisione, e le decisioni si dicono.
+  const codaEreditati = ereditati
+    ? ` Gli ingredienti erano ancora quelli di «${rPiano.piatto}»: li ho lasciati fuori, se ne servono si aggiungono a mano.`
+    : '';
 
   const testoFine = guaioRicettario
-    ? `Il piatto è nel modulo qui sotto, ${guaioRicettario}${codaSpesa}${codaVuoti}`
+    ? `Il piatto è nel modulo qui sotto, ${guaioRicettario}${codaEreditati}${codaSpesa}${codaVuoti}`
     : (eraPiena
-        ? `Collegata la ricetta «${trovata.name}» che avevi già.${codaSpesa}${codaVuoti} Controlla e salva il pasto.`
-        : `Ricetta pronta.${codaSpesa}${codaVuoti} Controlla e salva il pasto.`);
+        ? `Collegata la ricetta «${trovata.name}» che avevi già.${codaEreditati}${codaSpesa}${codaVuoti} Controlla e salva il pasto.`
+        : `Ricetta pronta.${codaEreditati}${codaSpesa}${codaVuoti} Controlla e salva il pasto.`);
   toast(testoFine, null, (guaioRicettario || svuotati.length) ? 'errore' : undefined);
 }
 
