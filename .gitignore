@@ -14,3 +14,6 @@ COLLAUDO-*.md
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# la copia di sicurezza di CLAUDE.md: è tua, non del progetto
+CLAUDE-backup-*.md
